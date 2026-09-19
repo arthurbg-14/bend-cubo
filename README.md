@@ -253,29 +253,35 @@ AMD Ryzen 7 5700U com a Radeon integrada (Vega 8, RADV), 1280×720:
 | GPU, cena parada (`./cubo still`) | 1,91 ms/frame (~450 fps) |
 | GPU, jogando (`./cubo demo`) | 1,5–2,3 ms/frame (330–550 fps) |
 | um tick de um corpo entre 10 obstáculos (`Body.tick`) | 0,79 µs |
-| tick do mundo andando e empurrando | 22 µs, ou ~0,3 % de um núcleo a 128 ticks/s |
-| tick do mundo com 64 cubos caindo e se empilhando | 0,65 ms |
-| tick do mundo com 1024 cubos caindo ao mesmo tempo (blocos) | ~6 ms |
-| cabeçalho de um frame (câmera, corpos, HUD) | 33 µs |
+| tick do mundo andando e empurrando | 7,4 µs, ou ~0,1 % de um núcleo a 128 ticks/s |
+| tick do mundo com 64 cubos caindo e se empilhando | 0,18 ms |
+| tick do mundo com 1024 cubos caindo ao mesmo tempo (blocos) | 2,7 ms |
+| cabeçalho de um frame (câmera, corpos, HUD) | 12 µs |
 
 `./build.sh bench && ./bench` roda esses cenários sem janela.
 
 **Quantos cubos se mexendo ao mesmo tempo.** Medido com cubos caindo, todos
-acordados. As três versões rodaram alternadas, na mesma máquina, com outros
-processos usando ~4 núcleos (CPU a ~95 °C):
+acordados, numa thread (ver abaixo):
 
-| cubos | cada um olhava todos | octree | blocos coloridos |
-|---|---|---|---|
-| 256 | 6,9 ms/tick | 3,4 ms/tick | 2,3 ms/tick |
-| 1024 | 87 ms/tick | 9,5 ms/tick | 5,7 ms/tick |
-| 2025 | — | 16,8 ms/tick | 10,0 ms/tick |
-| 4096 | 2994 ms/tick | 31,6 ms/tick | 17,0 ms/tick |
+| cubos | ms por tick |
+|---|---|
+| 1024 | 2,9 |
+| 4096 | 12,6 |
+| 8281 | 28,3 |
+| 16384 | 67,3 |
 
-O tempo real pede 7,8 ms por tick (128 por segundo), então cabem ~1400 cubos
-se mexendo ao mesmo tempo; eram ~256 com cada cubo olhando todos. Com mais,
-a simulação continua certa, só anda mais devagar que o relógio: com 4096,
-na metade da velocidade. Um cubo parado não custa nada, e o mundo tem
-quantos cubos parados couberem nele.
+O custo é linear: ~28 mil instruções por cubo por tick, em qualquer tamanho.
+O tempo real pede 7,8 ms por tick (128 por segundo), então cabem ~2700 cubos
+se mexendo ao mesmo tempo. Com mais, a simulação continua certa, só anda mais
+devagar que o relógio. Um cubo parado não custa nada, e o mundo tem quantos
+cubos parados couberem nele.
+
+**Sobre as threads.** O escalonador do Bend reparte as tarefas de uma vez e
+não as move depois. Se outro processo toma um núcleo, a thread que perdeu a
+vez segura o tick inteiro. Nesta máquina, com outras tarefas rodando, uma
+thread só é ~2× mais rápida que todas elas (`./bench --threads 1`); com a
+máquina livre, o paralelismo ganha. O tick reparte o trabalho em ramos
+grandes da árvore (um fork por nó fazia tarefas pequenas demais).
 
 A GPU desenha no máximo 250 cubos em movimento de uma vez, o jogador
 incluído. Os outros aparecem quando param.
@@ -294,3 +300,5 @@ o HUD mostra):
 | células dos cubos dormindo lidas uma vez por nó da octree, e não por cubo | 1024 cubos: 11,8 ms/tick | 8,6 |
 | blocos coloridos: 4 fases, cada uma com todos os blocos de uma cor em paralelo (a octree deixava 47% dos cubos nos cortes, em sequência) | 4096 cubos: 31 ms/tick | 19 |
 | trie das células com 8 níveis em vez de 30; vizinhos filtrados pelo alcance do bloco; o que mudou no vizinho anotado a cada passo, sem reordenar | 4096 cubos: 19 ms/tick | 16–17 |
+| cada cubo desmontado uma vez por passo, e a partição da árvore passada adiante em vez de compartilhada (ler um valor compartilhado conta referências a cada campo) | 16,0 G instruções | 13,1 |
+| o alcance de um cubo é o que o tick dele move (2 |v| + 2 g), sem a folga de 0,25 m que o jogador precisa: ele recebe só o que pode tocar | 13,1 G instruções | 7,7 |
