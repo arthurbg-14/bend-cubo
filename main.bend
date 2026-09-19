@@ -43,19 +43,19 @@ def Pick.s(c: Bool, a: String, b: String) -> String:
 
 # The constants
 # -------------
-# phys.bend's K, six of them tunable: gravity (g/8 m/s^2), friction (mu
-# in 256ths), the jump (m/s in 1024ths), the motor on the ground and in the
-# air (m/s^2 in 8ths), the top walking speed (m/s in 1024ths). The size of
-# a cube is fixed: a metre.
+# phys.bend's K, four of them tunable: gravity (g/8 m/s^2), friction (mu
+# in 256ths), the jump (m/s in 1024ths) and the motor on the ground (m/s^2
+# in 8ths). In the air the motor does nothing and there is no top speed.
+# The size of a cube is fixed: a metre.
 
 def Knob.count() -> Nat:
-  6n
+  4n
 
 def Knob.defaults() -> P.K:
-  P.K{78n, 205n, 5541n, 160n, 32n, 6144n, 262144n}
+  P.K{78n, 205n, 5541n, 160n, 262144n}
 
 def Knob.get(k: P.K, i: Nat) -> Nat:
-  P.K{g, mu, jump, acc, air, vmax, size} = k
+  P.K{g, mu, jump, acc, size} = k
   match i:
     case 0n:
       g
@@ -63,28 +63,20 @@ def Knob.get(k: P.K, i: Nat) -> Nat:
       mu
     case 2n:
       jump
-    case 3n:
-      acc
-    case 4n:
-      air
     case _:
-      vmax
+      acc
 
 def Knob.set(k: P.K, i: Nat, +v: Nat) -> P.K:
-  P.K{g, mu, jump, acc, air, vmax, size} = k
+  P.K{g, mu, jump, acc, size} = k
   match i:
     case 0n:
-      P.K{v, mu, jump, acc, air, vmax, size}
+      P.K{v, mu, jump, acc, size}
     case 1n:
-      P.K{g, v, jump, acc, air, vmax, size}
+      P.K{g, v, jump, acc, size}
     case 2n:
-      P.K{g, mu, v, acc, air, vmax, size}
-    case 3n:
-      P.K{g, mu, jump, v, air, vmax, size}
-    case 4n:
-      P.K{g, mu, jump, acc, v, vmax, size}
+      P.K{g, mu, v, acc, size}
     case _:
-      P.K{g, mu, jump, acc, air, v, size}
+      P.K{g, mu, jump, v, size}
 
 # a step of knob i, and its top
 def Knob.step(i: Nat) -> Nat:
@@ -95,12 +87,8 @@ def Knob.step(i: Nat) -> Nat:
       13n
     case 2n:
       256n
-    case 3n:
-      8n
-    case 4n:
-      8n
     case _:
-      512n
+      8n
 
 def Knob.most(i: Nat) -> Nat:
   match i:
@@ -110,12 +98,8 @@ def Knob.most(i: Nat) -> Nat:
       512n
     case 2n:
       U32.to_nat(20480)
-    case 3n:
-      U32.to_nat(1600)
-    case 4n:
-      800n
     case _:
-      U32.to_nat(40960)
+      U32.to_nat(1600)
 
 # knob i one step up (up) or down, within 0 .. most
 def Knob.turn(+k: P.K, +i: Nat, up: Bool) -> P.K:
@@ -139,7 +123,7 @@ def Fmt.dec1(+num: Nat, +den: Nat) -> String:
 
 # how high a jump rises: jump^2 / g units, the energy's balance
 def Fmt.rise(+k: P.K) -> String:
-  P.K{+g, mu, +jump, acc, air, vmax, size} = k
+  P.K{+g, mu, +jump, acc, size} = k
   Pick.s(Nat.is_eq(g, 0n), "sem volta", Fmt.dec2(Nat.div(Nat.mul(jump, jump), Nat.max(g, 1n)), 262144n) ++ " m")
 
 def Knob.line(+k: P.K, i: Nat) -> String:
@@ -150,12 +134,8 @@ def Knob.line(+k: P.K, i: Nat) -> String:
       "Atrito do chão  µ " ++ Fmt.dec2(Knob.get(k, 1n), 256n) ++ Pick.s(Nat.is_eq(Knob.get(k, 1n), 205n), " (asfalto seco)", "")
     case 2n:
       "Pulo            " ++ Fmt.dec2(Knob.get(k, 2n), 1024n) ++ " m/s (sobe " ++ Fmt.rise(k) ++ ")"
-    case 3n:
-      "Força no chão   " ++ Fmt.dec2(Knob.get(k, 3n), 8n) ++ " m/s²"
-    case 4n:
-      "Força no ar     " ++ Fmt.dec2(Knob.get(k, 4n), 8n) ++ " m/s²"
     case _:
-      "Vel. máxima     " ++ Fmt.dec2(Knob.get(k, 5n), 1024n) ++ " m/s"
+      "Força no chão   " ++ Fmt.dec2(Knob.get(k, 3n), 8n) ++ " m/s²"
 
 # Angles
 # ------
@@ -533,7 +513,7 @@ def Play.helps(help: Bool) -> List<&2, String>:
         "mouse gira a câmera · roda aproxima e afasta",
         "Enter volta ao início · N mundo novo · Esc sai",
         "empurre os cubos verdes · suba neles pulando",
-        "13 leis provadas (LAWS.bend): o voo é a parábola da física",
+        "15 leis provadas (LAWS.bend): o voo é a parábola da física",
         "real, energia, Coulomb, trabalho do atrito, momento, sem atravessar"]
     case False{}:
       []

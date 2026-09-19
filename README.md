@@ -29,13 +29,21 @@ A GPU desenha (Vulkan); o Bend simula.
 | Espaço | pular (segurado, pula de novo ao tocar o chão) |
 | mouse | girar a câmera |
 | roda | aproximar / afastar a câmera |
-| Tab, ↑ ↓, 1 … 6 | escolher uma constante |
+| Tab, ↑ ↓, 1 … 4 | escolher uma constante |
 | ← → | mudar a constante escolhida (segurar repete) |
 | R | constantes de volta ao padrão |
 | Enter | voltar ao início |
 | N | mundo novo (outra semente) |
 | H | mostrar / esconder as teclas |
 | Esc | sair |
+
+Andar acelera 20 m/s² enquanto a tecla estiver segurada, e o atrito tira
+7,8 m/s²: sobram 12,2 m/s² que não param de somar — **não há velocidade
+máxima**, e a aceleração é a mesma em qualquer velocidade (`motor_is_steady`).
+Num trecho limpo dá 12 m/s em 1 s e 122 m/s em 10 s; no mundo de verdade os
+cubos que você encontra pelo caminho seguram você por volta de 6 m/s. No ar
+o motor não faz nada: saiu do chão, o que manda é a parábola
+(`no_air_control`).
 
 Para empurrar, é só andar contra um cubo verde. Ele sai com a sua velocidade
 dividida entre os dois (a colisão conserva o momento) e desliza até o atrito
@@ -61,9 +69,7 @@ Todas mudam durante o jogo; o painel mostra o valor em unidades físicas.
 | Gravidade | 9,75 m/s² | 0,5 | a velocidade que a gravidade tira a cada tick |
 | Atrito do chão | µ 0,80 | 0,05 | Coulomb: o chão freia µ·g (a força normal é m·g); 0,80 é borracha em asfalto seco |
 | Pulo | 5,41 m/s | 0,25 | a velocidade de saída; o painel mostra a altura que a energia dá, J²/2g |
-| Força no chão | 20 m/s² | 1 | o empurrão do "motor" ao andar |
-| Força no ar | 4 m/s² | 1 | o controle no ar |
-| Vel. máxima | 6 m/s | 0,5 | até onde o motor acelera |
+| Força no chão | 20 m/s² | 1 | o empurrão do "motor" ao andar; no ar o motor não faz nada |
 
 O painel mostra também, a cada frame, a altura, a velocidade e a **energia
 mecânica** do cubo azul em J/kg. Num pulo ela fica parada enquanto ele voa.
@@ -84,6 +90,8 @@ movimento. O tick marca isso no próprio corpo (`hit`).
 | `flight_is_parabola` | um voo inteiro, de qualquer duração e com quaisquer obstáculos em volta, é **exatamente** a parábola da física real: depois de n ticks (t = n/128 s), `v = v₀ − a·t`, `y = y₀ + v₀·t − ½·a·t²` e `x = x₀ + vₓ·t`, com a = g/8 m/s² (9,75 m/s² no padrão), sem erro que se acumule |
 | `jump_energy` | um pulo sem contato dá ao corpo **exatamente** `J²` de energia vertical; somada a `free_flight_energy`, a altura do pulo é a da conservação da energia |
 | `no_air_jump` | no ar, segurar o pulo não muda nada (pular exige apoio) |
+| `no_air_control` | no ar, segurar uma direção não muda nada: o motor empurra contra o chão, e em voo não há contra o que empurrar |
+| `motor_is_steady` | no chão, andar soma **exatamente** `acc` na direção pedida, seja qual for a velocidade atual: não há velocidade máxima, e o empurrão não enfraquece nem cresce com a velocidade |
 | `friction_never_reverses` | no chão, sem entrada, o atrito só freia: nenhum componente da velocidade cresce ou troca de sentido |
 | `coulomb_friction` | o atrito de um tick tem módulo no máximo µ·g, em qualquer direção de deslize: `fx² + fz² ≤ (µg)²` |
 | `friction_work` | teorema trabalho-energia: a energia cinética perdida é **exatamente** o atrito vezes a distância deslizada, e o corpo desliza essa distância |

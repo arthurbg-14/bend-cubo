@@ -105,6 +105,35 @@ law no_air_jump:
   for air: {P.Body.ground(b) == False{} : Bool}
   {P.Body.tick(k, obs, P.In{w, True{}}, b) == P.Body.tick(k, obs, P.In{w, False{}}, b) : P.Body & List<&2, P.Body>}
 
+# LAW: no steering in mid-air: off the ground, holding a direction changes
+# nothing. The motor pushes against the ground; in flight there is nothing
+# to push against.
+law no_air_control:
+  for +k: P.K
+  for +obs: List<&2, P.Body>
+  for w: Maybe<&2, P.Wish>
+  for +b: P.Body
+  for air: {P.Body.ground(b) == False{} : Bool}
+  {P.Body.tick(k, obs, P.In{w, False{}}, b) == P.Body.tick(k, obs, P.In.idle(), b) : P.Body & List<&2, P.Body>}
+
+# The motor
+# ---------
+
+# LAW: the motor pushes the same however fast the cube already goes: on
+# the ground, walking toward a direction adds exactly acc along it to the
+# velocity, whatever the velocity is. There is no top speed, and the push
+# neither fades nor grows with the speed.
+law motor_is_steady:
+  for +k: P.K
+  for +b: P.Body
+  for +ux: P.Z
+  for +uz: P.Z
+  for stand: {P.Body.ground(b) == True{} : Bool}
+  b1 = P.Body.drive(k, P.In{Some{P.Wish{ux, uz}}, False{}}, b)
+  b0 = P.Body.drive(k, P.In.idle(), b)
+  {P.Body.vx(b1) == P.Z.add(P.Body.vx(b0), P.Z.q12(P.K.acc(k), ux)) : P.Z}
+  & {P.Body.vz(b1) == P.Z.add(P.Body.vz(b0), P.Z.q12(P.K.acc(k), uz)) : P.Z}
+
 # Friction
 # --------
 

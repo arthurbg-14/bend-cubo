@@ -193,10 +193,10 @@ def Cells.set(t: Cells, +cx: U32, +cz: U32, cubes: List<&2, P.Body>) -> Cells:
 # axis (a tick moves it by v + v'), what the motor and gravity add, and a
 # quarter of a metre to spare (the player: a jump, a push of the motor).
 def W.reach(+k: P.K, b: P.Body) -> Nat:
-  P.K{+g, mu, jump, +acc, +air, vmax, size} = k
+  P.K{+g, mu, jump, +acc, size} = k
   P.Body{x, y, z, vx, vy, vz, gr, h} = b
   Nat.add(Nat.mul(2n, Nat.add(Nat.add(P.Z.mag(vx), P.Z.mag(vy)), P.Z.mag(vz))),
-    Nat.add(Nat.mul(2n, Nat.add(Nat.add(acc, air), g)), 65536n))
+    Nat.add(Nat.mul(2n, Nat.add(acc, g)), 65536n))
 
 # the sleeping cubes of the cells in (x0 .. x0 + nx - 1, z0 .. z0 + nz - 1),
 # i counting them down
@@ -209,9 +209,9 @@ def W.rect(+i: Nat, +t: Cells, +seed: U32, +x0: U32, +z0: U32, +nx: Nat) -> List
         W.rect(k, t, seed, x0, z0, nx))
 
 def W.reachz(+k: P.K, +vx: P.Z, +vy: P.Z, +vz: P.Z) -> Nat:
-  P.K{+g, mu, jump, +acc, +air, vmax, size} = k
+  P.K{+g, mu, jump, +acc, size} = k
   Nat.add(Nat.mul(2n, Nat.add(Nat.add(P.Z.mag(vx), P.Z.mag(vy)), P.Z.mag(vz))),
-    Nat.add(Nat.mul(2n, Nat.add(Nat.add(acc, air), g)), 65536n))
+    Nat.add(Nat.mul(2n, Nat.add(acc, g)), 65536n))
 
 # How far a cube (no input) can reach in a tick: it moves by v + v' on each
 # axis, and without a motor v' only loses speed (friction) or gains g
@@ -2311,8 +2311,8 @@ def T.t2(+ns: List<&2, Nb>, +p: P.Body, q: Sq4, +ev: List<&2, P.Body>) -> PR:
 # the constants, as a record of this task's own: one shared by every
 # task is a reference count that every core bumps at every read
 def T.kcopy(k: P.K) -> P.K:
-  P.K{g, mu, j, acc, air, vmax, size} = k
-  P.K{g, mu, j, acc, air, vmax, size}
+  P.K{g, mu, j, acc, size} = k
+  P.K{g, mu, j, acc, size}
 
 # is the player (its bucket pk) within a bucket of (bx, bz)?
 def T.nearp(+pkx: U32, +pkz: U32, +bx: U32, +bz: U32) -> Bool:

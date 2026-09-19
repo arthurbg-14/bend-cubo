@@ -151,27 +151,31 @@ def Z.above(a: Z, b: Z) -> Bool:
 # All of them can be changed while playing (main.bend), so every law holds
 # for any value of each. g: gravity, the velocity it takes each tick; mu:
 # the ground's friction coefficient, in 256ths; jump: the takeoff speed;
-# acc, air: the motor's push each tick, on the ground and in the air;
-# vmax: the fastest the motor walks.
+# acc: the motor's push each tick, on the ground (in the air the motor does
+# nothing: a body in flight only falls).
 
 type K is Data:
-  K{g: Nat, mu: Nat, jump: Nat, acc: Nat, air: Nat, vmax: Nat, size: Nat}
+  K{g: Nat, mu: Nat, jump: Nat, acc: Nat, size: Nat}
 
 def K.g(k: K) -> Nat:
-  K{g, mu, jump, acc, air, vmax, size} = k
+  K{g, mu, jump, acc, size} = k
   g
 
 def K.size(k: K) -> Nat:
-  K{g, mu, jump, acc, air, vmax, size} = k
+  K{g, mu, jump, acc, size} = k
   size
 
 def K.jump(k: K) -> Nat:
-  K{g, mu, jump, acc, air, vmax, size} = k
+  K{g, mu, jump, acc, size} = k
   jump
+
+def K.acc(k: K) -> Nat:
+  K{g, mu, jump, acc, size} = k
+  acc
 
 # Coulomb's friction: the ground takes mu N from the speed, N = m g
 def K.fric(k: K) -> Nat:
-  K{+g, +mu, jump, acc, air, vmax, size} = k
+  K{+g, +mu, jump, acc, size} = k
   Nat.div(Nat.mul(mu, g), 256n)
 
 # Bodies
@@ -327,8 +331,9 @@ def Fric.apply(+f: Nat, +vx: Z, +vz: Z) -> Z & Z:
 
 # The motor
 # ---------
-# The player walks toward a direction (a vector of size 4096): while its
-# speed that way is under vmax, the motor adds acc along it.
+# The player walks toward a direction (a vector of size 4096): the motor
+# adds acc along it, the same acc whatever the speed already is -- there is
+# no top speed, and no push at all while off the ground.
 
 type Wish is Data:
   Wish{ux: Z, uz: Z}
@@ -339,31 +344,24 @@ type In is Data:
 def In.idle() -> In:
   In{None{}, False{}}
 
-def Motor.push(go: Bool, +acc: Nat, ux: Z, uz: Z, vx: Z, vz: Z) -> Z & Z:
-  match go:
-    case True{}:
-      (Z.add(vx, Z.q12(acc, ux)), Z.add(vz, Z.q12(acc, uz)))
-    case False{}:
-      (vx, vz)
-
-def Motor.go(+acc: Nat, +vmax: Nat, walk: Maybe<&2, Wish>, +vx: Z, +vz: Z) -> Z & Z:
+def Motor.go(+acc: Nat, walk: Maybe<&2, Wish>, +vx: Z, +vz: Z) -> Z & Z:
   match walk:
     case None{}:
       (vx, vz)
-    case Some{Wish{+ux, +uz}}:
-      Motor.push(Z.below(Z.add(Z.mulq(vx, ux), Z.mulq(vz, uz)), vmax), acc, ux, uz, vx, vz)
+    case Some{Wish{ux, uz}}:
+      (Z.add(vx, Z.q12(acc, ux)), Z.add(vz, Z.q12(acc, uz)))
 
 # Driving
 # -------
 # The forces of a tick on the velocity: on the ground, friction, the motor
-# and the jump (a takeoff at the jump speed); in the air, only the motor,
-# weaker (gravity comes with the vertical move, Move.y). The tick starts
-# untouched (hit off).
+# and the jump (a takeoff at the jump speed); in the air, nothing at all --
+# no motor, no friction (gravity comes with the vertical move, Move.y). The
+# tick starts untouched (hit off).
 
 def Drive.leap(jump: Bool, +k: K, +x: Nat, +y: Nat, +z: Nat, v: Z & Z) -> Body:
   match jump:
     case True{}:
-      K{g, mu, j, acc, air, vmax, size} = k
+      K{g, mu, j, acc, size} = k
       (vx, vz) = v
       Body{x, y, z, vx, Pos{j}, vz, False{}, False{}}
     case False{}:
@@ -371,12 +369,11 @@ def Drive.leap(jump: Bool, +k: K, +x: Nat, +y: Nat, +z: Nat, v: Z & Z) -> Body:
       Body{x, y, z, vx, Pos{0n}, vz, True{}, False{}}
 
 def Drive.ground(+k: K, walk: Maybe<&2, Wish>, jump: Bool, +x: Nat, +y: Nat, +z: Nat, v: Z & Z) -> Body:
-  K{g, mu, j, +acc, air, +vmax, size} = k
+  K{g, mu, j, +acc, size} = k
   (vx, vz) = v
-  Drive.leap(jump, k, x, y, z, Motor.go(acc, vmax, walk, vx, vz))
+  Drive.leap(jump, k, x, y, z, Motor.go(acc, walk, vx, vz))
 
-def Drive.air(+x: Nat, +y: Nat, +z: Nat, +vy: Z, v: Z & Z) -> Body:
-  (vx, vz) = v
+def Drive.air(+x: Nat, +y: Nat, +z: Nat, +vx: Z, +vy: Z, +vz: Z) -> Body:
   Body{x, y, z, vx, vy, vz, False{}, False{}}
 
 def Drive.go(gr: Bool, +k: K, walk: Maybe<&2, Wish>, jump: Bool, +x: Nat, +y: Nat, +z: Nat,
@@ -385,8 +382,7 @@ def Drive.go(gr: Bool, +k: K, walk: Maybe<&2, Wish>, jump: Bool, +x: Nat, +y: Na
     case True{}:
       Drive.ground(k, walk, jump, x, y, z, Fric.apply(K.fric(k), vx, vz))
     case False{}:
-      K{g, mu, j, acc, +air, +vmax, size} = k
-      Drive.air(x, y, z, vy, Motor.go(air, vmax, walk, vx, vz))
+      Drive.air(x, y, z, vx, vy, vz)
 
 def Body.drive(+k: K, inp: In, b: Body) -> Body:
   In{walk, jump} = inp
