@@ -82,9 +82,9 @@ void gput(int ix, int iz, uint ref) {
     return;
   }
   uint b = gbase(lx, lz);
-  uint c = atomicAdd(G[b + 1u], 1u);
-  if (c < 6u) {
-    G[b + 2u + c] = ref;
+  uint c = (atomicAdd(G[b], 2u) >> 1) & 31u;
+  if (c < 7u) {
+    G[b + 1u + c] = ref;
   }
 }
 
@@ -152,9 +152,9 @@ void cell(ivec2 c, vec3 ro, vec3 inv, bool noplayer, inout Hit h) {
   if (!in_grid) {
     return;
   }
-  uint n = min(G[b + 1u], 6u);
+  uint n = min((w0 >> 1) & 31u, 7u);
   for (uint j = 0u; j < n; j++) {
-    uint r = G[b + 2u + j];
+    uint r = G[b + 1u + j];
     if ((r & 0x80000000u) != 0u) {
       uint i = r & 0xffffu;
       uint kind = F[H_DYN + i * 4u + 3u] == 1u ? 5u : 4u;
@@ -244,9 +244,9 @@ float groundshade(vec3 p) {
         d = min(d, length(e));
       }
       if (in_grid) {
-        uint n = min(G[b + 1u], 6u);
+        uint n = min((w0 >> 1) & 31u, 7u);
         for (uint j = 0u; j < n; j++) {
-          uint r = G[b + 2u + j];
+          uint r = G[b + 1u + j];
           vec3 m = (r & 0x80000000u) != 0u ? dyn_at(r & 0xffffu) : cube_at(r >> 3, r & 7u);
           if (m.y < 0.2) {
             vec2 e = max(max(m.xz - p.xz, p.xz - m.xz - 1.0), 0.0);
@@ -383,7 +383,6 @@ void main() {
       int lz = int(lin >> 8);
       uint k = gcount(F[H_SEED], F[H_OCX] + uint(lx - GRID / 2), F[H_OCZ] + uint(lz - GRID / 2));
       G[lin * 8u] = k << 8;
-      G[lin * 8u + 1u] = 0u;
     }
     if (lin == 0u) {
       G[HMW] = 3u * 256u;

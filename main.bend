@@ -751,9 +751,8 @@ def Play.tick(events: List<Event>, +s: Play, demo: Bool) -> IO(Maybe<&2, Play>):
     now : Nat <- IO.now()
     return Play.tock(now, events, s, demo)
 
-# a new game at now: a world of a seed from the clock
-def Play.start(+now: Nat) -> Play:
-  +w = W.W.new(W.Hash.mix((U32.from_nat(now) * 2654435769 : U32)))
+def Play.start_at(+now: Nat, +seed: U32) -> Play:
+  +w = W.W.new(seed)
   Play{w, Knob.defaults(), Inp{0, 0, 0, False{}, 0, 0, []}, now, 0n, 0n, Play.pl(w), 0, 330, 1572864, 0n,
     True{}, 0, 16666, True{}}
 
@@ -762,6 +761,10 @@ def Play.start(+now: Nat) -> Play:
 # Base's App loop, reshaped for the GPU: a frame writes the header
 # (Play.view), effs/screen.c draws it and hands back the events, which
 # tick the game.
+
+# a new game at now: a world of a seed from the clock
+def Play.start(+now: Nat) -> Play:
+  Play.start_at(now, W.Hash.mix((U32.from_nat(now) * 2654435769 : U32)))
 
 def Screen.show(window: Window, hdr: Array<U32>) -> IO(Window & Array<U32> & List<Event>):
   import "./effs/screen.c"
@@ -795,16 +798,35 @@ def Loop.go(fuel: Nat, window: Window, hdr: Array<U32>, +s: Play, +demo: Bool) -
         now : Nat <- IO.now()
         Loop.frame(Play.view(s, now, hdr), window, demo, w => h => s2 => Loop.go(f, w, h, s2, demo))
 
-def Args.demo(args: List<String>) -> Bool:
+type Flags is Data:
+  Flags{still: Bool, demo: Bool}
+
+def Args.flag(+a: String, f: Flags) -> Flags:
+  Flags{still, demo} = f
+  Flags{Bool.or(still, String.eq(a, "still")), Bool.or(demo, String.eq(a, "demo"))}
+
+def Args.flags(args: List<String>) -> Flags:
   match args:
     case []:
-      False{}
-    case a <> rest:
-      Bool.or(String.eq(a, "demo"), Args.demo(rest))
+      Flags{False{}, False{}}
+    case +a <> rest:
+      Args.flag(a, Args.flags(rest))
+
+# ./cubo still: the world of seed 12345, nothing moving (to measure)
+def Play.first(still: Bool, +now: Nat) -> Play:
+  match still:
+    case True{}:
+      Play.start_at(now, 12345)
+    case False{}:
+      Play.start(now)
+
+def Main.go(+now: Nat, window: Window, f: Flags) -> IO(Unit):
+  Flags{still, +demo} = f
+  Loop.go(U32.to_nat(4294967295), window, Array.new(U32, 13n, 0), Play.first(still, now), demo)
 
 def main() -> IO(Unit):
   do IO<Unit>:
     now : Nat <- IO.now()
     args : List<String> <- IO.args
     window : Window <- IO.try(Window, Window.open("Cubo", 1280, 720))
-    Loop.go(U32.to_nat(4294967295), window, Array.new(U32, 13n, 0), Play.start(now), Args.demo(args))
+    Main.go(now, window, Args.flags(args))
