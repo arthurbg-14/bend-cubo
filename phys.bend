@@ -712,3 +712,24 @@ def Share.fst(r: Z & Z) -> Z:
 def Share.snd(r: Z & Z) -> Z:
   (a, b) = r
   b
+
+# Flights
+# -------
+# A flight: ticks of a body left alone, one per set of obstacles around it
+# (the world changes between ticks), and whether every one of them starts
+# in the air and touches nothing. LAWS.flight_is_parabola is about them.
+
+def Flight.run(+k: K, obss: List<&2, List<&2, Body>>, b: Body) -> Body:
+  match obss:
+    case []:
+      b
+    case obs <> rest:
+      Flight.run(k, rest, Tick.body(Body.tick(k, obs, In.idle(), b)))
+
+def Flight.clear(+k: K, obss: List<&2, List<&2, Body>>, +b: Body) -> Bool:
+  match obss:
+    case []:
+      True{}
+    case obs <> rest:
+      +b2 = Tick.body(Body.tick(k, obs, In.idle(), b))
+      Bool.and(Bool.and(Bool.not(Body.ground(b)), Bool.not(Body.hit(b2))), Flight.clear(k, rest, b2))

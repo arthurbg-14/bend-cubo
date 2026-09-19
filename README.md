@@ -6,7 +6,7 @@ verdes nascem ao acaso (uma semente nova a cada partida), em pilhas de 1 a 3,
 num mundo **sem fim**: meio milhão de quilômetros para cada lado.
 
 A física segue as leis da cinemática, da conservação da energia e do atrito
-de Coulomb, e isso é **provado**. São doze leis em [`LAWS.bend`](LAWS.bend),
+de Coulomb, e isso é **provado**. São treze leis em [`LAWS.bend`](LAWS.bend),
 e `bend PROOF.bend` só passa se todas valem. Elas valem para **qualquer valor
 das constantes**, e isso importa porque gravidade, atrito, pulo e motor mudam
 durante o jogo.
@@ -81,6 +81,7 @@ movimento. O tick marca isso no próprio corpo (`hit`).
 |---|---|
 | `free_flight_energy` | no ar, sem entrada e sem contato, a energia mecânica (cinética + potencial) é **exatamente** a mesma depois do tick |
 | `free_flight_kinematics` | o mesmo tick é movimento uniformemente acelerado: `v' = v − g`, a horizontal não muda (sem atrito no ar), e cada coordenada anda `v + v'` (a velocidade média) |
+| `flight_is_parabola` | um voo inteiro, de qualquer duração e com quaisquer obstáculos em volta, é **exatamente** a parábola da física real: depois de n ticks (t = n/128 s), `v = v₀ − a·t`, `y = y₀ + v₀·t − ½·a·t²` e `x = x₀ + vₓ·t`, com a = g/8 m/s² (9,75 m/s² no padrão), sem erro que se acumule |
 | `jump_energy` | um pulo sem contato dá ao corpo **exatamente** `J²` de energia vertical; somada a `free_flight_energy`, a altura do pulo é a da conservação da energia |
 | `no_air_jump` | no ar, segurar o pulo não muda nada (pular exige apoio) |
 | `friction_never_reverses` | no chão, sem entrada, o atrito só freia: nenhum componente da velocidade cresce ou troca de sentido |
@@ -92,7 +93,7 @@ movimento. O tick marca isso no próprio corpo (`hit`).
 | `energy_never_grows` | sem entrada, nenhum tick aumenta a energia do corpo mais a dos obstáculos que ele toca; só o motor e o pulo põem energia |
 | `no_clip` | um corpo livre dos obstáculos continua livre depois do tick, com qualquer entrada: nada anda, cai ou é empurrado para dentro de outro cubo |
 
-Não há `@unsafe`, `?TODO` nem axiomas. A verificação leva cerca de 3,6 s.
+Não há `@unsafe`, `?TODO` nem axiomas. A verificação leva cerca de 10 s.
 
 ### Por que a energia fecha exatamente
 
@@ -108,6 +109,14 @@ logo `v² + g·y` não muda de tick para tick. Essa é a energia mecânica, em
 J/kg vezes 2²¹. O jogo não arredonda nada no voo, e a lei confirma isso
 exatamente. O mesmo vale para o atrito: `v² − v'² = f·(v + v')`, a energia
 perdida é a força vezes a distância.
+
+Somando os ticks, n deles andam `2n·v₀ − g·n²` unidades, que em metros são
+`v₀·t − ½·a·t²` com t = n/128 s e a = g/8 m/s². É a queda livre da física,
+e a lei `flight_is_parabola` prova isso para um voo de qualquer duração.
+Também foi medido no jogo rodando, pelo relógio: com as constantes padrão, um
+pulo ficou 1102 ms no ar (141 ticks) e subiu 1,502 m. Na Terra, com
+9,75 m/s², um pulo de 1,50 m dura 2·√(2·1,5/9,75) = 1,109 s. O laço de frames
+roda 128,3 ticks por segundo de relógio.
 
 ### Como foram provadas
 
@@ -133,6 +142,9 @@ perdida é a força vezes a distância.
   divisão da colisão (checada: `d = e + e + j`) são verificados no próprio
   código. Assim as provas dependem de fatos que o código garante, não da
   correção de uma divisão ou de uma raiz.
+- **Indução sobre os ticks.** `flight_is_parabola` junta a lei de um tick
+  com o resto do voo. Para a altura, a identidade G = D + B + (2m+1)·A sai
+  pela tática de anel, e o que os dois lados têm em comum se cancela.
 - **Indução sobre os obstáculos.** O empurrão procura o primeiro obstáculo
   atingido numa lista qualquer. `energy_never_grows` e `no_clip` são provadas
   por indução nessa lista: o empurrão muda velocidades, nunca posições.

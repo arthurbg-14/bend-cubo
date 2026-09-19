@@ -52,6 +52,34 @@ law free_flight_kinematics:
   & {Nat.add(P.Body.z(b2), Nat.add(P.Z.neg(P.Body.vz(b)), P.Z.neg(P.Body.vz(b))))
     == Nat.add(P.Body.z(b), Nat.add(P.Z.pos(P.Body.vz(b)), P.Z.pos(P.Body.vz(b)))) : Nat}
 
+# LAW: a whole flight is the parabola of real physics. After n ticks in
+# the air touching nothing (whatever the obstacles around, tick by tick),
+# the body is exactly where uniformly accelerated motion puts it at the
+# time of n ticks: v = v0 - g n, y = y0 + 2 n v0 - g n^2, and the
+# horizontal x = x0 + 2 n vx0 (nothing slows it in the air). In meters
+# and seconds -- a position unit is 2^-18 m, a velocity unit 2^-10 m/s, a
+# tick 2^-7 s, so g is an acceleration of a = g/8 m/s^2 and n ticks are
+# t = n/128 s -- 2 n v0 units are v0 t meters and g n^2 units are a t^2 / 2
+# meters: y = y0 + v0 t - a t^2 / 2 and v = v0 - a t, free fall exactly
+# as physics has it, with no error at any tick however long the flight.
+law flight_is_parabola:
+  for +k: P.K
+  for +obss: List<&2, List<&2, P.Body>>
+  for +b: P.Body
+  for free: {P.Flight.clear(k, obss, b) == True{} : Bool}
+  n = List.length(&2, List<&2, P.Body>, obss)
+  b2 = P.Flight.run(k, obss, b)
+  {Nat.add(Nat.add(P.Z.pos(P.Body.vy(b2)), P.Z.neg(P.Body.vy(b))), Nat.mul(n, P.K.g(k)))
+    == Nat.add(P.Z.pos(P.Body.vy(b)), P.Z.neg(P.Body.vy(b2))) : Nat}
+  & {Nat.add(Nat.add(P.Body.y(b2), Nat.mul(P.K.g(k), Nat.mul(n, n))), Nat.mul(Nat.mul(2n, n), P.Z.neg(P.Body.vy(b))))
+    == Nat.add(P.Body.y(b), Nat.mul(Nat.mul(2n, n), P.Z.pos(P.Body.vy(b)))) : Nat}
+  & {P.Body.vx(b2) == P.Body.vx(b) : P.Z}
+  & {P.Body.vz(b2) == P.Body.vz(b) : P.Z}
+  & {Nat.add(P.Body.x(b2), Nat.mul(Nat.mul(2n, n), P.Z.neg(P.Body.vx(b))))
+    == Nat.add(P.Body.x(b), Nat.mul(Nat.mul(2n, n), P.Z.pos(P.Body.vx(b)))) : Nat}
+  & {Nat.add(P.Body.z(b2), Nat.mul(Nat.mul(2n, n), P.Z.neg(P.Body.vz(b))))
+    == Nat.add(P.Body.z(b), Nat.mul(Nat.mul(2n, n), P.Z.pos(P.Body.vz(b)))) : Nat}
+
 # LAW: a jump: standing, with no walking, a takeoff that touches nothing
 # gives the body exactly jump^2 of vertical energy -- so, by
 # free_flight_energy, it rises until g h = jump^2: the height of a jump is

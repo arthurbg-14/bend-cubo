@@ -941,6 +941,177 @@ def Laws.free_flight_kinematics(k, obs, b, air, free):
         case False{}:
           ffk(s, g, obs, x, y, z, vx, vy, vz, hit, free)
 
+# A whole flight
+# --------------
+# By induction on the ticks: free_flight_kinematics for the first, the
+# rest of the flight after it, and a ring identity gluing the two (for the
+# height, G = D + B + (2m+1) A), cancelling what both sides share.
+
+def unsucc(n: Nat) -> Nat:
+  match n:
+    case 0n:
+      0n
+    case 1n+p:
+      p
+
+def add_cancel(c: Nat, -a: Nat, -b: Nat, h: {Nat.add(c, a) == Nat.add(c, b) : Nat}) -> {a == b : Nat}:
+  match c:
+    case 0n:
+      h
+    case 1n+p:
+      add_cancel(p, a, b, Equal.cong(Nat, Nat, x => unsucc(x), 1n+Nat.add(p, a), 1n+Nat.add(p, b), h))
+
+def fin2(+s: Nat, -t: Nat, -l: Nat, -r: Nat, id: {Nat.add(s, l) == Nat.add(t, r) : Nat}, e: {t == s : Nat})
+  -> {Nat.add(s, l) == Nat.add(s, r) : Nat}:
+  %e : {Nat.add(s, l) == Nat.add(_, r) : Nat}
+  id
+
+# s + l = t + r and t = s: l = r
+def fin(+s: Nat, -t: Nat, -l: Nat, -r: Nat, id: {Nat.add(s, l) == Nat.add(t, r) : Nat}, e: {t == s : Nat}) -> {l == r : Nat}:
+  add_cancel(s, l, r, fin2(s, t, l, r, id, e))
+
+def cong2(-a: Nat, -a2: Nat, -b: Nat, -b2: Nat, ea: {a == a2 : Nat}, eb: {b == b2 : Nat})
+  -> {Nat.add(a, b) == Nat.add(a2, b2) : Nat}:
+  %ea : {Nat.add(a, b) == Nat.add(_, b2) : Nat}
+  %eb : {Nat.add(a, b) == Nat.add(a, _) : Nat}
+  {==}
+
+def congm(-q: Nat, -a: Nat, -a2: Nat, e: {a == a2 : Nat}) -> {Nat.mul(q, a) == Nat.mul(q, a2) : Nat}:
+  %e : {Nat.mul(q, a) == Nat.mul(q, _) : Nat}
+  {==}
+
+def not_t(+x: Bool, h: {Bool.not(x) == True{} : Bool}) -> {x == False{} : Bool}:
+  match x:
+    case True{}:
+      Empty.absurd({True{} == False{} : Bool}, clash2(h))
+    case False{}:
+      {==}
+
+# the vertical velocity: v' = v - g, then m ticks more
+def vstep(+g: Nat, +m: Nat, +p: Nat, +n: Nat, +p1: Nat, +n1: Nat, +p2: Nat, +n2: Nat,
+  a: {Nat.add(Nat.add(p1, n), g) == Nat.add(p, n1) : Nat},
+  c: {Nat.add(Nat.add(p2, n1), Nat.mul(m, g)) == Nat.add(p1, n2) : Nat})
+  -> {Nat.add(Nat.add(p2, n), Nat.mul(1n+m, g)) == Nat.add(p, n2) : Nat}:
+  fin(Nat.add(Nat.add(p, n1), Nat.add(p1, n2)), Nat.add(Nat.add(Nat.add(p1, n), g), Nat.add(Nat.add(p2, n1), Nat.mul(m, g))),
+    Nat.add(Nat.add(p2, n), Nat.mul(1n+m, g)), Nat.add(p, n2),
+    R.eq([p, n, p1, n1, p2, n2, g, m],
+      R.Add{R.Add{R.Add{R.V{0n}, R.V{3n}}, R.Add{R.V{2n}, R.V{5n}}}, R.Add{R.Add{R.V{4n}, R.V{1n}}, R.Mul{R.Add{R.N{1n}, R.V{7n}}, R.V{6n}}}},
+      R.Add{R.Add{R.Add{R.Add{R.V{2n}, R.V{1n}}, R.V{6n}}, R.Add{R.Add{R.V{4n}, R.V{3n}}, R.Mul{R.V{7n}, R.V{6n}}}}, R.Add{R.V{0n}, R.V{5n}}},
+      {==}),
+    cong2(Nat.add(Nat.add(p1, n), g), Nat.add(p, n1), Nat.add(Nat.add(p2, n1), Nat.mul(m, g)), Nat.add(p1, n2), a, c))
+
+# the height: G = D + B + (2m+1) A
+def ystep(+g: Nat, +m: Nat, +y: Nat, +y1: Nat, +y2: Nat, +p: Nat, +n: Nat, +p1: Nat, +n1: Nat,
+  a: {Nat.add(Nat.add(p1, n), g) == Nat.add(p, n1) : Nat},
+  b: {Nat.add(Nat.add(y1, n), n1) == Nat.add(Nat.add(y, p), p1) : Nat},
+  d: {Nat.add(Nat.add(y2, Nat.mul(g, Nat.mul(m, m))), Nat.mul(Nat.mul(2n, m), n1)) == Nat.add(y1, Nat.mul(Nat.mul(2n, m), p1)) : Nat})
+  -> {Nat.add(Nat.add(y2, Nat.mul(g, Nat.mul(1n+m, 1n+m))), Nat.mul(Nat.mul(2n, 1n+m), n))
+      == Nat.add(y, Nat.mul(Nat.mul(2n, 1n+m), p)) : Nat}:
+  fin(Nat.add(Nat.add(Nat.add(y1, Nat.mul(Nat.mul(2n, m), p1)), Nat.add(Nat.add(y, p), p1)),
+        Nat.mul(Nat.add(Nat.mul(2n, m), 1n), Nat.add(p, n1))),
+    Nat.add(Nat.add(Nat.add(Nat.add(y2, Nat.mul(g, Nat.mul(m, m))), Nat.mul(Nat.mul(2n, m), n1)), Nat.add(Nat.add(y1, n), n1)),
+        Nat.mul(Nat.add(Nat.mul(2n, m), 1n), Nat.add(Nat.add(p1, n), g))),
+    Nat.add(Nat.add(y2, Nat.mul(g, Nat.mul(1n+m, 1n+m))), Nat.mul(Nat.mul(2n, 1n+m), n)),
+    Nat.add(y, Nat.mul(Nat.mul(2n, 1n+m), p)),
+    R.eq([y, y1, y2, p, n, p1, n1, g, m],
+      R.Add{R.Add{R.Add{R.Add{R.V{1n}, R.Mul{R.Mul{R.N{2n}, R.V{8n}}, R.V{5n}}}, R.Add{R.Add{R.V{0n}, R.V{3n}}, R.V{5n}}},
+          R.Mul{R.Add{R.Mul{R.N{2n}, R.V{8n}}, R.N{1n}}, R.Add{R.V{3n}, R.V{6n}}}},
+        R.Add{R.Add{R.V{2n}, R.Mul{R.V{7n}, R.Mul{R.Add{R.N{1n}, R.V{8n}}, R.Add{R.N{1n}, R.V{8n}}}}},
+          R.Mul{R.Mul{R.N{2n}, R.Add{R.N{1n}, R.V{8n}}}, R.V{4n}}}},
+      R.Add{R.Add{R.Add{R.Add{R.Add{R.V{2n}, R.Mul{R.V{7n}, R.Mul{R.V{8n}, R.V{8n}}}}, R.Mul{R.Mul{R.N{2n}, R.V{8n}}, R.V{6n}}},
+            R.Add{R.Add{R.V{1n}, R.V{4n}}, R.V{6n}}},
+          R.Mul{R.Add{R.Mul{R.N{2n}, R.V{8n}}, R.N{1n}}, R.Add{R.Add{R.V{5n}, R.V{4n}}, R.V{7n}}}},
+        R.Add{R.V{0n}, R.Mul{R.Mul{R.N{2n}, R.Add{R.N{1n}, R.V{8n}}}, R.V{3n}}}},
+      {==}),
+    cong2(Nat.add(Nat.add(Nat.add(y2, Nat.mul(g, Nat.mul(m, m))), Nat.mul(Nat.mul(2n, m), n1)), Nat.add(Nat.add(y1, n), n1)),
+      Nat.add(Nat.add(y1, Nat.mul(Nat.mul(2n, m), p1)), Nat.add(Nat.add(y, p), p1)),
+      Nat.mul(Nat.add(Nat.mul(2n, m), 1n), Nat.add(Nat.add(p1, n), g)), Nat.mul(Nat.add(Nat.mul(2n, m), 1n), Nat.add(p, n1)),
+      cong2(Nat.add(Nat.add(y2, Nat.mul(g, Nat.mul(m, m))), Nat.mul(Nat.mul(2n, m), n1)), Nat.add(y1, Nat.mul(Nat.mul(2n, m), p1)),
+        Nat.add(Nat.add(y1, n), n1), Nat.add(Nat.add(y, p), p1), d, b),
+      congm(Nat.add(Nat.mul(2n, m), 1n), Nat.add(Nat.add(p1, n), g), Nat.add(p, n1), a)))
+
+# a horizontal coordinate: x' = x + 2 v, then m ticks more
+def hstep(+m: Nat, +x: Nat, +x1: Nat, +x2: Nat, +p: Nat, +n: Nat,
+  t: {Nat.add(x1, Nat.add(n, n)) == Nat.add(x, Nat.add(p, p)) : Nat},
+  i: {Nat.add(x2, Nat.mul(Nat.mul(2n, m), n)) == Nat.add(x1, Nat.mul(Nat.mul(2n, m), p)) : Nat})
+  -> {Nat.add(x2, Nat.mul(Nat.mul(2n, 1n+m), n)) == Nat.add(x, Nat.mul(Nat.mul(2n, 1n+m), p)) : Nat}:
+  fin(Nat.add(Nat.add(x1, Nat.mul(Nat.mul(2n, m), p)), Nat.add(x, Nat.add(p, p))),
+    Nat.add(Nat.add(x2, Nat.mul(Nat.mul(2n, m), n)), Nat.add(x1, Nat.add(n, n))),
+    Nat.add(x2, Nat.mul(Nat.mul(2n, 1n+m), n)), Nat.add(x, Nat.mul(Nat.mul(2n, 1n+m), p)),
+    R.eq([x, x1, x2, p, n, m],
+      R.Add{R.Add{R.Add{R.V{1n}, R.Mul{R.Mul{R.N{2n}, R.V{5n}}, R.V{3n}}}, R.Add{R.V{0n}, R.Add{R.V{3n}, R.V{3n}}}},
+        R.Add{R.V{2n}, R.Mul{R.Mul{R.N{2n}, R.Add{R.N{1n}, R.V{5n}}}, R.V{4n}}}},
+      R.Add{R.Add{R.Add{R.V{2n}, R.Mul{R.Mul{R.N{2n}, R.V{5n}}, R.V{4n}}}, R.Add{R.V{1n}, R.Add{R.V{4n}, R.V{4n}}}},
+        R.Add{R.V{0n}, R.Mul{R.Mul{R.N{2n}, R.Add{R.N{1n}, R.V{5n}}}, R.V{3n}}}},
+      {==}),
+    cong2(Nat.add(x2, Nat.mul(Nat.mul(2n, m), n)), Nat.add(x1, Nat.mul(Nat.mul(2n, m), p)),
+      Nat.add(x1, Nat.add(n, n)), Nat.add(x, Nat.add(p, p)), i, t))
+
+# the rest of a flight, seen from the velocity it started with (the same)
+def hmove(+m: Nat, +x1: Nat, +x2: Nat, -v1: P.Z, -v: P.Z, e: {v1 == v : P.Z},
+  i: {Nat.add(x2, Nat.mul(Nat.mul(2n, m), P.Z.neg(v1))) == Nat.add(x1, Nat.mul(Nat.mul(2n, m), P.Z.pos(v1))) : Nat})
+  -> {Nat.add(x2, Nat.mul(Nat.mul(2n, m), P.Z.neg(v))) == Nat.add(x1, Nat.mul(Nat.mul(2n, m), P.Z.pos(v))) : Nat}:
+  %e : {Nat.add(x2, Nat.mul(Nat.mul(2n, m), P.Z.neg(_))) == Nat.add(x1, Nat.mul(Nat.mul(2n, m), P.Z.pos(_))) : Nat}
+  i
+
+# n ticks of flight from b to b2 are the parabola
+def Par(+g: Nat, +n: Nat, +b: P.Body, +b2: P.Body) -> Type:
+  {Nat.add(Nat.add(P.Z.pos(P.Body.vy(b2)), P.Z.neg(P.Body.vy(b))), Nat.mul(n, g))
+    == Nat.add(P.Z.pos(P.Body.vy(b)), P.Z.neg(P.Body.vy(b2))) : Nat}
+  & {Nat.add(Nat.add(P.Body.y(b2), Nat.mul(g, Nat.mul(n, n))), Nat.mul(Nat.mul(2n, n), P.Z.neg(P.Body.vy(b))))
+    == Nat.add(P.Body.y(b), Nat.mul(Nat.mul(2n, n), P.Z.pos(P.Body.vy(b)))) : Nat}
+  & {P.Body.vx(b2) == P.Body.vx(b) : P.Z}
+  & {P.Body.vz(b2) == P.Body.vz(b) : P.Z}
+  & {Nat.add(P.Body.x(b2), Nat.mul(Nat.mul(2n, n), P.Z.neg(P.Body.vx(b))))
+    == Nat.add(P.Body.x(b), Nat.mul(Nat.mul(2n, n), P.Z.pos(P.Body.vx(b)))) : Nat}
+  & {Nat.add(P.Body.z(b2), Nat.mul(Nat.mul(2n, n), P.Z.neg(P.Body.vz(b))))
+    == Nat.add(P.Body.z(b), Nat.mul(Nat.mul(2n, n), P.Z.pos(P.Body.vz(b)))) : Nat}
+
+def par0(+g: Nat, +b: P.Body) -> Par(g, 0n, b, b):
+  (R.eq([P.Z.pos(P.Body.vy(b)), P.Z.neg(P.Body.vy(b)), g],
+     R.Add{R.Add{R.V{0n}, R.V{1n}}, R.Mul{R.N{0n}, R.V{2n}}}, R.Add{R.V{0n}, R.V{1n}}, {==}),
+   R.eq([P.Body.y(b), g, P.Z.pos(P.Body.vy(b)), P.Z.neg(P.Body.vy(b))],
+     R.Add{R.Add{R.V{0n}, R.Mul{R.V{1n}, R.Mul{R.N{0n}, R.N{0n}}}}, R.Mul{R.Mul{R.N{2n}, R.N{0n}}, R.V{3n}}},
+     R.Add{R.V{0n}, R.Mul{R.Mul{R.N{2n}, R.N{0n}}, R.V{2n}}}, {==}),
+   {==}, {==},
+   R.eq([P.Body.x(b), P.Z.pos(P.Body.vx(b)), P.Z.neg(P.Body.vx(b))],
+     R.Add{R.V{0n}, R.Mul{R.Mul{R.N{2n}, R.N{0n}}, R.V{2n}}}, R.Add{R.V{0n}, R.Mul{R.Mul{R.N{2n}, R.N{0n}}, R.V{1n}}}, {==}),
+   R.eq([P.Body.z(b), P.Z.pos(P.Body.vz(b)), P.Z.neg(P.Body.vz(b))],
+     R.Add{R.V{0n}, R.Mul{R.Mul{R.N{2n}, R.N{0n}}, R.V{2n}}}, R.Add{R.V{0n}, R.Mul{R.Mul{R.N{2n}, R.N{0n}}, R.V{1n}}}, {==}))
+
+# one tick (kin) and the m after it (ih) are 1 + m ticks of the parabola
+def fstep(+g: Nat, +m: Nat, +b: P.Body, +b1: P.Body, +b2: P.Body, kin: Kin(g, b, b1), ih: Par(g, m, b1, b2))
+  -> Par(g, 1n+m, b, b2):
+  (+ka, kb, +kvx, +kvz, kx, kz) = kin
+  (ia, ib, ivx, ivz, ix, iz) = ih
+  (vstep(g, m, P.Z.pos(P.Body.vy(b)), P.Z.neg(P.Body.vy(b)), P.Z.pos(P.Body.vy(b1)), P.Z.neg(P.Body.vy(b1)),
+     P.Z.pos(P.Body.vy(b2)), P.Z.neg(P.Body.vy(b2)), ka, ia),
+   ystep(g, m, P.Body.y(b), P.Body.y(b1), P.Body.y(b2), P.Z.pos(P.Body.vy(b)), P.Z.neg(P.Body.vy(b)),
+     P.Z.pos(P.Body.vy(b1)), P.Z.neg(P.Body.vy(b1)), ka, kb, ib),
+   Equal.trans(P.Z, P.Body.vx(b2), P.Body.vx(b1), P.Body.vx(b), ivx, kvx),
+   Equal.trans(P.Z, P.Body.vz(b2), P.Body.vz(b1), P.Body.vz(b), ivz, kvz),
+   hstep(m, P.Body.x(b), P.Body.x(b1), P.Body.x(b2), P.Z.pos(P.Body.vx(b)), P.Z.neg(P.Body.vx(b)), kx,
+     hmove(m, P.Body.x(b1), P.Body.x(b2), P.Body.vx(b1), P.Body.vx(b), kvx, ix)),
+   hstep(m, P.Body.z(b), P.Body.z(b1), P.Body.z(b2), P.Z.pos(P.Body.vz(b)), P.Z.neg(P.Body.vz(b)), kz,
+     hmove(m, P.Body.z(b1), P.Body.z(b2), P.Body.vz(b1), P.Body.vz(b), kvz, iz)))
+
+def fpar(+k: P.K, obss: List<&2, List<&2, P.Body>>, +b: P.Body, +free: {P.Flight.clear(k, obss, b) == True{} : Bool})
+  -> Par(P.K.g(k), List.length(&2, List<&2, P.Body>, obss), b, P.Flight.run(k, obss, b)):
+  match obss:
+    case []:
+      par0(P.K.g(k), b)
+    case +obs <> +rest:
+      +b1 = P.Tick.body(P.Body.tick(k, obs, P.In.idle(), b))
+      +c1 = and_l(Bool.and(Bool.not(P.Body.ground(b)), Bool.not(P.Body.hit(b1))), P.Flight.clear(k, rest, b1), free)
+      fstep(P.K.g(k), List.length(&2, List<&2, P.Body>, rest), b, b1, P.Flight.run(k, rest, b1),
+        Laws.free_flight_kinematics(k, obs, b,
+          not_t(P.Body.ground(b), and_l(Bool.not(P.Body.ground(b)), Bool.not(P.Body.hit(b1)), c1)),
+          not_t(P.Body.hit(b1), and_r(Bool.not(P.Body.ground(b)), Bool.not(P.Body.hit(b1)), c1))),
+        fpar(k, rest, b1, and_r(Bool.and(Bool.not(P.Body.ground(b)), Bool.not(P.Body.hit(b1))), P.Flight.clear(k, rest, b1), free)))
+
+def Laws.flight_is_parabola(k, obss, b, free):
+  fpar(k, obss, b, free)
+
 # Jumps
 # -----
 
