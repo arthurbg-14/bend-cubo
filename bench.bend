@@ -56,6 +56,25 @@ def rain(w: W.World) -> W.World:
   W.World{seed, t, awake, dirty, p} = w
   W.World{seed, t, rain.all(8n), dirty, p}
 
+# a crowd: 32 x 32 cubes falling at once (the octree's case)
+def crowd.row(+i: Nat, +j: Nat) -> List<&2, P.Body>:
+  match j:
+    case 0n:
+      []
+    case 1n+m:
+      drop(i, m) <> crowd.row(i, m)
+
+def crowd.all(+i: Nat) -> List<&2, P.Body>:
+  match i:
+    case 0n:
+      []
+    case 1n+m:
+      List.append(&2, P.Body, crowd.row(m, 32n), crowd.all(m))
+
+def crowd(w: W.World) -> W.World:
+  W.World{seed, t, awake, dirty, p} = w
+  W.World{seed, t, crowd.all(32n), dirty, p}
+
 def frames.next(r: M.Play & Array<U32>) -> M.Play & Array<U32>:
   (+s, hdr) = r
   M.Play.view(s, 1000n, hdr)
@@ -81,11 +100,22 @@ def sum(a: Array<U32>) -> U32:
 def ms(+a: Nat, +b: Nat) -> String:
   Nat.show(Nat.sub(b, a)) ++ " ms"
 
+def bench.crowd3(+t7: Nat, +t8: Nat, w: W.World) -> IO(Unit):
+  IO.print("crowd: 1024 awake, 64 ticks in " ++ ms(t7, t8) ++ " (" ++ M.Fmt.dec2(Nat.sub(t8, t7), 64n) ++ " ms a tick), awake after "
+    ++ Nat.show(awake(w)))
+
+def bench.crowd2(+t7: Nat, w: W.World) -> IO(Unit):
+  do IO<Unit>:
+    t8 : Nat <- IO.now()
+    bench.crowd3(t7, t8, w)
+
 def bench.frames(+t5: Nat) -> IO(Unit):
   do IO<Unit>:
     h : Array<U32> = frames(1000n, (M.Play.start(1000n), Array.new(U32, 13n, 0)))
     t6 : Nat <- IO.now()
-    IO.print("frame: 1000 headers in " ++ ms(t5, t6) ++ " (" ++ U32.show(sum(h)) ++ ")")
+    u : Unit <- IO.print("frame: 1000 headers in " ++ ms(t5, t6) ++ " (" ++ U32.show(sum(h)) ++ ")")
+    t7 : Nat <- IO.now()
+    bench.crowd2(t7, ticks(64n, P.In.idle(), crowd(W.W.new(12345))))
 
 def bench.rain3(+t3: Nat, +w4: W.World) -> IO(Unit):
   do IO<Unit>:

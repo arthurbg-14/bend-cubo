@@ -16,6 +16,10 @@ Cubo is written in Bend 2 (github.com/bendlang/bend). When working on it:
   order Bend accepts
 - measure with `./bench` (the simulation) and `./cubo still` (the GPU's time
   in the HUD) before and after a performance change
+- after touching world.bend, `./build.sh test` must print OK three times: no
+  cube inside another, none made or lost, for the list, the octree and the
+  game's mix; bit-for-bit comparisons between versions are not the test (a
+  different order of the ticks is a different, equally valid, simulation)
 
     phys.bend     the proven physics: bodies, friction, pushes, gated moves, the tick
     ring.bend     the ring tactic (a proven polynomial normalizer)
@@ -23,5 +27,6 @@ Cubo is written in Bend 2 (github.com/bendlang/bend). When working on it:
     main.bend     the game: input, camera, tunable constants, HUD, frame loop
     LAWS.bend     the laws          PROOF.bend   their proofs
     bench.bend    the headless benchmark
+    clash.bend    the collision test
     effs/         scene.comp.in (the shader), screen.c (Vulkan, window, events),
                   font.glsl (HUD font), spv.sh (shader to SPIR-V in screen.c)

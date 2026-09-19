@@ -1,6 +1,7 @@
 # binaries and outputs
 /cubo
 /bench
+/clash
 *.ppm
 *.png
 !docs/*.png

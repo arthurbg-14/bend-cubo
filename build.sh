@@ -6,6 +6,7 @@
 #
 #   ./build.sh          # PROOF.bend, then ./cubo
 #   ./build.sh bench    # also the headless benchmark, ./bench
+#   ./build.sh test     # also the collision test, ./clash, and runs it
 #
 # Bend 2 is $BEND, else ~/.bend/bin/bend (where its installer puts it), else
 # the bend on PATH -- which must be Bend 2: Bend 1 (bend-lang 0.2) shares
@@ -32,5 +33,9 @@ fi
 CC="$(pwd)/cc-native.sh" "$BEND" main.bend -o cubo
 if [ "${1:-}" = bench ]; then
   CC="$(pwd)/cc-native.sh" "$BEND" bench.bend -o bench
+fi
+if [ "${1:-}" = test ]; then
+  CC="$(pwd)/cc-native.sh" "$BEND" clash.bend -o clash
+  ./clash
 fi
 echo "built ./cubo"

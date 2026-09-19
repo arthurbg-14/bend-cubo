@@ -172,6 +172,8 @@ Três bugs plausíveis, cada um numa cópia do projeto. Cada um compila
     LAWS.bend     as leis          PROOF.bend   as provas
     world.bend    o mundo: gerador por hash, trie das células mudadas, vizinhança
                   de um corpo, cubos acordados e dormindo, o tick do mundo
+                  (a octree em paralelo para muitos cubos)
+    clash.bend    o teste de colisão (./build.sh test)
     main.bend     o jogo: entrada, câmera, constantes, HUD, o laço de frames
     bench.bend    benchmark sem janela
     effs/         scene.comp.in: o shader (raios, sombras, HUD); screen.c: Vulkan,
@@ -195,6 +197,29 @@ Três bugs plausíveis, cada um numa cópia do projeto. Cada um compila
   menos de um cubo e do quanto ele anda nesse tick (`W.reach`). A simulação
   consulta só as células desse alcance (em geral 3×3) e só os corpos
   acordados dentro dele. Os de longe passam intactos.
+- **Muitos cubos: uma octree em paralelo.** Com poucos acordados (menos de
+  128), cada um olha os outros diretamente. Com muitos, o tick monta uma
+  octree:
+  - **O corte.** Cada nó corta a caixa dos seus cubos no meio do lado mais
+    longo. O escalonador do Bend divide o trabalho em dois de cada vez
+    (`a b = f(x) g(y)`), então cada nível da octree são três cortes, um por
+    eixo, com as mesmas caixas.
+  - **A margem.** Um cubo desce para um lado só se tudo o que ele pode
+    tocar no tick (o alcance, mais meio cubo de margem) está daquele lado;
+    os outros ficam no nó. Com essa margem, cubos de lados diferentes nunca
+    se tocam nem tocam o mesmo corpo. Os dois lados rodam em paralelo, e
+    depois rodam os cubos do nó, entre o que os lados deixaram perto do
+    plano.
+  - **Os que dormem.** Um cubo dormindo que leva um empurrão só acorda no
+    fim do tick (até lá, quem o toca já o vê andando). Assim dois ramos
+    nunca escrevem nas células ao mesmo tempo.
+  - **A leitura das células.** Cada nó lê as células da sua região uma vez,
+    não uma vez por cubo. A trie de 30 níveis, lida por todos os ramos ao
+    mesmo tempo, era metade do tempo.
+
+  `./build.sh test` derruba 432 cubos uns sobre os outros por 300 ticks e
+  confere, a cada tick, que nenhum entra em outro e que nenhum some. Roda o
+  mesmo cenário pela lista, pela octree e pela mistura que o jogo usa.
 - **Na GPU**, um compute shader em cinco passes por frame:
   1. monta uma grade 256×256 em volta do jogador, já com o gerador calculado;
   2. marca as células mudadas, lidas de uma tabela de hash que o `screen.c`
@@ -217,11 +242,29 @@ AMD Ryzen 7 5700U com a Radeon integrada (Vega 8, RADV), 1280×720:
 | GPU, cena parada (`./cubo still`) | 1,91 ms/frame (~450 fps) |
 | GPU, jogando (`./cubo demo`) | 1,5–2,3 ms/frame (330–550 fps) |
 | um tick de um corpo entre 10 obstáculos (`Body.tick`) | 0,79 µs |
-| tick do mundo andando e empurrando | 38 µs, ou ~0,5 % de um núcleo a 128 ticks/s |
-| tick do mundo com 64 cubos caindo e se empilhando | 0,59 ms |
-| cabeçalho de um frame (câmera, corpos, HUD) | 31 µs |
+| tick do mundo andando e empurrando | 22 µs, ou ~0,3 % de um núcleo a 128 ticks/s |
+| tick do mundo com 64 cubos caindo e se empilhando | 0,65 ms |
+| tick do mundo com 1024 cubos caindo ao mesmo tempo (octree) | 11 ms |
+| cabeçalho de um frame (câmera, corpos, HUD) | 33 µs |
 
-`./build.sh bench && ./bench` roda os três cenários sem janela.
+`./build.sh bench && ./bench` roda esses cenários sem janela.
+
+**Quantos cubos se mexendo ao mesmo tempo.** Medido com cubos caindo, todos
+acordados:
+
+| cubos | antes (cada cubo olhava todos os outros) | octree em paralelo |
+|---|---|---|
+| 256 | 6,9 ms/tick | 3,1 ms/tick |
+| 1024 | 87 ms/tick | 8,6 ms/tick |
+| 4096 | 2994 ms/tick | 29 ms/tick |
+
+O tempo real pede 7,8 ms por tick (128 por segundo), então cabem ~800 cubos
+se mexendo ao mesmo tempo; antes cabiam ~256. Com mais, a simulação continua
+certa, só anda mais devagar que o relógio. Um cubo parado não custa nada, e o
+mundo tem quantos cubos parados couberem nele.
+
+A GPU desenha no máximo 250 cubos em movimento de uma vez, o jogador
+incluído. Os outros aparecem quando param.
 
 Cada passo foi medido antes e depois (`./bench`, `perf`, e o tempo de GPU que
 o HUD mostra):
@@ -233,3 +276,5 @@ o HUD mostra):
 | vizinhança pelo alcance exato (3×3 em vez de 5×5) e só os corpos acordados ao alcance | 187 ms (walk) / 194 ms (rain) | 130 / 98 |
 | checagem de sono só para cubos já parados (`Bool.and` do Bend avalia os dois lados) | 130 / 98 | 96 / 75 |
 | linhas fixas do HUD reescritas só quando mudam | 90 µs/frame | 31 |
+| cubos acordados numa octree em paralelo, em vez de cada um varrer todos (O(N²)) | 1024 cubos: 87 ms/tick | 11,8 |
+| células dos cubos dormindo lidas uma vez por nó da octree, e não por cubo | 1024 cubos: 11,8 ms/tick | 8,6 |
