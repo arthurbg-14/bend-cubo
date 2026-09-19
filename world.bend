@@ -191,7 +191,7 @@ def Cells.set(t: Cells, +cx: U32, +cz: U32, cubes: List<&2, P.Body>) -> Cells:
 
 # How far a body can reach in a tick (in units): twice its speed on each
 # axis (a tick moves it by v + v'), what the motor and gravity add, and a
-# quarter of a metre to spare.
+# quarter of a metre to spare (the player: a jump, a push of the motor).
 def W.reach(+k: P.K, b: P.Body) -> Nat:
   P.K{+g, mu, jump, +acc, +air, vmax, size} = k
   P.Body{x, y, z, vx, vy, vz, gr, h} = b
@@ -212,6 +212,19 @@ def W.reachz(+k: P.K, +vx: P.Z, +vy: P.Z, +vz: P.Z) -> Nat:
   P.K{+g, mu, jump, +acc, +air, vmax, size} = k
   Nat.add(Nat.mul(2n, Nat.add(Nat.add(P.Z.mag(vx), P.Z.mag(vy)), P.Z.mag(vz))),
     Nat.add(Nat.mul(2n, Nat.add(Nat.add(acc, air), g)), 65536n))
+
+# How far a cube (no input) can reach in a tick: it moves by v + v' on each
+# axis, and without a motor v' only loses speed (friction) or gains g
+# (falling); a push changes its velocity, not where it is, until its own
+# next tick. So 2 |v| + 2 g bounds it (and a few units to spare): a cube is
+# handed exactly the bodies it may touch, not every one within a quarter
+# of a metre more.
+def W.creachz(+k: P.K, +vx: P.Z, +vy: P.Z, +vz: P.Z) -> Nat:
+  Nat.add(Nat.mul(2n, Nat.add(Nat.add(P.Z.mag(vx), P.Z.mag(vy)), P.Z.mag(vz))), Nat.add(Nat.mul(2n, P.K.g(k)), 16n))
+
+def W.creach(+k: P.K, b: P.Body) -> Nat:
+  P.Body{x, y, z, +vx, +vy, +vz, gr, h} = b
+  W.creachz(k, vx, vy, vz)
 
 # the cells whose cubes a body at x (m its reach) can touch: a cube homed
 # in cell h spans [h, h + 2) cubes, the body [x - m, x + S + m): h from
@@ -511,7 +524,7 @@ def W.cube_go(+k: P.K, +seed: U32, done: List<&2, P.Body>, todo: List<&2, P.Body
     case []:
       Zip{done, [], ps, t, dirty}
     case +c <> rest:
-      +m = W.reach(k, c)
+      +m = W.creach(k, c)
       W.cg0(k, seed, c, W.part_near(m, c, ps), W.part_near(m, c, done), W.part_near(m, c, rest), t, dirty)
 
 def W.cube_step(+k: P.K, +seed: U32, z: Zip) -> Zip:
@@ -923,7 +936,7 @@ def Q.rect(xs: List<&2, P.Body>, +k: P.K, r: Rc) -> Rc:
       r
     case +c <> rest:
       Rc{+x0, +z0, +x1, +z1} = r
-      +m = W.reach(k, c)
+      +m = W.creach(k, c)
       +lx = W.lo(P.Body.x(c), m)
       +lz = W.lo(P.Body.z(c), m)
       Q.rect(rest, k, Rc{Q.umin(x0, lx), Q.umin(z0, lz),
@@ -960,7 +973,7 @@ def Q.around(+k: P.K, +src: Src, +seed: U32, +c: P.Body) -> List<&2, P.Body>:
     case SCells{t}:
       W.around(k, t, seed, c)
     case SList{xs}:
-      W.near_of(xs, W.reach(k, c), c)
+      W.near_of(xs, W.creach(k, c), c)
 
 def Q.around3(+src: Src, +seed: U32, +m: Nat, +x: Nat, +y: Nat, +z: Nat) -> List<&2, P.Body>:
   match src:
@@ -1029,7 +1042,7 @@ def Q.q3(+k: P.K, +seed: U32, +src: Src, f: Maybe<&2, P.Body>, bk: Bk, +ev: List
     case None{}:
       Sq{bk, ev}
     case Some{+c}:
-      +m = W.reach(k, c)
+      +m = W.creach(k, c)
       +x = P.Body.x(c)
       +z = P.Body.z(c)
       +nx = W.blocks(x, m)
@@ -1128,7 +1141,7 @@ def Q.lgo(+k: P.K, +seed: U32, +src: Src, done: List<&2, P.Body>, todo: List<&2,
     case []:
       Lz{done, [], pool, ev}
     case +c <> rest:
-      +m = W.reach(k, c)
+      +m = W.creach(k, c)
       Q.la(k, src, seed, c, W.part_near(m, c, pool), W.part_near(m, c, done), W.part_near(m, c, rest), ev)
 
 def Q.lsteps(n: Nat, +k: P.K, +seed: U32, +src: Src, z: Lz) -> Lz:
@@ -1214,7 +1227,7 @@ def Q.cgo(+k: P.K, +seed: U32, +src: Src, done: List<&2, P.Body>, todo: List<&2,
     case []:
       Lc{done, [], pool, ev, chg}
     case P.Body{+x, +y, +z, +vx, +vy, +vz, g, h} <> rest:
-      +m = W.reachz(k, vx, vy, vz)
+      +m = W.creachz(k, vx, vy, vz)
       +r = Nat.add(W.size(), m)
       Q.ca(k, src, seed, m, x, y, z, P.Body{x, y, z, vx, vy, vz, g, h}, W.pnc(r, x, y, z, pool), W.pnc(r, x, y, z, done),
         W.pnc(r, x, y, z, rest), ev, chg)
@@ -1337,7 +1350,7 @@ def O.reach(xs: List<&2, P.Body>, +k: P.K, +m: Nat) -> Nat:
     case []:
       m
     case +e <> rest:
-      O.reach(rest, k, Nat.max(m, W.reach(k, e)))
+      O.reach(rest, k, Nat.max(m, W.creach(k, e)))
 
 def O.w3(+seed: U32, p: P.Body, done: List<&2, P.Body>, st: St) -> World:
   St{t, dirty, fresh, work} = st
