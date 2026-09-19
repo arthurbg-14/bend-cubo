@@ -1469,21 +1469,31 @@ def T.part(xs: List<&2, P.Body>, +l: Nat) -> Two:
     case P.Body{+x, y, +z, vx, vy, vz, g, h} <> rest:
       W.near1(Bool.not(T.side(l, T.key(x), T.key(z))), P.Body{x, y, z, vx, vy, vz, g, h}, T.part(rest, l))
 
+# the bucket coordinates of the upper half at level l: x's bit l/2 - 1 set
+# at an even level, z's bit (l + 1)/2 - 1 at an odd one
+# Above this level of the tree a step forks; below it, it runs straight
+# through. One fork per node made tasks so small that making them cost
+# more than they saved (measured).
+def T.fork() -> Nat:
+  5n
+
 # the tree at level l of the cubes p, already split by the level's bit:
 # each half split by the next bit and built, both in parallel (a radix
 # partition: no inserts, no merges; the split is handed down, not shared)
-def T.rad(l: Nat, p: Two) -> Bt:
-  match l p:
-    case _ Two{Nil{}, Nil{}}:
+def T.rad(l: Nat, par: Bool, p: Two) -> Bt:
+  match l par p:
+    case _ _ Two{Nil{}, Nil{}}:
       TE{}
-    case 0n Two{lo, hi}:
+    case 0n _ Two{lo, hi}:
       TL{List.append(&2, P.Body, lo, hi)}
-    case 1n++j Two{lo, hi}:
-      a b = T.rad(j, T.part(lo, j)) T.rad(j, T.part(hi, j))
+    case 1n++j True{} Two{lo, hi}:
+      a b = T.rad(j, Nat.is_le(T.fork(), j), T.part(lo, j)) T.rad(j, Nat.is_le(T.fork(), j), T.part(hi, j))
       TN{a, b}
+    case 1n++j False{} Two{lo, hi}:
+      TN{T.rad(j, False{}, T.part(lo, j)), T.rad(j, False{}, T.part(hi, j))}
 
 def T.radix(+l: Nat, xs: List<&2, P.Body>) -> Bt:
-  T.rad(l, T.part(xs, l))
+  T.rad(l, True{}, T.part(xs, l))
 
 def T.get(l: Nat, t: Bt, s: Bool, +bx: U32, +bz: U32) -> List<&2, P.Body>:
   match l t s:
@@ -1635,8 +1645,6 @@ def T.task(on: Bool, +xs: List<&2, P.Body>, +bx: U32, +bz: U32, +all: Bt, +p: P.
 def T.color(+bx: U32, +bz: U32, +c: Nat) -> Bool:
   U32.is_eq(((bx .&. 1) + (bz .&. 1) * 2 : U32), U32.from_nat(c))
 
-# the bucket coordinates of the upper half at level l: x's bit l/2 - 1 set
-# at an even level, z's bit (l + 1)/2 - 1 at an odd one
 def T.hix(+l: Nat, +bx: U32) -> U32:
   Pick.u(Nat.is_eq(Nat.mod(l, 2n), 0n), (bx .|. (1 << Nat.sub(Nat.div(l, 2n), 1n)) : U32), bx)
 
@@ -1650,18 +1658,21 @@ def T.pjoin(ra: PR, rb: PR) -> PR:
 
 # a phase over a subtree whose buckets' coordinates so far are (bx, bz):
 # the two halves in parallel
-def T.phase(l: Nat, t: Bt, +bx: U32, +bz: U32, +all: Bt, +c: Nat, +p: P.Body, +pkx: U32, +pkz: U32, +k: P.K, +seed: U32,
-  +cells: Cells, +ev: List<&2, P.Body>) -> PR:
-  match l t:
-    case _ TE{}:
+def T.phase(l: Nat, par: Bool, t: Bt, +bx: U32, +bz: U32, +all: Bt, +c: Nat, +p: P.Body, +pkx: U32, +pkz: U32, +k: P.K,
+  +seed: U32, +cells: Cells, +ev: List<&2, P.Body>) -> PR:
+  match l par t:
+    case _ _ TE{}:
       PR{TE{}, [], [], []}
-    case _ TL{xs}:
+    case _ _ TL{xs}:
       T.task(T.color(bx, bz, c), xs, bx, bz, all, p, pkx, pkz, k, seed, cells, ev)
-    case 0n TN{lo, hi}:
+    case 0n _ TN{lo, hi}:
       PR{TN{lo, hi}, [], [], []}
-    case 1n++j TN{lo, hi}:
-      ra rb = T.phase(j, lo, bx, bz, all, c, p, pkx, pkz, k, seed, cells, ev) T.phase(j, hi, T.hix(Nat.add(j, 1n), bx), T.hiz(Nat.add(j, 1n), bz), all, c, p, pkx, pkz, k, seed, cells, ev)
+    case 1n++j True{} TN{lo, hi}:
+      ra rb = T.phase(j, Nat.is_le(T.fork(), j), lo, bx, bz, all, c, p, pkx, pkz, k, seed, cells, ev) T.phase(j, Nat.is_le(T.fork(), j), hi, T.hix(Nat.add(j, 1n), bx), T.hiz(Nat.add(j, 1n), bz), all, c, p, pkx, pkz, k, seed, cells, ev)
       T.pjoin(ra, rb)
+    case 1n++j False{} TN{lo, hi}:
+      T.pjoin(T.phase(j, False{}, lo, bx, bz, all, c, p, pkx, pkz, k, seed, cells, ev),
+        T.phase(j, False{}, hi, T.hix(Nat.add(j, 1n), bx), T.hiz(Nat.add(j, 1n), bz), all, c, p, pkx, pkz, k, seed, cells, ev))
 
 def T.rp(l: Nat, t: Bt, s: Bool, +bx: U32, +bz: U32, +b: P.Body) -> Bt:
   match l t s:
@@ -1690,7 +1701,7 @@ def T.after(r: PR, +ev: List<&2, P.Body>, p: P.Body) -> Tk:
 
 def T.run(+c: Nat, tk: Tk, +k: P.K, +seed: U32, +cells: Cells) -> Tk:
   Tk{+t, +ev, +p} = tk
-  T.after(T.phase(12n, t, 0, 0, t, c, p, T.key(P.Body.x(p)), T.key(P.Body.z(p)), k, seed, cells, ev), ev, p)
+  T.after(T.phase(12n, True{}, t, 0, 0, t, c, p, T.key(P.Body.x(p)), T.key(P.Body.z(p)), k, seed, cells, ev), ev, p)
 
 def W.cubes_by(few: Bool, +k: P.K, w: World) -> World:
   match few:
@@ -1850,20 +1861,23 @@ def T.sjoin(a: SR, b: SR) -> SR:
   SR{tb, rb} = b
   SR{TN{ta, tb}, List.append(&2, P.Body, ra, rb)}
 
-# the cubes at rest out of the tree, bucket by bucket in parallel
-def T.sleep(t: Bt, +k: P.K, +cells: Cells, +seed: U32) -> SR:
-  match t:
-    case TE{}:
-      SR{TE{}, []}
-    case TL{xs}:
-      T.sr1(T.rests(xs, k, cells, seed))
-    case TN{lo, hi}:
-      a b = T.sleep(lo, k, cells, seed) T.sleep(hi, k, cells, seed)
-      T.sjoin(a, b)
-
 def T.m4(+seed: U32, bt: Bt, p: P.Body, fresh: List<&2, P.Body>, s: Sl) -> World:
   Sl{t, dirty, keep} = s
   World{seed, t, List.append(&2, P.Body, fresh, List.append(&2, P.Body, keep, T.all(bt))), dirty, p}
+
+# the cubes at rest out of the tree, block by block (in parallel down to
+# the fork cutoff)
+def T.sleep(t: Bt, +l: Nat, par: Bool, +k: P.K, +cells: Cells, +seed: U32) -> SR:
+  match t par:
+    case TE{} _:
+      SR{TE{}, []}
+    case TL{xs} _:
+      T.sr1(T.rests(xs, k, cells, seed))
+    case TN{lo, hi} True{}:
+      a b = T.sleep(lo, Nat.sub(l, 1n), Nat.is_le(T.fork(), l), k, cells, seed) T.sleep(hi, Nat.sub(l, 1n), Nat.is_le(T.fork(), l), k, cells, seed)
+      T.sjoin(a, b)
+    case TN{lo, hi} False{}:
+      T.sjoin(T.sleep(lo, Nat.sub(l, 1n), False{}, k, cells, seed), T.sleep(hi, Nat.sub(l, 1n), False{}, k, cells, seed))
 
 def T.m3(+k: P.K, +seed: U32, p: P.Body, fresh: List<&2, P.Body>, sr: SR, t: Cells, dirty: List<&2, Cell>) -> World:
   SR{bt, rest} = sr
@@ -1871,7 +1885,7 @@ def T.m3(+k: P.K, +seed: U32, p: P.Body, fresh: List<&2, P.Body>, sr: SR, t: Cel
 
 def T.m2b(+k: P.K, +seed: U32, bt: Bt, p: P.Body, st: St) -> World:
   St{+t, dirty, fresh, work} = st
-  T.m3(k, seed, p, fresh, T.sleep(bt, k, t, seed), t, dirty)
+  T.m3(k, seed, p, fresh, T.sleep(bt, 12n, True{}, k, t, seed), t, dirty)
 
 def T.m2(+k: P.K, +seed: U32, tk: Tk, t: Cells, dirty: List<&2, Cell>) -> World:
   Tk{bt, +ev, p} = tk
