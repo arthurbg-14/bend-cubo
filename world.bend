@@ -151,21 +151,50 @@ def Cells.set(t: Cells, +cx: U32, +cz: U32, cubes: List<&2, P.Body>) -> Cells:
 # Around a body
 # -------------
 
-# the sleeping cubes of the 25 cells from (cx - 2, cz - 2) to (cx + 2,
-# cz + 2): all that a body in cell (cx, cz) can touch in a tick (a cube
-# homed in cell h, anywhere in it, reaches into h + 1; the body reaches
-# into c + 1, and a tick's move less than a cube further)
-def W.near(+n: Nat, +t: Cells, +seed: U32, +cx: U32, +cz: U32) -> List<&2, P.Body>:
-  match n:
+# How far a body can reach in a tick (in units): twice its speed on each
+# axis (a tick moves it by v + v'), what the motor and gravity add, and a
+# quarter of a metre to spare.
+def W.reach(+k: P.K, b: P.Body) -> Nat:
+  P.K{+g, mu, jump, +acc, +air, vmax, size} = k
+  P.Body{x, y, z, vx, vy, vz, gr, h} = b
+  Nat.add(Nat.mul(2n, Nat.add(Nat.add(P.Z.mag(vx), P.Z.mag(vy)), P.Z.mag(vz))),
+    Nat.add(Nat.mul(2n, Nat.add(Nat.add(acc, air), g)), 65536n))
+
+# the sleeping cubes of the cells in (x0 .. x0 + nx - 1, z0 .. z0 + nz - 1),
+# i counting them down
+def W.rect(+i: Nat, +t: Cells, +seed: U32, +x0: U32, +z0: U32, +nx: Nat) -> List<&2, P.Body>:
+  match i:
     case 0n:
       []
     case 1n+k:
-      +i = U32.from_nat(k)
-      List.append(&2, P.Body, Cells.at(t, seed, (cx - 2 + i % 5 : U32), (cz - 2 + i / 5 : U32)),
-        W.near(k, t, seed, cx, cz))
+      List.append(&2, P.Body, Cells.at(t, seed, (x0 + U32.from_nat(Nat.mod(k, nx)) : U32), (z0 + U32.from_nat(Nat.div(k, nx)) : U32)),
+        W.rect(k, t, seed, x0, z0, nx))
 
-def W.around(+t: Cells, +seed: U32, +b: P.Body) -> List<&2, P.Body>:
-  W.near(25n, t, seed, W.cell_of(P.Body.x(b)), W.cell_of(P.Body.z(b)))
+# the cells whose cubes a body at x (m its reach) can touch: a cube homed
+# in cell h spans [h, h + 2) cubes, the body [x - m, x + S + m): h from
+# cell(x - m) - 1 to cell(x + S + m - 1)
+def W.lo(+x: Nat, +m: Nat) -> U32:
+  (W.cell_of(Nat.sub(x, m)) - 1 : U32)
+
+def W.span(+x: Nat, +m: Nat) -> Nat:
+  Nat.add(U32.to_nat((W.cell_of(Nat.sub(Nat.add(Nat.add(x, W.size()), m), 1n)) - W.lo(x, m) : U32)), 1n)
+
+# the sleeping cubes a body can touch in a tick
+def W.around(+k: P.K, +t: Cells, +seed: U32, +b: P.Body) -> List<&2, P.Body>:
+  +m = W.reach(k, b)
+  +x = P.Body.x(b)
+  +z = P.Body.z(b)
+  +nx = W.span(x, m)
+  W.rect(Nat.mul(nx, W.span(z, m)), t, seed, W.lo(x, m), W.lo(z, m), nx)
+
+# is o within a tick's reach of b (m the reach)?
+def W.dist(+a: Nat, +b: Nat) -> Nat:
+  Nat.add(Nat.sub(a, b), Nat.sub(b, a))
+
+def W.close(+m: Nat, +b: P.Body, +o: P.Body) -> Bool:
+  +r = Nat.add(Nat.mul(2n, W.size()), m)
+  Bool.and(Nat.is_lt(W.dist(P.Body.x(b), P.Body.x(o)), r),
+    Bool.and(Nat.is_lt(W.dist(P.Body.z(b), P.Body.z(o)), r), Nat.is_lt(W.dist(P.Body.y(b), P.Body.y(o)), r)))
 
 def W.moving(b: P.Body) -> Bool:
   P.Body{x, y, z, vx, vy, vz, g, h} = b
@@ -237,6 +266,23 @@ def W.parts(+y: Nat, xs: List<&2, P.Body>) -> Two:
       Two{[], []}
     case +b <> rest:
       W.part1(Nat.is_lt(y, P.Body.y(b)), b, W.parts(y, rest))
+
+def W.near1(n: Bool, +o: P.Body, r: Two) -> Two:
+  match n:
+    case True{}:
+      Two{a, b} = r
+      Two{o <> a, b}
+    case False{}:
+      Two{a, b} = r
+      Two{a, o <> b}
+
+# the bodies within a tick's reach of b (a), and the others (b)
+def W.part_near(+m: Nat, +b: P.Body, xs: List<&2, P.Body>) -> Two:
+  match xs:
+    case []:
+      Two{[], []}
+    case +o <> rest:
+      W.near1(W.close(m, b, o), o, W.part_near(m, b, rest))
 
 # Waking
 # ------
@@ -311,51 +357,72 @@ def W.p3(+seed: U32, p: P.Body, awake: List<&2, P.Body>, st: St) -> World:
   St{t, dirty, fresh, work} = st
   World{seed, t, List.append(&2, P.Body, fresh, awake), dirty, p}
 
-def W.p2(+seed: U32, p: P.Body, sp: Two, t: Cells, dirty: List<&2, Cell>) -> World:
-  Two{awake, sl} = sp
-  W.p3(seed, p, awake, W.wake(256n, seed, St{t, dirty, [], W.woken(sl)}))
+def W.p2(+seed: U32, p: P.Body, sp: Two, t: Cells, dirty: List<&2, Cell>, far: List<&2, P.Body>) -> World:
+  Two{near, sl} = sp
+  W.p3(seed, p, List.append(&2, P.Body, near, far), W.wake(256n, seed, St{t, dirty, [], W.woken(sl)}))
 
-def W.p1(+seed: U32, +n: Nat, r: P.Body & List<&2, P.Body>, t: Cells, dirty: List<&2, Cell>) -> World:
+def W.p1(+seed: U32, +n: Nat, r: P.Body & List<&2, P.Body>, t: Cells, dirty: List<&2, Cell>, far: List<&2, P.Body>) -> World:
   (p, obs) = r
-  W.p2(seed, p, W.split(n, obs), t, dirty)
+  W.p2(seed, p, W.split(n, obs), t, dirty, far)
 
+def W.p0(+k: P.K, inp: P.In, +seed: U32, pa: Two, +t: Cells, dirty: List<&2, Cell>, +p: P.Body) -> World:
+  Two{+near, far} = pa
+  W.p1(seed, List.length(&2, P.Body, near),
+    P.Body.tick(k, List.append(&2, P.Body, near, W.around(k, t, seed, p)), inp, p), t, dirty, far)
+
+# the player's tick among the awake cubes within reach and the sleepers
+# around
 def W.player_step(+k: P.K, inp: P.In, w: World) -> World:
-  World{+seed, +t, +awake, dirty, +p} = w
-  W.p1(seed, List.length(&2, P.Body, awake),
-    P.Body.tick(k, List.append(&2, P.Body, awake, W.around(t, seed, p)), inp, p), t, dirty)
+  World{+seed, +t, awake, dirty, +p} = w
+  W.p0(k, inp, seed, W.part_near(W.reach(k, p), p, awake), t, dirty, p)
 
 type Zip is Data:
   Zip{done: List<&2, P.Body>, todo: List<&2, P.Body>, ps: List<&2, P.Body>, t: Cells, dirty: List<&2, Cell>}
 
-def W.ce(c: P.Body, ps: List<&2, P.Body>, done: List<&2, P.Body>, todo: List<&2, P.Body>, st: St) -> Zip:
+type Far is Data:
+  Far{ps: List<&2, P.Body>, done: List<&2, P.Body>, rest: List<&2, P.Body>}
+
+def W.ce(c: P.Body, ps: List<&2, P.Body>, done: List<&2, P.Body>, todo: List<&2, P.Body>, far: Far, st: St) -> Zip:
+  Far{pf, df, rf} = far
   St{t, dirty, fresh, work} = st
-  Zip{c <> List.append(&2, P.Body, fresh, done), todo, ps, t, dirty}
+  Zip{c <> List.append(&2, P.Body, fresh, List.append(&2, P.Body, done, df)), List.append(&2, P.Body, todo, rf),
+    List.append(&2, P.Body, ps, pf), t, dirty}
 
-def W.cd(+seed: U32, c: P.Body, ps: List<&2, P.Body>, done: List<&2, P.Body>, sp: Two, t: Cells, dirty: List<&2, Cell>) -> Zip:
+def W.cd(+seed: U32, c: P.Body, ps: List<&2, P.Body>, done: List<&2, P.Body>, sp: Two, t: Cells, dirty: List<&2, Cell>,
+  far: Far) -> Zip:
   Two{todo, sl} = sp
-  W.ce(c, ps, done, todo, W.wake(256n, seed, St{t, dirty, [], W.woken(sl)}))
+  W.ce(c, ps, done, todo, far, W.wake(256n, seed, St{t, dirty, [], W.woken(sl)}))
 
-def W.cc(+seed: U32, +nr: Nat, c: P.Body, ps: List<&2, P.Body>, sp: Two, t: Cells, dirty: List<&2, Cell>) -> Zip:
+def W.cc(+seed: U32, +nr: Nat, c: P.Body, ps: List<&2, P.Body>, sp: Two, t: Cells, dirty: List<&2, Cell>, far: Far) -> Zip:
   Two{done, rest} = sp
-  W.cd(seed, c, ps, done, W.split(nr, rest), t, dirty)
+  W.cd(seed, c, ps, done, W.split(nr, rest), t, dirty, far)
 
-def W.cb(+seed: U32, +nd: Nat, +nr: Nat, c: P.Body, sp: Two, t: Cells, dirty: List<&2, Cell>) -> Zip:
+def W.cb(+seed: U32, +nd: Nat, +nr: Nat, c: P.Body, sp: Two, t: Cells, dirty: List<&2, Cell>, far: Far) -> Zip:
   Two{ps, rest} = sp
-  W.cc(seed, nr, c, ps, W.split(nd, rest), t, dirty)
+  W.cc(seed, nr, c, ps, W.split(nd, rest), t, dirty, far)
 
-def W.ca(+seed: U32, +nd: Nat, +nr: Nat, r: P.Body & List<&2, P.Body>, t: Cells, dirty: List<&2, Cell>) -> Zip:
+def W.ca(+seed: U32, +np: Nat, +nd: Nat, +nr: Nat, r: P.Body & List<&2, P.Body>, t: Cells, dirty: List<&2, Cell>, far: Far) -> Zip:
   (c, obs) = r
-  W.cb(seed, nd, nr, c, W.split(1n, obs), t, dirty)
+  W.cb(seed, nd, nr, c, W.split(np, obs), t, dirty, far)
 
-def W.cube_go(+k: P.K, +seed: U32, +done: List<&2, P.Body>, todo: List<&2, P.Body>, ps: List<&2, P.Body>, +t: Cells,
+def W.cg0(+k: P.K, +seed: U32, +c: P.Body, pp: Two, dd: Two, rr: Two, +t: Cells, dirty: List<&2, Cell>) -> Zip:
+  Two{+pn, pf} = pp
+  Two{+dn, df} = dd
+  Two{+rn, rf} = rr
+  W.ca(seed, List.length(&2, P.Body, pn), List.length(&2, P.Body, dn), List.length(&2, P.Body, rn),
+    P.Body.tick(k, List.append(&2, P.Body, pn, List.append(&2, P.Body, dn, List.append(&2, P.Body, rn,
+      W.around(k, t, seed, c)))), P.In.idle(), c), t, dirty, Far{pf, df, rf})
+
+# the next awake cube's tick, among the bodies within reach (the player,
+# the ones done, the ones to do) and the sleepers around
+def W.cube_go(+k: P.K, +seed: U32, done: List<&2, P.Body>, todo: List<&2, P.Body>, ps: List<&2, P.Body>, +t: Cells,
   dirty: List<&2, Cell>) -> Zip:
   match todo:
     case []:
       Zip{done, [], ps, t, dirty}
-    case +c <> +rest:
-      W.ca(seed, List.length(&2, P.Body, done), List.length(&2, P.Body, rest),
-        P.Body.tick(k, List.append(&2, P.Body, ps, List.append(&2, P.Body, done, List.append(&2, P.Body, rest,
-          W.around(t, seed, c)))), P.In.idle(), c), t, dirty)
+    case +c <> rest:
+      +m = W.reach(k, c)
+      W.cg0(k, seed, c, W.part_near(m, c, ps), W.part_near(m, c, done), W.part_near(m, c, rest), t, dirty)
 
 def W.cube_step(+k: P.K, +seed: U32, z: Zip) -> Zip:
   Zip{done, todo, ps, t, dirty} = z
@@ -385,10 +452,17 @@ type Sl is Data:
 def W.fits7(xs: List<&2, P.Body>) -> Bool:
   Nat.is_lt(List.length(&2, P.Body, xs), 7n)
 
+def W.still.on(quiet: Bool, +k: P.K, +t: Cells, +seed: U32, +c: P.Body) -> Bool:
+  match quiet:
+    case True{}:
+      Bool.or(Nat.is_eq(P.Body.y(c), 0n), P.Geo.rests(W.size(), P.Body.x(c), P.Body.y(c), P.Body.z(c), W.around(k, t, seed, c)))
+    case False{}:
+      False{}
+
 # at rest: on the ground, still, and on the floor or on sleeping cubes
-def W.still(+t: Cells, +seed: U32, +c: P.Body) -> Bool:
-  Bool.and(Bool.and(P.Body.ground(c), Bool.not(W.moving(c))),
-    Bool.or(Nat.is_eq(P.Body.y(c), 0n), P.Geo.rests(W.size(), P.Body.x(c), P.Body.y(c), P.Body.z(c), W.around(t, seed, c))))
+# (the cells looked at only for a body already still)
+def W.still(+k: P.K, +t: Cells, +seed: U32, +c: P.Body) -> Bool:
+  W.still.on(Bool.and(P.Body.ground(c), Bool.not(W.moving(c))), k, t, seed, c)
 
 def W.sleep1(ok: Bool, +c: P.Body, +cx: U32, +cz: U32, cubes: List<&2, P.Body>, s: Sl) -> Sl:
   match ok:
@@ -399,31 +473,31 @@ def W.sleep1(ok: Bool, +c: P.Body, +cx: U32, +cz: U32, cubes: List<&2, P.Body>, 
       Sl{t, dirty, keep} = s
       Sl{t, dirty, c <> keep}
 
-def W.sleep_one(+seed: U32, +c: P.Body, s: Sl) -> Sl:
+def W.sleep_one(+k: P.K, +seed: U32, +c: P.Body, s: Sl) -> Sl:
   Sl{+t, dirty, keep} = s
   +cx = W.cell_of(P.Body.x(c))
   +cz = W.cell_of(P.Body.z(c))
   +cubes = Cells.at(t, seed, cx, cz)
-  W.sleep1(Bool.and(W.still(t, seed, c), W.fits7(cubes)), c, cx, cz, cubes, Sl{t, dirty, keep})
+  W.sleep1(Bool.and(W.still(k, t, seed, c), W.fits7(cubes)), c, cx, cz, cubes, Sl{t, dirty, keep})
 
-def W.sleep(xs: List<&2, P.Body>, +seed: U32, s: Sl) -> Sl:
+def W.sleep(xs: List<&2, P.Body>, +k: P.K, +seed: U32, s: Sl) -> Sl:
   match xs:
     case []:
       s
     case +c <> rest:
-      W.sleep(rest, seed, W.sleep_one(seed, c, s))
+      W.sleep(rest, k, seed, W.sleep_one(k, seed, c, s))
 
 def W.slept(+seed: U32, p: P.Body, s: Sl) -> World:
   Sl{t, dirty, keep} = s
   World{seed, t, keep, dirty, p}
 
-def W.sleep_all(w: World) -> World:
+def W.sleep_all(+k: P.K, w: World) -> World:
   World{+seed, t, awake, dirty, p} = w
-  W.slept(seed, p, W.sleep(awake, seed, Sl{t, dirty, []}))
+  W.slept(seed, p, W.sleep(awake, k, seed, Sl{t, dirty, []}))
 
 # a tick of the whole world
 def W.tick(+k: P.K, inp: P.In, w: World) -> World:
-  W.sleep_all(W.cubes_all(k, W.player_step(k, inp, w)))
+  W.sleep_all(k, W.cubes_all(k, W.player_step(k, inp, w)))
 
 # a new world of seed, the player standing at the start
 def W.new(+seed: U32) -> World:
