@@ -217,22 +217,40 @@ def W.lo(+x: Nat, +m: Nat) -> U32:
 def W.span(+x: Nat, +m: Nat) -> Nat:
   Nat.add(U32.to_nat((W.cell_of(Nat.sub(Nat.add(Nat.add(x, W.size()), m), 1n)) - W.lo(x, m) : U32)), 1n)
 
+def W.take_if(take: Bool, +b: P.Body, rest: List<&2, P.Body>) -> List<&2, P.Body>:
+  match take:
+    case True{}:
+      b <> rest
+    case False{}:
+      rest
+
+# is o within a tick's reach of b (m the reach)? Their boxes (a cube each)
+# can meet only if every coordinate differs by less than a cube and the
+# reach: what is farther can neither stop a move nor be pushed, so a tick
+# with it or without it is the same (and costs less: every move checks
+# every obstacle)
+def W.dist(+a: Nat, +b: Nat) -> Nat:
+  Nat.add(Nat.sub(a, b), Nat.sub(b, a))
+
+def W.close(+m: Nat, +b: P.Body, +o: P.Body) -> Bool:
+  +r = Nat.add(W.size(), m)
+  Bool.and(Nat.is_lt(W.dist(P.Body.x(b), P.Body.x(o)), r),
+    Bool.and(Nat.is_lt(W.dist(P.Body.z(b), P.Body.z(o)), r), Nat.is_lt(W.dist(P.Body.y(b), P.Body.y(o)), r)))
+
 # the sleeping cubes a body can touch in a tick
+def W.near_of(xs: List<&2, P.Body>, +m: Nat, +b: P.Body) -> List<&2, P.Body>:
+  match xs:
+    case []:
+      []
+    case +o <> rest:
+      W.take_if(W.close(m, b, o), o, W.near_of(rest, m, b))
+
 def W.around(+k: P.K, +t: Cells, +seed: U32, +b: P.Body) -> List<&2, P.Body>:
   +m = W.reach(k, b)
   +x = P.Body.x(b)
   +z = P.Body.z(b)
   +nx = W.span(x, m)
-  W.rect(Nat.mul(nx, W.span(z, m)), t, seed, W.lo(x, m), W.lo(z, m), nx)
-
-# is o within a tick's reach of b (m the reach)?
-def W.dist(+a: Nat, +b: Nat) -> Nat:
-  Nat.add(Nat.sub(a, b), Nat.sub(b, a))
-
-def W.close(+m: Nat, +b: P.Body, +o: P.Body) -> Bool:
-  +r = Nat.add(Nat.mul(2n, W.size()), m)
-  Bool.and(Nat.is_lt(W.dist(P.Body.x(b), P.Body.x(o)), r),
-    Bool.and(Nat.is_lt(W.dist(P.Body.z(b), P.Body.z(o)), r), Nat.is_lt(W.dist(P.Body.y(b), P.Body.y(o)), r)))
+  W.near_of(W.rect(Nat.mul(nx, W.span(z, m)), t, seed, W.lo(x, m), W.lo(z, m), nx), m, b)
 
 def W.moving(b: P.Body) -> Bool:
   P.Body{x, y, z, vx, vy, vz, g, h} = b
@@ -255,13 +273,6 @@ def W.without(+c: P.Body, xs: List<&2, P.Body>) -> List<&2, P.Body>:
       []
     case +b <> rest:
       W.keep_if(W.same(c, b), b, W.without(c, rest))
-
-def W.take_if(take: Bool, +b: P.Body, rest: List<&2, P.Body>) -> List<&2, P.Body>:
-  match take:
-    case True{}:
-      b <> rest
-    case False{}:
-      rest
 
 # the moving ones
 def W.woken(xs: List<&2, P.Body>) -> List<&2, P.Body>:
@@ -912,8 +923,7 @@ def Q.around(+k: P.K, +src: Src, +seed: U32, +c: P.Body) -> List<&2, P.Body>:
     case SCells{t}:
       W.around(k, t, seed, c)
     case SList{xs}:
-      +m = W.reach(k, c)
-      Q.inrect(xs, W.lo(P.Body.x(c), m), W.lo(P.Body.z(c), m), U32.from_nat(W.span(P.Body.x(c), m)), U32.from_nat(W.span(P.Body.z(c), m)))
+      W.near_of(xs, W.reach(k, c), c)
 
 type Sq is Data:
   Sq{bk: Bk, ev: List<&2, P.Body>}
