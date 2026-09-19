@@ -52,7 +52,7 @@ def Knob.count() -> Nat:
   6n
 
 def Knob.defaults() -> P.K:
-  P.K{78n, 179n, 5541n, 160n, 32n, 6144n, 262144n}
+  P.K{78n, 205n, 5541n, 160n, 32n, 6144n, 262144n}
 
 def Knob.get(k: P.K, i: Nat) -> Nat:
   P.K{g, mu, jump, acc, air, vmax, size} = k
@@ -147,7 +147,7 @@ def Knob.line(+k: P.K, i: Nat) -> String:
     case 0n:
       "Gravidade       " ++ Fmt.dec2(Knob.get(k, 0n), 8n) ++ " m/s²"
     case 1n:
-      "Atrito do chão  µ " ++ Fmt.dec2(Knob.get(k, 1n), 256n)
+      "Atrito do chão  µ " ++ Fmt.dec2(Knob.get(k, 1n), 256n) ++ Pick.s(Nat.is_eq(Knob.get(k, 1n), 205n), " (asfalto seco)", "")
     case 2n:
       "Pulo            " ++ Fmt.dec2(Knob.get(k, 2n), 1024n) ++ " m/s (sobe " ++ Fmt.rise(k) ++ ")"
     case 3n:

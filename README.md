@@ -59,7 +59,7 @@ Todas mudam durante o jogo; o painel mostra o valor em unidades físicas.
 | constante | padrão | passo | o que é |
 |---|---|---|---|
 | Gravidade | 9,75 m/s² | 0,5 | a velocidade que a gravidade tira a cada tick |
-| Atrito do chão | µ 0,70 | 0,05 | Coulomb: o chão freia µ·g (a força normal é m·g) |
+| Atrito do chão | µ 0,80 | 0,05 | Coulomb: o chão freia µ·g (a força normal é m·g); 0,80 é borracha em asfalto seco |
 | Pulo | 5,41 m/s | 0,25 | a velocidade de saída; o painel mostra a altura que a energia dá, J²/2g |
 | Força no chão | 20 m/s² | 1 | o empurrão do "motor" ao andar |
 | Força no ar | 4 m/s² | 1 | o controle no ar |
