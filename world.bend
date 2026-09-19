@@ -208,6 +208,11 @@ def W.rect(+i: Nat, +t: Cells, +seed: U32, +x0: U32, +z0: U32, +nx: Nat) -> List
       List.append(&2, P.Body, Cells.at(t, seed, (x0 + U32.from_nat(Nat.mod(k, nx)) : U32), (z0 + U32.from_nat(Nat.div(k, nx)) : U32)),
         W.rect(k, t, seed, x0, z0, nx))
 
+def W.reachz(+k: P.K, +vx: P.Z, +vy: P.Z, +vz: P.Z) -> Nat:
+  P.K{+g, mu, jump, +acc, +air, vmax, size} = k
+  Nat.add(Nat.mul(2n, Nat.add(Nat.add(P.Z.mag(vx), P.Z.mag(vy)), P.Z.mag(vz))),
+    Nat.add(Nat.mul(2n, Nat.add(Nat.add(acc, air), g)), 65536n))
+
 # the cells whose cubes a body at x (m its reach) can touch: a cube homed
 # in cell h spans [h, h + 2) cubes, the body [x - m, x + S + m): h from
 # cell(x - m) - 1 to cell(x + S + m - 1)
@@ -217,7 +222,7 @@ def W.lo(+x: Nat, +m: Nat) -> U32:
 def W.span(+x: Nat, +m: Nat) -> Nat:
   Nat.add(U32.to_nat((W.cell_of(Nat.sub(Nat.add(Nat.add(x, W.size()), m), 1n)) - W.lo(x, m) : U32)), 1n)
 
-def W.take_if(take: Bool, +b: P.Body, rest: List<&2, P.Body>) -> List<&2, P.Body>:
+def W.take_if(take: Bool, b: P.Body, rest: List<&2, P.Body>) -> List<&2, P.Body>:
   match take:
     case True{}:
       b <> rest
@@ -232,25 +237,34 @@ def W.take_if(take: Bool, +b: P.Body, rest: List<&2, P.Body>) -> List<&2, P.Body
 def W.dist(+a: Nat, +b: Nat) -> Nat:
   Nat.add(Nat.sub(a, b), Nat.sub(b, a))
 
+def W.closep(+r: Nat, +ax: Nat, +ay: Nat, +az: Nat, +bx: Nat, +by: Nat, +bz: Nat) -> Bool:
+  Bool.and(Nat.is_lt(W.dist(ax, bx), r), Bool.and(Nat.is_lt(W.dist(az, bz), r), Nat.is_lt(W.dist(ay, by), r)))
+
 def W.close(+m: Nat, +b: P.Body, +o: P.Body) -> Bool:
   +r = Nat.add(W.size(), m)
   Bool.and(Nat.is_lt(W.dist(P.Body.x(b), P.Body.x(o)), r),
     Bool.and(Nat.is_lt(W.dist(P.Body.z(b), P.Body.z(o)), r), Nat.is_lt(W.dist(P.Body.y(b), P.Body.y(o)), r)))
 
 # the sleeping cubes a body can touch in a tick
-def W.near_of(xs: List<&2, P.Body>, +m: Nat, +b: P.Body) -> List<&2, P.Body>:
+# the bodies of xs within r of (x, y, z), each taken apart once (its
+# coordinates are plain numbers; sharing a body would count references on
+# every read)
+def W.nof(+r: Nat, +x: Nat, +y: Nat, +z: Nat, xs: List<&2, P.Body>) -> List<&2, P.Body>:
   match xs:
     case []:
       []
-    case +o <> rest:
-      W.take_if(W.close(m, b, o), o, W.near_of(rest, m, b))
+    case P.Body{+ox, +oy, +oz, vx, vy, vz, g, h} <> rest:
+      W.take_if(W.closep(r, x, y, z, ox, oy, oz), P.Body{ox, oy, oz, vx, vy, vz, g, h}, W.nof(r, x, y, z, rest))
+
+def W.near_of(xs: List<&2, P.Body>, +m: Nat, +b: P.Body) -> List<&2, P.Body>:
+  W.nof(Nat.add(W.size(), m), P.Body.x(b), P.Body.y(b), P.Body.z(b), xs)
+
+def W.around3(+t: Cells, +seed: U32, +m: Nat, +x: Nat, +y: Nat, +z: Nat) -> List<&2, P.Body>:
+  +nx = W.span(x, m)
+  W.nof(Nat.add(W.size(), m), x, y, z, W.rect(Nat.mul(nx, W.span(z, m)), t, seed, W.lo(x, m), W.lo(z, m), nx))
 
 def W.around(+k: P.K, +t: Cells, +seed: U32, +b: P.Body) -> List<&2, P.Body>:
-  +m = W.reach(k, b)
-  +x = P.Body.x(b)
-  +z = P.Body.z(b)
-  +nx = W.span(x, m)
-  W.near_of(W.rect(Nat.mul(nx, W.span(z, m)), t, seed, W.lo(x, m), W.lo(z, m), nx), m, b)
+  W.around3(t, seed, W.reach(k, b), P.Body.x(b), P.Body.y(b), P.Body.z(b))
 
 def W.moving(b: P.Body) -> Bool:
   P.Body{x, y, z, vx, vy, vz, g, h} = b
@@ -259,7 +273,7 @@ def W.moving(b: P.Body) -> Bool:
 def W.same(+a: P.Body, +b: P.Body) -> Bool:
   Bool.and(Nat.is_eq(P.Body.x(a), P.Body.x(b)), Bool.and(Nat.is_eq(P.Body.y(a), P.Body.y(b)), Nat.is_eq(P.Body.z(a), P.Body.z(b))))
 
-def W.keep_if(drop: Bool, +b: P.Body, rest: List<&2, P.Body>) -> List<&2, P.Body>:
+def W.keep_if(drop: Bool, b: P.Body, rest: List<&2, P.Body>) -> List<&2, P.Body>:
   match drop:
     case True{}:
       rest
@@ -316,7 +330,7 @@ def W.parts(+y: Nat, xs: List<&2, P.Body>) -> Two:
     case +b <> rest:
       W.part1(Nat.is_lt(y, P.Body.y(b)), b, W.parts(y, rest))
 
-def W.near1(n: Bool, +o: P.Body, r: Two) -> Two:
+def W.near1(n: Bool, o: P.Body, r: Two) -> Two:
   match n:
     case True{}:
       Two{a, b} = r
@@ -326,12 +340,35 @@ def W.near1(n: Bool, +o: P.Body, r: Two) -> Two:
       Two{a, o <> b}
 
 # the bodies within a tick's reach of b (a), and the others (b)
-def W.part_near(+m: Nat, +b: P.Body, xs: List<&2, P.Body>) -> Two:
+def W.pn(+r: Nat, +x: Nat, +y: Nat, +z: Nat, xs: List<&2, P.Body>) -> Two:
   match xs:
     case []:
       Two{[], []}
-    case +o <> rest:
-      W.near1(W.close(m, b, o), o, W.part_near(m, b, rest))
+    case P.Body{+ox, +oy, +oz, vx, vy, vz, g, h} <> rest:
+      W.near1(W.closep(r, x, y, z, ox, oy, oz), P.Body{ox, oy, oz, vx, vy, vz, g, h}, W.pn(r, x, y, z, rest))
+
+# the same, counting the near ones
+type Pc is Data:
+  Pc{a: List<&2, P.Body>, n: Nat, b: List<&2, P.Body>}
+
+def W.tn1(c: Bool, o: P.Body, r: Pc) -> Pc:
+  match c:
+    case True{}:
+      Pc{a, n, b} = r
+      Pc{o <> a, Nat.add(n, 1n), b}
+    case False{}:
+      Pc{a, n, b} = r
+      Pc{a, n, o <> b}
+
+def W.pnc(+r: Nat, +x: Nat, +y: Nat, +z: Nat, xs: List<&2, P.Body>) -> Pc:
+  match xs:
+    case []:
+      Pc{[], 0n, []}
+    case P.Body{+ox, +oy, +oz, vx, vy, vz, g, h} <> rest:
+      W.tn1(W.closep(r, x, y, z, ox, oy, oz), P.Body{ox, oy, oz, vx, vy, vz, g, h}, W.pnc(r, x, y, z, rest))
+
+def W.part_near(+m: Nat, +b: P.Body, xs: List<&2, P.Body>) -> Two:
+  W.pn(Nat.add(W.size(), m), P.Body.x(b), P.Body.y(b), P.Body.z(b), xs)
 
 # Waking
 # ------
@@ -925,6 +962,13 @@ def Q.around(+k: P.K, +src: Src, +seed: U32, +c: P.Body) -> List<&2, P.Body>:
     case SList{xs}:
       W.near_of(xs, W.reach(k, c), c)
 
+def Q.around3(+src: Src, +seed: U32, +m: Nat, +x: Nat, +y: Nat, +z: Nat) -> List<&2, P.Body>:
+  match src:
+    case SCells{t}:
+      W.around3(t, seed, m, x, y, z)
+    case SList{xs}:
+      W.nof(Nat.add(W.size(), m), x, y, z, xs)
+
 type Sq is Data:
   Sq{bk: Bk, ev: List<&2, P.Body>}
 
@@ -1155,22 +1199,25 @@ def Q.cb(+np: Nat, +nd: Nat, +nr: Nat, +pn0: List<&2, P.Body>, r: P.Body & List<
   (c, obs) = r
   Q.cc(nd, nr, c, pn0, W.split(np, obs), far, ev, chg)
 
-def Q.ca(+k: P.K, +src: Src, +seed: U32, +c: P.Body, pp: Two, dd: Two, rr: Two, +ev: List<&2, P.Body>, +chg: List<&2, P.Body>) -> Lc:
-  Two{+pn, pf} = pp
-  Two{+dn, df} = dd
-  Two{+rn, rf} = rr
-  Q.cb(List.length(&2, P.Body, pn), List.length(&2, P.Body, dn), List.length(&2, P.Body, rn), pn,
+def Q.ca(+k: P.K, +src: Src, +seed: U32, +m: Nat, +x: Nat, +y: Nat, +z: Nat, c: P.Body, pp: Pc, dd: Pc, rr: Pc,
+  +ev: List<&2, P.Body>, +chg: List<&2, P.Body>) -> Lc:
+  Pc{+pn, np, pf} = pp
+  Pc{dn, nd, df} = dd
+  Pc{rn, nr, rf} = rr
+  Q.cb(np, nd, nr, pn,
     P.Body.tick(k, List.append(&2, P.Body, pn, List.append(&2, P.Body, dn, List.append(&2, P.Body, rn,
-      Q.shadow(Q.around(k, src, seed, c), ev)))), P.In.idle(), c), Far{pf, df, rf}, ev, chg)
+      Q.shadow(Q.around3(src, seed, m, x, y, z), ev)))), P.In.idle(), c), Far{pf, df, rf}, ev, chg)
 
 def Q.cgo(+k: P.K, +seed: U32, +src: Src, done: List<&2, P.Body>, todo: List<&2, P.Body>, pool: List<&2, P.Body>,
   ev: List<&2, P.Body>, chg: List<&2, P.Body>) -> Lc:
   match todo:
     case []:
       Lc{done, [], pool, ev, chg}
-    case +c <> rest:
-      +m = W.reach(k, c)
-      Q.ca(k, src, seed, c, W.part_near(m, c, pool), W.part_near(m, c, done), W.part_near(m, c, rest), ev, chg)
+    case P.Body{+x, +y, +z, +vx, +vy, +vz, g, h} <> rest:
+      +m = W.reachz(k, vx, vy, vz)
+      +r = Nat.add(W.size(), m)
+      Q.ca(k, src, seed, m, x, y, z, P.Body{x, y, z, vx, vy, vz, g, h}, W.pnc(r, x, y, z, pool), W.pnc(r, x, y, z, done),
+        W.pnc(r, x, y, z, rest), ev, chg)
 
 def Q.csteps(n: Nat, +k: P.K, +seed: U32, +src: Src, z: Lc) -> Lc:
   match n:
@@ -1406,21 +1453,24 @@ def T.part(xs: List<&2, P.Body>, +l: Nat) -> Two:
   match xs:
     case []:
       Two{[], []}
-    case +b <> rest:
-      W.near1(Bool.not(T.side_of(l, b)), b, T.part(rest, l))
+    case P.Body{+x, y, +z, vx, vy, vz, g, h} <> rest:
+      W.near1(Bool.not(T.side(l, T.key(x), T.key(z))), P.Body{x, y, z, vx, vy, vz, g, h}, T.part(rest, l))
 
-# the tree of xs at level l: split by the level's bit, both halves built
-# in parallel (a radix partition: no inserts, no merges)
-def T.radix(l: Nat, xs: List<&2, P.Body>) -> Bt:
-  match l xs:
-    case _ Nil{}:
+# the tree at level l of the cubes p, already split by the level's bit:
+# each half split by the next bit and built, both in parallel (a radix
+# partition: no inserts, no merges; the split is handed down, not shared)
+def T.rad(l: Nat, p: Two) -> Bt:
+  match l p:
+    case _ Two{Nil{}, Nil{}}:
       TE{}
-    case 0n _:
-      TL{xs}
-    case 1n++j _:
-      +sp = T.part(xs, l)
-      a b = T.radix(j, T.half_a(sp)) T.radix(j, T.half_b(sp))
+    case 0n Two{lo, hi}:
+      TL{List.append(&2, P.Body, lo, hi)}
+    case 1n++j Two{lo, hi}:
+      a b = T.rad(j, T.part(lo, j)) T.rad(j, T.part(hi, j))
       TN{a, b}
+
+def T.radix(+l: Nat, xs: List<&2, P.Body>) -> Bt:
+  T.rad(l, T.part(xs, l))
 
 def T.get(l: Nat, t: Bt, s: Bool, +bx: U32, +bz: U32) -> List<&2, P.Body>:
   match l t s:
@@ -1454,12 +1504,18 @@ def T.inb(+e: P.Body, +b: Bx, +r: Nat) -> Bool:
   Bool.and(Bool.and(Nat.is_lt(x0, Nat.add(P.Body.x(e), d)), Nat.is_lt(P.Body.x(e), Nat.add(x1, d))),
     Bool.and(Nat.is_lt(z0, Nat.add(P.Body.z(e), d)), Nat.is_lt(P.Body.z(e), Nat.add(z1, d))))
 
-def T.within(xs: List<&2, P.Body>, +b: Bx, +r: Nat) -> List<&2, P.Body>:
+def T.win(xs: List<&2, P.Body>, +x0: Nat, +z0: Nat, +x1: Nat, +z1: Nat, +d: Nat) -> List<&2, P.Body>:
   match xs:
     case []:
       []
-    case +e <> rest:
-      W.take_if(T.inb(e, b, r), e, T.within(rest, b, r))
+    case P.Body{+ex, ey, +ez, vx, vy, vz, g, h} <> rest:
+      W.take_if(Bool.and(Bool.and(Nat.is_lt(x0, Nat.add(ex, d)), Nat.is_lt(ex, Nat.add(x1, d))),
+          Bool.and(Nat.is_lt(z0, Nat.add(ez, d)), Nat.is_lt(ez, Nat.add(z1, d)))),
+        P.Body{ex, ey, ez, vx, vy, vz, g, h}, T.win(rest, x0, z0, x1, z1, d))
+
+def T.within(xs: List<&2, P.Body>, +b: Bx, +r: Nat) -> List<&2, P.Body>:
+  Bx{+x0, +y0, +z0, +x1, +y1, +z1} = b
+  T.win(xs, x0, z0, x1, z1, Nat.add(W.size(), r))
 
 def T.nb(+t: Bt, +bx: U32, +bz: U32, +dx: U32, +dz: U32, +b: Bx, +r: Nat) -> Nb:
   +x = ((bx + dx) .&. 63 : U32)
