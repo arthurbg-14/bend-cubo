@@ -1,0 +1,474 @@
+#version 450
+// Cubo -- the frame, cast on the GPU. One compute shader, five passes
+// (the push constant's pass):
+//   0 clear the local grid (256 x 256 cells around the player)
+//   1 put the changed cells (the table, kept by effs/screen.c from the
+//     patches Bend sends) into it: which cells no longer read the
+//     generator, and the cubes that reach into each cell
+//   2 put the moving bodies (the player, the awake cubes) into it
+//   3 the camera: behind the player, pulled in where a cube is between
+//   4 a ray a pixel: 2D DDA over the cells; a cell is its generated stack
+//     (the same hash as world.bend) unless changed, plus the cubes that
+//     reach into it; the ground under all. Sun and shadow (a second ray),
+//     contact shade, fog; the HUD's text on top.
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(std430, set = 0, binding = 0) readonly buffer Frame { uint F[]; };
+layout(set = 0, binding = 1) uniform writeonly image2D outimg;
+layout(std430, set = 0, binding = 2) buffer Grid { uint G[]; };
+layout(std430, set = 0, binding = 3) readonly buffer Table { uint T[]; };
+layout(push_constant) uniform PC { uint width; uint height; uint bgra; uint pass; } pc;
+
+// the header (main.bend's frame)
+#define H_SEED   0
+#define H_OCX    1
+#define H_OCZ    2
+#define H_PX     3
+#define H_PY     4
+#define H_PZ     5
+#define H_YAW    6
+#define H_PITCH  7
+#define H_DIST   8
+#define H_TIME   9
+#define H_NDYN   10
+#define H_LINES  11
+#define H_SEL    12
+#define H_SCALE  13
+#define H_DYN    32
+#define H_TEXT   1056
+#define TEXT_W   24
+
+#define S        262144.0
+#define ORIGIN   536870912u
+#define GRID     256
+#define CAMW     524288u
+#define HMW      524292u
+#define FAR      160.0
+#define SLOTS    65536u
+
+#include "font.glsl"
+
+uint mixh(uint h) {
+  uint a = (h ^ (h >> 16)) * 2146121005u;
+  uint b = (a ^ (a >> 15)) * 2221713035u;
+  return b ^ (b >> 16);
+}
+
+uint hcell(uint seed, uint cx, uint cz) {
+  return mixh(seed ^ mixh(cx ^ mixh(cz + 2654435769u)));
+}
+
+// world.bend's Gen.count
+uint gcount(uint seed, uint cx, uint cz) {
+  uint rd   = hcell(seed, cx >> 4, cz >> 4) & 255u;
+  uint dens = 6u + rd * 40u / 256u;
+  uint h    = hcell(seed + 1u, cx, cz);
+  uint hh   = (h >> 8) & 255u;
+  bool near = (cx - ORIGIN + 3u) < 6u && (cz - ORIGIN + 3u) < 6u;
+  if (near || (h & 255u) >= dens) {
+    return 0u;
+  }
+  return hh < 150u ? 1u : hh < 225u ? 2u : 3u;
+}
+
+uint gbase(int lx, int lz) {
+  return uint((lz << 8) | lx) * 8u;
+}
+
+void gput(int ix, int iz, uint ref) {
+  int lx = ix + GRID / 2;
+  int lz = iz + GRID / 2;
+  if (uint(lx) >= uint(GRID) || uint(lz) >= uint(GRID)) {
+    return;
+  }
+  uint b = gbase(lx, lz);
+  uint c = atomicAdd(G[b + 1u], 1u);
+  if (c < 6u) {
+    G[b + 2u + c] = ref;
+  }
+}
+
+// a cube at (x, z) in units relative to the origin cell's corner: into
+// the cells it reaches
+void gcube(int ux, int uz, uint ref) {
+  int ix = ux >> 18;
+  int iz = uz >> 18;
+  bool ox = (ux & 262143) != 0;
+  bool oz = (uz & 262143) != 0;
+  gput(ix, iz, ref);
+  if (ox) gput(ix + 1, iz, ref);
+  if (oz) gput(ix, iz + 1, ref);
+  if (ox && oz) gput(ix + 1, iz + 1, ref);
+}
+
+struct Hit {
+  float t;
+  vec3  n;
+  uint  kind;   // 0 sky, 1 ground, 2 stack, 3 cube, 4 moving cube, 5 player
+  vec3  bmin;
+  vec3  bmax;
+};
+
+void boxhit(vec3 ro, vec3 inv, vec3 bmin, vec3 bmax, uint kind, inout Hit h) {
+  vec3 t0 = (bmin - ro) * inv;
+  vec3 t1 = (bmax - ro) * inv;
+  vec3 tn = min(t0, t1);
+  vec3 tf = max(t0, t1);
+  float a = max(max(tn.x, tn.y), tn.z);
+  float b = min(min(tf.x, tf.y), tf.z);
+  if (a <= b && a > 0.0 && a < h.t) {
+    h.t    = a;
+    h.kind = kind;
+    h.bmin = bmin;
+    h.bmax = bmax;
+    h.n    = a == tn.x ? vec3(-sign(inv.x), 0.0, 0.0) : a == tn.y ? vec3(0.0, -sign(inv.y), 0.0)
+                       : vec3(0.0, 0.0, -sign(inv.z));
+  }
+}
+
+vec3 cube_at(uint slot, uint i) {
+  uint b = slot * 32u;
+  uint o = b + 4u + i * 4u;
+  return vec3(float(int(T[b] - F[H_OCX])) + float(T[o]) / S, float(T[o + 1u]) / S,
+              float(int(T[b + 1u] - F[H_OCZ])) + float(T[o + 2u]) / S);
+}
+
+vec3 dyn_at(uint i) {
+  uint o = H_DYN + i * 4u;
+  return vec3(float(int(F[o])) / S, float(F[o + 1u]) / S, float(int(F[o + 2u])) / S);
+}
+
+// the stack and the cubes of cell (ix, iz)
+void cell(ivec2 c, vec3 ro, vec3 inv, bool noplayer, inout Hit h) {
+  int  lx = c.x + GRID / 2;
+  int  lz = c.y + GRID / 2;
+  bool in_grid = uint(lx) < uint(GRID) && uint(lz) < uint(GRID);
+  uint b   = in_grid ? gbase(lx, lz) : 0u;
+  uint w0  = in_grid ? G[b] : gcount(F[H_SEED], F[H_OCX] + uint(c.x), F[H_OCZ] + uint(c.y)) << 8;
+  uint k   = (w0 & 1u) != 0u ? 0u : w0 >> 8;
+  if (k > 0u) {
+    boxhit(ro, inv, vec3(c.x, 0.0, c.y), vec3(c.x + 1, float(k), c.y + 1), 2u, h);
+  }
+  if (!in_grid) {
+    return;
+  }
+  uint n = min(G[b + 1u], 6u);
+  for (uint j = 0u; j < n; j++) {
+    uint r = G[b + 2u + j];
+    if ((r & 0x80000000u) != 0u) {
+      uint i = r & 0xffffu;
+      uint kind = F[H_DYN + i * 4u + 3u] == 1u ? 5u : 4u;
+      if (kind == 5u && noplayer) {
+        continue;
+      }
+      vec3 p = dyn_at(i);
+      boxhit(ro, inv, p, p + 1.0, kind, h);
+    } else {
+      vec3 p = cube_at(r >> 3, r & 7u);
+      boxhit(ro, inv, p, p + 1.0, 3u, h);
+    }
+  }
+}
+
+// the nearest hit along ro + t rd, t < tmax (the ground at y = 0 included)
+// the top of everything this frame (passes 0 to 2), in metres
+float hmax() {
+  return float(G[HMW]) / 256.0 + 0.01;
+}
+
+Hit trace(vec3 ro, vec3 rd, float tmax, bool noplayer) {
+  float top = hmax();
+  Hit h;
+  h.t = tmax;
+  h.kind = 0u;
+  h.n = vec3(0.0, 1.0, 0.0);
+  if (rd.y < -1e-6) {
+    float tg = -ro.y / rd.y;
+    if (tg < h.t) {
+      h.t = tg;
+      h.kind = 1u;
+    }
+  }
+  vec3 inv = 1.0 / rd;
+  vec2 d = rd.xz;
+  ivec2 c = ivec2(floor(ro.xz));
+  ivec2 st = ivec2(d.x >= 0.0 ? 1 : -1, d.y >= 0.0 ? 1 : -1);
+  vec2 tdel = vec2(abs(1.0 / d.x), abs(1.0 / d.y));
+  vec2 tn = vec2((d.x >= 0.0 ? float(c.x + 1) - ro.x : ro.x - float(c.x)) * tdel.x,
+                 (d.y >= 0.0 ? float(c.y + 1) - ro.z : ro.z - float(c.y)) * tdel.y);
+  float tc = 0.0;
+  for (int i = 0; i < 512; i++) {
+    // above everything and going up: nothing more to meet
+    float y0 = ro.y + rd.y * tc;
+    if (y0 > top && rd.y >= 0.0) {
+      break;
+    }
+    cell(c, ro, inv, noplayer, h);
+    float tx = min(tn.x, tn.y);
+    if (h.t <= tx || tx >= h.t) {
+      break;
+    }
+    tc = tx;
+    if (tn.x < tn.y) {
+      c.x += st.x;
+      tn.x += tdel.x;
+    } else {
+      c.y += st.y;
+      tn.y += tdel.y;
+    }
+  }
+  return h;
+}
+
+// how far the sun reaches p: 1 lit, 0 in shadow
+float sunlight(vec3 p, vec3 L) {
+  float tmax = max((hmax() - p.y) / max(L.y, 0.05), 0.0);
+  Hit h = trace(p, L, tmax, false);
+  return h.kind == 0u || h.kind == 1u ? 1.0 : 0.0;
+}
+
+// contact shade on the ground: how close the nearest cube's foot is
+float groundshade(vec3 p) {
+  ivec2 c = ivec2(floor(p.xz));
+  float d = 1.0;
+  for (int dz = -1; dz <= 1; dz++) {
+    for (int dx = -1; dx <= 1; dx++) {
+      ivec2 q = c + ivec2(dx, dz);
+      int  lx = q.x + GRID / 2;
+      int  lz = q.y + GRID / 2;
+      bool in_grid = uint(lx) < uint(GRID) && uint(lz) < uint(GRID);
+      uint b = in_grid ? gbase(lx, lz) : 0u;
+      uint w0 = in_grid ? G[b] : 0u;
+      if ((w0 & 1u) == 0u && w0 >> 8 > 0u) {
+        vec2 e = max(max(vec2(q) - p.xz, p.xz - vec2(q) - 1.0), 0.0);
+        d = min(d, length(e));
+      }
+      if (in_grid) {
+        uint n = min(G[b + 1u], 6u);
+        for (uint j = 0u; j < n; j++) {
+          uint r = G[b + 2u + j];
+          vec3 m = (r & 0x80000000u) != 0u ? dyn_at(r & 0xffffu) : cube_at(r >> 3, r & 7u);
+          if (m.y < 0.2) {
+            vec2 e = max(max(m.xz - p.xz, p.xz - m.xz - 1.0), 0.0);
+            d = min(d, length(e) + m.y);
+          }
+        }
+      }
+    }
+  }
+  return mix(0.55, 1.0, smoothstep(0.0, 0.7, d));
+}
+
+vec3 skycol(vec3 rd, vec3 L) {
+  vec3 hor = vec3(0.74, 0.84, 0.94);
+  vec3 zen = vec3(0.24, 0.47, 0.84);
+  vec3 c = mix(hor, zen, pow(clamp(rd.y, 0.0, 1.0), 0.6));
+  float s = max(dot(rd, L), 0.0);
+  c += vec3(1.0, 0.9, 0.7) * (pow(s, 900.0) * 3.0 + pow(s, 12.0) * 0.18);
+  return c;
+}
+
+float hash2(vec2 p) {
+  return float(mixh(floatBitsToUint(p.x) ^ mixh(floatBitsToUint(p.y)))) / 4294967296.0;
+}
+
+vec3 shade(Hit h, vec3 ro, vec3 rd, vec3 L) {
+  if (h.kind == 0u) {
+    return skycol(rd, L);
+  }
+  vec3 p = ro + rd * h.t;
+  vec3 n = h.n;
+  vec3 base;
+  float ao = 1.0;
+  if (h.kind == 1u) {
+    n = vec3(0.0, 1.0, 0.0);
+    vec2 g = fract(p.xz);
+    vec2 e = min(g, 1.0 - g);
+    float line = 1.0 - (1.0 - smoothstep(0.0, 0.02, min(e.x, e.y))) * 0.25;
+    ivec2 big = ivec2(floor(p.xz / 8.0));
+    float chk = ((big.x + big.y) & 1) == 0 ? 1.0 : 0.94;
+    base = vec3(0.60, 0.66, 0.55) * line * chk;
+    ao = groundshade(p);
+  } else {
+    base = h.kind == 5u ? vec3(0.10, 0.32, 0.95) : vec3(0.28, 0.70, 0.24);
+    // the cube's edges (a stack's too, every metre up)
+    vec3 q = p - h.bmin;
+    vec3 sz = h.bmax - h.bmin;
+    vec3 e3 = min(q, sz - q);
+    e3.y = h.kind == 2u ? min(fract(q.y), 1.0 - fract(q.y)) : e3.y;
+    float e = abs(n.x) > 0.5 ? min(e3.y, e3.z) : abs(n.y) > 0.5 ? min(e3.x, e3.z) : min(e3.x, e3.y);
+    base *= mix(0.55, 1.0, smoothstep(0.0, 0.045, e));
+    base *= 0.94 + 0.06 * hash2(floor(p * 8.0).xz + floor(p.y * 8.0));
+    ao = mix(0.72, 1.0, smoothstep(0.0, 0.8, p.y));
+  }
+  float sun = max(dot(n, L), 0.0);
+  if (sun > 0.0) {
+    sun *= sunlight(p + n * 0.003, L);
+  }
+  vec3 amb = mix(vec3(0.46, 0.44, 0.40), vec3(0.50, 0.62, 0.80), 0.5 + 0.5 * n.y);
+  vec3 c = base * (amb * 0.55 * ao + vec3(1.0, 0.94, 0.82) * 0.85 * sun * (0.6 + 0.4 * ao));
+  if (h.kind == 5u) {
+    c += vec3(0.05, 0.12, 0.35) * pow(1.0 - max(dot(-rd, n), 0.0), 3.0);
+  }
+  float f = 1.0 - exp(-h.t * 0.016);
+  return mix(c, skycol(normalize(vec3(rd.x, max(rd.y, 0.0), rd.z)), L) * 0.95, f);
+}
+
+vec3 angles_dir(float yaw, float pitch) {
+  return vec3(sin(yaw) * cos(pitch), -sin(pitch), cos(yaw) * cos(pitch));
+}
+
+vec3 target() {
+  return vec3(float(int(F[H_PX])) / S + 0.5, float(F[H_PY]) / S + 0.8, float(int(F[H_PZ])) / S + 0.5);
+}
+
+float yaw() {
+  return float(F[H_YAW] & 1023u) * (6.2831853 / 1024.0);
+}
+
+float pitch() {
+  return (float(F[H_PITCH]) - 256.0) * (6.2831853 / 1024.0);
+}
+
+// the HUD's text: the character at column col of line ln
+uint textchar(uint ln, uint col) {
+  if (col >= TEXT_W * 4u) {
+    return 0u;
+  }
+  return (F[H_TEXT + ln * TEXT_W + (col >> 2)] >> ((col & 3u) * 8u)) & 255u;
+}
+
+bool glyph(uint ch, uint x, uint y) {
+  if (ch < 32u) {
+    return false;
+  }
+  uint w = FONT[(ch - 32u) * 4u + (y >> 2)];
+  return ((w >> ((y & 3u) * 8u + (7u - x))) & 1u) != 0u;
+}
+
+vec3 hud(uvec2 px, vec3 c) {
+  uint sc = max(F[H_SCALE], 1u);
+  uint lines = min(F[H_LINES], 40u);
+  if (lines == 0u || px.x < 12u || px.y < 12u) {
+    return c;
+  }
+  uint x = (px.x - 12u) / sc;
+  uint y = (px.y - 12u) / sc;
+  uint ln = y / 17u;
+  uint yy = y % 17u;
+  if (ln >= lines) {
+    return c;
+  }
+  uint col = x / 8u;
+  // the panel: as wide as the longest line (pass 3)
+  uint wmax = G[CAMW + 3u];
+  if (col > wmax) {
+    return c;
+  }
+  uint sel = F[H_SEL];
+  vec3 bg = ln == sel ? vec3(0.10, 0.22, 0.45) : vec3(0.0);
+  c = mix(c, bg, ln == sel ? 0.75 : 0.55);
+  if (yy < 16u && col < wmax && glyph(textchar(ln, col), x % 8u, yy)) {
+    c = ln == 0u ? vec3(0.55, 0.78, 1.0) : vec3(0.95);
+  }
+  return c;
+}
+
+void main() {
+  uvec2 gid = gl_GlobalInvocationID.xy;
+  uint lin = gl_WorkGroupID.x * 64u + gl_LocalInvocationIndex;
+  if (pc.pass == 0u) {
+    if (lin < uint(GRID * GRID)) {
+      int lx = int(lin & 255u);
+      int lz = int(lin >> 8);
+      uint k = gcount(F[H_SEED], F[H_OCX] + uint(lx - GRID / 2), F[H_OCZ] + uint(lz - GRID / 2));
+      G[lin * 8u] = k << 8;
+      G[lin * 8u + 1u] = 0u;
+    }
+    if (lin == 0u) {
+      G[HMW] = 3u * 256u;
+    }
+    return;
+  }
+  if (pc.pass == 1u) {
+    if (lin >= SLOTS) {
+      return;
+    }
+    uint b = lin * 32u;
+    uint cx = T[b];
+    if (cx == 0u) {
+      return;
+    }
+    int ix = int(cx - F[H_OCX]);
+    int iz = int(T[b + 1u] - F[H_OCZ]);
+    if (abs(ix) > GRID / 2 + 1 || abs(iz) > GRID / 2 + 1) {
+      return;
+    }
+    int lx = ix + GRID / 2;
+    int lz = iz + GRID / 2;
+    if (uint(lx) < uint(GRID) && uint(lz) < uint(GRID)) {
+      atomicOr(G[gbase(lx, lz)], 1u);
+    }
+    uint n = min(T[b + 2u], 7u);
+    for (uint i = 0u; i < n; i++) {
+      uint o = b + 4u + i * 4u;
+      gcube((ix << 18) + int(T[o]), (iz << 18) + int(T[o + 2u]), (lin << 3) | i);
+      atomicMax(G[HMW], (T[o + 1u] >> 10) + 256u);
+    }
+    return;
+  }
+  if (pc.pass == 2u) {
+    if (lin < F[H_NDYN]) {
+      uint o = H_DYN + lin * 4u;
+      gcube(int(F[o]), int(F[o + 2u]), 0x80000000u | lin);
+      atomicMax(G[HMW], (F[o + 1u] >> 10) + 256u);
+    }
+    return;
+  }
+  if (pc.pass == 3u) {
+    if (lin == 0u) {
+      vec3 t = target();
+      vec3 v = angles_dir(yaw(), pitch());
+      float dist = float(F[H_DIST]) / S;
+      Hit h = trace(t, -v, dist + 0.3, true);
+      float d = h.kind == 0u ? dist : max(h.t - 0.3, 0.25);
+      vec3 eye = t - v * d;
+      eye.y = max(eye.y, 0.15);
+      G[CAMW] = floatBitsToUint(eye.x);
+      G[CAMW + 1u] = floatBitsToUint(eye.y);
+      G[CAMW + 2u] = floatBitsToUint(eye.z);
+      uint lines = min(F[H_LINES], 40u);
+      uint wmax = 0u;
+      for (uint l = 0u; l < lines; l++) {
+        for (uint k = 0u; k < TEXT_W * 4u; k++) {
+          if (textchar(l, k) != 0u) {
+            wmax = max(wmax, k + 1u);
+          }
+        }
+      }
+      G[CAMW + 3u] = wmax;
+    }
+    return;
+  }
+  if (gid.x >= pc.width || gid.y >= pc.height) {
+    return;
+  }
+  vec3 ro = vec3(uintBitsToFloat(G[CAMW]), uintBitsToFloat(G[CAMW + 1u]), uintBitsToFloat(G[CAMW + 2u]));
+  vec3 v = normalize(target() - ro);
+  vec3 r = normalize(cross(v, vec3(0.0, 1.0, 0.0)));
+  vec3 u = cross(r, v);
+  float aspect = float(pc.width) / float(pc.height);
+  float tf = 0.58;
+  vec2 s = vec2((2.0 * (float(gid.x) + 0.5) / float(pc.width) - 1.0) * aspect,
+                1.0 - 2.0 * (float(gid.y) + 0.5) / float(pc.height));
+  vec3 rd = normalize(v + (s.x * r + s.y * u) * tf);
+  vec3 L = normalize(vec3(0.45, 0.85, 0.30));
+  Hit h = trace(ro, rd, FAR, false);
+  vec3 c = shade(h, ro, rd, L);
+  c = pow(clamp(c, 0.0, 1.0), vec3(0.85));
+  // a vignette
+  vec2 q = vec2(gid) / vec2(pc.width, pc.height) - 0.5;
+  c *= 1.0 - 0.25 * dot(q, q);
+  c = hud(gid, c);
+  imageStore(outimg, ivec2(gid), vec4(c, 1.0));
+}
