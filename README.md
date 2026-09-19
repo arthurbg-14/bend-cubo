@@ -172,7 +172,8 @@ Três bugs plausíveis, cada um numa cópia do projeto. Cada um compila
     LAWS.bend     as leis          PROOF.bend   as provas
     world.bend    o mundo: gerador por hash, trie das células mudadas, vizinhança
                   de um corpo, cubos acordados e dormindo, o tick do mundo
-                  (a octree em paralelo para muitos cubos)
+                  (blocos coloridos em paralelo para muitos cubos; a octree
+                  para cubos rapidíssimos)
     clash.bend    o teste de colisão (./build.sh test)
     main.bend     o jogo: entrada, câmera, constantes, HUD, o laço de frames
     bench.bend    benchmark sem janela
@@ -197,29 +198,39 @@ Três bugs plausíveis, cada um numa cópia do projeto. Cada um compila
   menos de um cubo e do quanto ele anda nesse tick (`W.reach`). A simulação
   consulta só as células desse alcance (em geral 3×3) e só os corpos
   acordados dentro dele. Os de longe passam intactos.
-- **Muitos cubos: uma octree em paralelo.** Com poucos acordados (menos de
-  128), cada um olha os outros diretamente. Com muitos, o tick monta uma
-  octree:
-  - **O corte.** Cada nó corta a caixa dos seus cubos no meio do lado mais
-    longo. O escalonador do Bend divide o trabalho em dois de cada vez
-    (`a b = f(x) g(y)`), então cada nível da octree são três cortes, um por
-    eixo, com as mesmas caixas.
-  - **A margem.** Um cubo desce para um lado só se tudo o que ele pode
-    tocar no tick (o alcance, mais meio cubo de margem) está daquele lado;
-    os outros ficam no nó. Com essa margem, cubos de lados diferentes nunca
-    se tocam nem tocam o mesmo corpo. Os dois lados rodam em paralelo, e
-    depois rodam os cubos do nó, entre o que os lados deixaram perto do
-    plano.
-  - **Os que dormem.** Um cubo dormindo que leva um empurrão só acorda no
-    fim do tick (até lá, quem o toca já o vê andando). Assim dois ramos
-    nunca escrevem nas células ao mesmo tempo.
-  - **A leitura das células.** Cada nó lê as células da sua região uma vez,
-    não uma vez por cubo. A trie de 30 níveis, lida por todos os ramos ao
-    mesmo tempo, era metade do tempo.
+- **Muitos cubos: blocos coloridos, em paralelo.** Com poucos acordados
+  (menos de 128), cada um olha os outros diretamente. Com muitos:
+  - **Os blocos.** O chão é dividido em blocos de 4×4 m, e cada bloco ganha
+    uma de 4 cores, pela paridade do x e do z (um xadrez 2×2). Dois blocos
+    da mesma cor têm um bloco inteiro entre eles. Esses 4 m são mais que um
+    cubo mais duas vezes o que qualquer coisa alcança num tick, então os
+    cubos de dois blocos da mesma cor nunca tocam o mesmo corpo.
+  - **As 4 fases.** O tick roda uma fase por cor. Em cada fase, todos os
+    blocos daquela cor rodam ao mesmo tempo, e cada um roda seus cubos em
+    ordem, entre os cubos dos 8 blocos em volta (parados nessa fase) e os
+    cubos dormindo. Cada cubo roda uma vez por tick, na fase do seu bloco.
+  - **A árvore.** Os blocos ficam numa árvore espacial que corta um bit de
+    cada vez, do mais alto para o mais baixo, x e z alternados: é a octree
+    sem os cortes em y, porque os cubos ficam perto do chão. A árvore é
+    montada a cada tick por partição radix, as duas metades em paralelo, e
+    as fases a percorrem com um fork em cada nó (`a b = f(x) g(y)`).
+  - **Tudo no mesmo tick.** O jogador olha só os 9 blocos em volta dele. Um
+    cubo dormindo que leva um empurrão acorda no fim do tick (até lá, quem o
+    toca já o vê andando). Cada bloco decide em paralelo quais dos seus
+    cubos param, e as células são gravadas depois, uma a uma.
+  - **A octree.** Se algo alcança mais de 1 m num tick (acima de ~120 m/s),
+    a separação dos blocos não vale, e o tick usa a octree: a caixa dos
+    cubos cortada ao meio, com os cubos que atravessam o corte rodando
+    depois dos dois lados.
+
+  As células mudadas ficam numa trie rasa, pelos 8 bits baixos de cada
+  eixo (a de 30 níveis era metade do tempo), e cada bloco lê as células da
+  sua região uma vez por tick.
 
   `./build.sh test` derruba 432 cubos uns sobre os outros por 300 ticks e
   confere, a cada tick, que nenhum entra em outro e que nenhum some. Roda o
-  mesmo cenário pela lista, pela octree e pela mistura que o jogo usa.
+  mesmo cenário pela lista, pela octree, pelos blocos e pela mistura que o
+  jogo usa.
 - **Na GPU**, um compute shader em cinco passes por frame:
   1. monta uma grade 256×256 em volta do jogador, já com o gerador calculado;
   2. marca as células mudadas, lidas de uma tabela de hash que o `screen.c`
@@ -244,24 +255,27 @@ AMD Ryzen 7 5700U com a Radeon integrada (Vega 8, RADV), 1280×720:
 | um tick de um corpo entre 10 obstáculos (`Body.tick`) | 0,79 µs |
 | tick do mundo andando e empurrando | 22 µs, ou ~0,3 % de um núcleo a 128 ticks/s |
 | tick do mundo com 64 cubos caindo e se empilhando | 0,65 ms |
-| tick do mundo com 1024 cubos caindo ao mesmo tempo (octree) | 11 ms |
+| tick do mundo com 1024 cubos caindo ao mesmo tempo (blocos) | ~6 ms |
 | cabeçalho de um frame (câmera, corpos, HUD) | 33 µs |
 
 `./build.sh bench && ./bench` roda esses cenários sem janela.
 
 **Quantos cubos se mexendo ao mesmo tempo.** Medido com cubos caindo, todos
-acordados:
+acordados. As três versões rodaram alternadas, na mesma máquina, com outros
+processos usando ~4 núcleos (CPU a ~95 °C):
 
-| cubos | antes (cada cubo olhava todos os outros) | octree em paralelo |
-|---|---|---|
-| 256 | 6,9 ms/tick | 3,1 ms/tick |
-| 1024 | 87 ms/tick | 8,6 ms/tick |
-| 4096 | 2994 ms/tick | 29 ms/tick |
+| cubos | cada um olhava todos | octree | blocos coloridos |
+|---|---|---|---|
+| 256 | 6,9 ms/tick | 3,4 ms/tick | 2,3 ms/tick |
+| 1024 | 87 ms/tick | 9,5 ms/tick | 5,7 ms/tick |
+| 2025 | — | 16,8 ms/tick | 10,0 ms/tick |
+| 4096 | 2994 ms/tick | 31,6 ms/tick | 17,0 ms/tick |
 
-O tempo real pede 7,8 ms por tick (128 por segundo), então cabem ~800 cubos
-se mexendo ao mesmo tempo; antes cabiam ~256. Com mais, a simulação continua
-certa, só anda mais devagar que o relógio. Um cubo parado não custa nada, e o
-mundo tem quantos cubos parados couberem nele.
+O tempo real pede 7,8 ms por tick (128 por segundo), então cabem ~1400 cubos
+se mexendo ao mesmo tempo; eram ~256 com cada cubo olhando todos. Com mais,
+a simulação continua certa, só anda mais devagar que o relógio: com 4096,
+na metade da velocidade. Um cubo parado não custa nada, e o mundo tem
+quantos cubos parados couberem nele.
 
 A GPU desenha no máximo 250 cubos em movimento de uma vez, o jogador
 incluído. Os outros aparecem quando param.
@@ -278,3 +292,5 @@ o HUD mostra):
 | linhas fixas do HUD reescritas só quando mudam | 90 µs/frame | 31 |
 | cubos acordados numa octree em paralelo, em vez de cada um varrer todos (O(N²)) | 1024 cubos: 87 ms/tick | 11,8 |
 | células dos cubos dormindo lidas uma vez por nó da octree, e não por cubo | 1024 cubos: 11,8 ms/tick | 8,6 |
+| blocos coloridos: 4 fases, cada uma com todos os blocos de uma cor em paralelo (a octree deixava 47% dos cubos nos cortes, em sequência) | 4096 cubos: 31 ms/tick | 19 |
+| trie das células com 8 níveis em vez de 30; vizinhos filtrados pelo alcance do bloco; o que mudou no vizinho anotado a cada passo, sem reordenar | 4096 cubos: 19 ms/tick | 16–17 |

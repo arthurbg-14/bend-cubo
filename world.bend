@@ -82,13 +82,19 @@ def Gen.cubes(+seed: U32, +cx: U32, +cz: U32) -> List<&2, P.Body>:
 
 # The cells
 # ---------
-# A trie over the 30 bits of a cell's x and z: a node splits on one bit of
-# each. A leaf is a changed cell (its sleeping cubes); CGen, a region as
-# generated.
+# A trie over the low 8 bits of a cell's x and z (a node splits on one bit
+# of each: 8 levels, 256 x 256 slots). A leaf holds the changed cells of
+# its slot (cells 256 m apart share one), each with its sleeping cubes;
+# CGen, nothing changed below. Shallow on purpose: the ticks read it for
+# every awake cube's neighbourhood, and 30 levels (one per bit of a cell)
+# were half their time.
+
+type Ce is Data:
+  Ce{cx: U32, cz: U32, cubes: List<&2, P.Body>}
 
 type Cells is Data:
   CGen{}
-  CLeaf{cubes: List<&2, P.Body>}
+  CLeaf{es: List<&2, Ce>}
   CNode{a: Cells, b: Cells, c: Cells, d: Cells}
 
 def W.bit(+c: U32, l: Nat) -> Bool:
@@ -98,14 +104,44 @@ def W.bit(+c: U32, l: Nat) -> Bool:
     case 1n+k:
       U32.is_eq(((c >> k) .&. 1 : U32), 1)
 
+def Cells.pickl(c: Bool, a: List<&2, P.Body>, b: List<&2, P.Body>) -> List<&2, P.Body>:
+  match c:
+    case True{}:
+      a
+    case False{}:
+      b
+
+# the cubes of cell (cx, cz) among a slot's changed cells, or as generated
+def Cells.find(es: List<&2, Ce>, +seed: U32, +cx: U32, +cz: U32) -> List<&2, P.Body>:
+  match es:
+    case []:
+      Gen.cubes(seed, cx, cz)
+    case Ce{+x, +z, cubes} <> rest:
+      Cells.pickl(Bool.and(U32.is_eq(x, cx), U32.is_eq(z, cz)), cubes, Cells.find(rest, seed, cx, cz))
+
+def Cells.pickc(c: Bool, a: List<&2, Ce>, b: List<&2, Ce>) -> List<&2, Ce>:
+  match c:
+    case True{}:
+      a
+    case False{}:
+      b
+
+# a slot's changed cells with (cx, cz) set to cubes
+def Cells.upd(es: List<&2, Ce>, +cx: U32, +cz: U32, +cubes: List<&2, P.Body>) -> List<&2, Ce>:
+  match es:
+    case []:
+      [Ce{cx, cz, cubes}]
+    case Ce{+x, +z, cs} <> +rest:
+      Cells.pickc(Bool.and(U32.is_eq(x, cx), U32.is_eq(z, cz)), Ce{cx, cz, cubes} <> rest, Ce{x, z, cs} <> Cells.upd(rest, cx, cz, cubes))
+
 # the sleeping cubes of cell (cx, cz); l levels left, (bx, bz) the bits
 # that choose among the node's children
 def Cells.get(+l: Nat, t: Cells, +seed: U32, +cx: U32, +cz: U32, bx: Bool, bz: Bool) -> List<&2, P.Body>:
   match l t bx bz:
     case _ CGen{} _ _:
       Gen.cubes(seed, cx, cz)
-    case _ CLeaf{cubes} _ _:
-      cubes
+    case _ CLeaf{es} _ _:
+      Cells.find(es, seed, cx, cz)
     case 0n CNode{a, b, c, d} _ _:
       []
     case 1n+k CNode{a, b, c, d} False{} False{}:
@@ -118,16 +154,18 @@ def Cells.get(+l: Nat, t: Cells, +seed: U32, +cx: U32, +cz: U32, bx: Bool, bz: B
       Cells.get(k, d, seed, cx, cz, W.bit(cx, k), W.bit(cz, k))
 
 def Cells.levels() -> Nat:
-  30n
+  8n
 
 def Cells.at(+t: Cells, +seed: U32, +cx: U32, +cz: U32) -> List<&2, P.Body>:
   Cells.get(Cells.levels(), t, seed, cx, cz, W.bit(cx, Cells.levels()), W.bit(cz, Cells.levels()))
 
 # cell (cx, cz) set to cubes
-def Cells.put(+l: Nat, t: Cells, +cx: U32, +cz: U32, cubes: List<&2, P.Body>, bx: Bool, bz: Bool) -> Cells:
+def Cells.put(+l: Nat, t: Cells, +cx: U32, +cz: U32, +cubes: List<&2, P.Body>, bx: Bool, bz: Bool) -> Cells:
   match l t bx bz:
+    case 0n CLeaf{es} _ _:
+      CLeaf{Cells.upd(es, cx, cz, cubes)}
     case 0n _ _ _:
-      CLeaf{cubes}
+      CLeaf{[Ce{cx, cz, cubes}]}
     case 1n+k CNode{a, b, c, d} False{} False{}:
       CNode{Cells.put(k, a, cx, cz, cubes, W.bit(cx, k), W.bit(cz, k)), b, c, d}
     case 1n+k CNode{a, b, c, d} True{} False{}:
@@ -996,8 +1034,168 @@ def Q.end(+pool: List<&2, P.Body>, q: Sq) -> Sq3:
   Sq{bk, ev} = q
   Q.end2(Q.pull(pool, Pl{[], bk}), ev)
 
+def Q.bseq(+k: P.K, +seed: U32, +src: Src, +todo: List<&2, P.Body>, +pool: List<&2, P.Body>, ev: List<&2, P.Body>) -> Sq3:
+  Q.end(pool, Q.steps(todo, k, seed, src, Sq{Bk.adds(todo, Bk.adds(pool, BE{})), ev}))
+
+# The same for a few: each cube among the others, split by distance (n^2,
+# but no map to build: cheaper under about a hundred, measured)
+
+type Lz is Data:
+  Lz{done: List<&2, P.Body>, todo: List<&2, P.Body>, pool: List<&2, P.Body>, ev: List<&2, P.Body>}
+
+def Q.le(c: P.Body, pn: List<&2, P.Body>, dn: List<&2, P.Body>, sp: Two, far: Far, +ev: List<&2, P.Body>) -> Lz:
+  Two{rn, sl} = sp
+  Far{pf, df, rf} = far
+  Lz{c <> List.append(&2, P.Body, dn, df), List.append(&2, P.Body, rn, rf), List.append(&2, P.Body, pn, pf), Q.upsert(sl, ev)}
+
+def Q.ld(+nr: Nat, c: P.Body, pn: List<&2, P.Body>, sp: Two, far: Far, +ev: List<&2, P.Body>) -> Lz:
+  Two{dn, rest} = sp
+  Q.le(c, pn, dn, W.split(nr, rest), far, ev)
+
+def Q.lc(+nd: Nat, +nr: Nat, c: P.Body, sp: Two, far: Far, +ev: List<&2, P.Body>) -> Lz:
+  Two{pn, rest} = sp
+  Q.ld(nr, c, pn, W.split(nd, rest), far, ev)
+
+def Q.lb(+np: Nat, +nd: Nat, +nr: Nat, r: P.Body & List<&2, P.Body>, far: Far, +ev: List<&2, P.Body>) -> Lz:
+  (c, obs) = r
+  Q.lc(nd, nr, c, W.split(np, obs), far, ev)
+
+def Q.la(+k: P.K, +src: Src, +seed: U32, +c: P.Body, pp: Two, dd: Two, rr: Two, +ev: List<&2, P.Body>) -> Lz:
+  Two{+pn, pf} = pp
+  Two{+dn, df} = dd
+  Two{+rn, rf} = rr
+  Q.lb(List.length(&2, P.Body, pn), List.length(&2, P.Body, dn), List.length(&2, P.Body, rn),
+    P.Body.tick(k, List.append(&2, P.Body, pn, List.append(&2, P.Body, dn, List.append(&2, P.Body, rn,
+      Q.shadow(Q.around(k, src, seed, c), ev)))), P.In.idle(), c), Far{pf, df, rf}, ev)
+
+def Q.lgo(+k: P.K, +seed: U32, +src: Src, done: List<&2, P.Body>, todo: List<&2, P.Body>, pool: List<&2, P.Body>,
+  ev: List<&2, P.Body>) -> Lz:
+  match todo:
+    case []:
+      Lz{done, [], pool, ev}
+    case +c <> rest:
+      +m = W.reach(k, c)
+      Q.la(k, src, seed, c, W.part_near(m, c, pool), W.part_near(m, c, done), W.part_near(m, c, rest), ev)
+
+def Q.lsteps(n: Nat, +k: P.K, +seed: U32, +src: Src, z: Lz) -> Lz:
+  match n:
+    case 0n:
+      z
+    case 1n+m:
+      Lz{done, todo, pool, ev} = z
+      Q.lsteps(m, k, seed, src, Q.lgo(k, seed, src, done, todo, pool, ev))
+
+# the pool back in its first order (as the steps left it)
+def Q.lend(+pool0: List<&2, P.Body>, z: Lz) -> Sq3:
+  Lz{done, todo, +pool, ev} = z
+  Sq3{List.append(&2, P.Body, todo, done), O.apply(pool0, pool), ev}
+
+def Q.lseq(+k: P.K, +seed: U32, +src: Src, +todo: List<&2, P.Body>, +pool: List<&2, P.Body>, ev: List<&2, P.Body>) -> Sq3:
+  Q.lend(pool, Q.lsteps(List.length(&2, P.Body, todo), k, seed, src, Lz{[], todo, pool, ev}))
+
+def Q.seq2(few: Bool, +k: P.K, +seed: U32, +src: Src, +todo: List<&2, P.Body>, +pool: List<&2, P.Body>, ev: List<&2, P.Body>) -> Sq3:
+  match few:
+    case True{}:
+      Q.lseq(k, seed, src, todo, pool, ev)
+    case False{}:
+      Q.bseq(k, seed, src, todo, pool, ev)
+
+# The same, telling what changed of the pool instead of giving it back in
+# order: each step compares the pool cubes it met before and after its
+# tick (pushes are rare; restoring the order was n^2)
+
+type Sq4 is Data:
+  Sq4{todo: List<&2, P.Body>, chg: List<&2, P.Body>, ev: List<&2, P.Body>}
+
+type Lc is Data:
+  Lc{done: List<&2, P.Body>, todo: List<&2, P.Body>, pool: List<&2, P.Body>, ev: List<&2, P.Body>, chg: List<&2, P.Body>}
+
+def Q.upch(same: Bool, +n: P.Body, +chg: List<&2, P.Body>) -> List<&2, P.Body>:
+  match same:
+    case True{}:
+      chg
+    case False{}:
+      Q.up2(O.has(n, chg), True{}, n, chg)
+
+def Q.chg2(os: List<&2, P.Body>, ns: List<&2, P.Body>, +chg: List<&2, P.Body>) -> List<&2, P.Body>:
+  match os ns:
+    case +o <> or +n <> nr:
+      Q.chg2(or, nr, Q.upch(W.eqb(o, n), n, chg))
+    case _ _:
+      chg
+
+def Q.ce(c: P.Body, +pn0: List<&2, P.Body>, +pn: List<&2, P.Body>, dn: List<&2, P.Body>, sp: Two, far: Far, +ev: List<&2, P.Body>,
+  +chg: List<&2, P.Body>) -> Lc:
+  Two{rn, sl} = sp
+  Far{pf, df, rf} = far
+  Lc{c <> List.append(&2, P.Body, dn, df), List.append(&2, P.Body, rn, rf), List.append(&2, P.Body, pn, pf), Q.upsert(sl, ev),
+    Q.chg2(pn0, pn, chg)}
+
+def Q.cd(+nr: Nat, c: P.Body, +pn0: List<&2, P.Body>, +pn: List<&2, P.Body>, sp: Two, far: Far, +ev: List<&2, P.Body>,
+  +chg: List<&2, P.Body>) -> Lc:
+  Two{dn, rest} = sp
+  Q.ce(c, pn0, pn, dn, W.split(nr, rest), far, ev, chg)
+
+def Q.cc(+nd: Nat, +nr: Nat, c: P.Body, +pn0: List<&2, P.Body>, sp: Two, far: Far, +ev: List<&2, P.Body>, +chg: List<&2, P.Body>) -> Lc:
+  Two{+pn, rest} = sp
+  Q.cd(nr, c, pn0, pn, W.split(nd, rest), far, ev, chg)
+
+def Q.cb(+np: Nat, +nd: Nat, +nr: Nat, +pn0: List<&2, P.Body>, r: P.Body & List<&2, P.Body>, far: Far, +ev: List<&2, P.Body>,
+  +chg: List<&2, P.Body>) -> Lc:
+  (c, obs) = r
+  Q.cc(nd, nr, c, pn0, W.split(np, obs), far, ev, chg)
+
+def Q.ca(+k: P.K, +src: Src, +seed: U32, +c: P.Body, pp: Two, dd: Two, rr: Two, +ev: List<&2, P.Body>, +chg: List<&2, P.Body>) -> Lc:
+  Two{+pn, pf} = pp
+  Two{+dn, df} = dd
+  Two{+rn, rf} = rr
+  Q.cb(List.length(&2, P.Body, pn), List.length(&2, P.Body, dn), List.length(&2, P.Body, rn), pn,
+    P.Body.tick(k, List.append(&2, P.Body, pn, List.append(&2, P.Body, dn, List.append(&2, P.Body, rn,
+      Q.shadow(Q.around(k, src, seed, c), ev)))), P.In.idle(), c), Far{pf, df, rf}, ev, chg)
+
+def Q.cgo(+k: P.K, +seed: U32, +src: Src, done: List<&2, P.Body>, todo: List<&2, P.Body>, pool: List<&2, P.Body>,
+  ev: List<&2, P.Body>, chg: List<&2, P.Body>) -> Lc:
+  match todo:
+    case []:
+      Lc{done, [], pool, ev, chg}
+    case +c <> rest:
+      +m = W.reach(k, c)
+      Q.ca(k, src, seed, c, W.part_near(m, c, pool), W.part_near(m, c, done), W.part_near(m, c, rest), ev, chg)
+
+def Q.csteps(n: Nat, +k: P.K, +seed: U32, +src: Src, z: Lc) -> Lc:
+  match n:
+    case 0n:
+      z
+    case 1n+m:
+      Lc{done, todo, pool, ev, chg} = z
+      Q.csteps(m, k, seed, src, Q.cgo(k, seed, src, done, todo, pool, ev, chg))
+
+def Q.cend(z: Lc) -> Sq4:
+  Lc{done, todo, pool, ev, chg} = z
+  Sq4{List.append(&2, P.Body, todo, done), chg, ev}
+
+def Q.cb3(+pool: List<&2, P.Body>, q: Sq3) -> Sq4:
+  Sq3{todo, pool2, ev} = q
+  Sq4{todo, O.changed(pool, pool2), ev}
+
+def Q.cseq2(few: Bool, +k: P.K, +seed: U32, +src: Src, +todo: List<&2, P.Body>, +pool: List<&2, P.Body>, ev: List<&2, P.Body>) -> Sq4:
+  match few:
+    case True{}:
+      Q.cend(Q.csteps(List.length(&2, P.Body, todo), k, seed, src, Lc{[], todo, pool, ev, []}))
+    case False{}:
+      Q.cb3(pool, Q.bseq(k, seed, src, todo, pool, ev))
+
+# todo tick in order among themselves, pool and the sleepers; what changed
+# of the pool
+def Q.cseq(+k: P.K, +seed: U32, +cells: Cells, +todo: List<&2, P.Body>, +pool: List<&2, P.Body>, ev: List<&2, P.Body>) -> Sq4:
+  Q.cseq2(Nat.is_lt(Nat.add(List.length(&2, P.Body, todo), List.length(&2, P.Body, pool)), 96n), k, seed,
+    Q.source(k, cells, seed, todo), todo, pool, ev)
+
+# todo tick in order among themselves, pool (pushed, not ticked) and the
+# sleepers (read once for them all when they are close together)
 def Q.seq(+k: P.K, +seed: U32, +cells: Cells, +todo: List<&2, P.Body>, +pool: List<&2, P.Body>, ev: List<&2, P.Body>) -> Sq3:
-  Q.end(pool, Q.steps(todo, k, seed, Q.source(k, cells, seed, todo), Sq{Bk.adds(todo, Bk.adds(pool, BE{})), ev}))
+  Q.seq2(Nat.is_lt(Nat.add(List.length(&2, P.Body, todo), List.length(&2, P.Body, pool)), 96n), k, seed,
+    Q.source(k, cells, seed, todo), todo, pool, ev)
 
 # The octree's tick
 # -----------------
@@ -1105,11 +1303,302 @@ def W.cubes_oct(+k: P.K, w: World) -> World:
   World{+seed, +t, +awake, dirty, +p} = w
   O.w1(k, seed, t, dirty, p, awake, O.box(awake), O.reach(awake, k, 0n))
 
-# every awake cube's tick (no input), in order, each among the bodies
-# within its reach (the player, the other awake ones) and the sleepers
-# around; what they push wakes. A few cubes look at each other directly
-# (cheaper: no map to build); many, through the buckets (measured: the
-# buckets win from about a hundred on)
+# Many awake cubes: colored blocks
+# --------------------------------
+# The floor in blocks of 4 x 4 m, each of 4 colors (the parity of its x and
+# z: a checkerboard of 2 x 2). Two blocks of a color have a whole block
+# between them, 4 m: more than a cube and twice what anything reaches in a
+# tick (2 S + 2 R, R under 1 m), so no two of their cubes touch the same
+# body. A tick runs 4 phases; in each, every block of that color ticks its
+# cubes (in order, among the cubes of the 8 blocks around, which rest this
+# phase, and the sleepers) -- all those blocks at once, Bend forking down a
+# tree of the blocks. Every cube ticks once, in its block's phase, and
+# keeps its block for the whole tick (it moves centimetres in one).
+#
+# The tree: 64 x 64 buckets (a block's low 6 bits on each axis; far blocks
+# sharing one are told apart by distance, and keep its color), cut in two
+# by one bit at a time, the highest first, x and z in turn: 12 levels,
+# every subtree a rectangle. It is built from the awake list every tick,
+# in parallel as well.
+
+type Bt is Data:
+  TE{}
+  TL{xs: List<&2, P.Body>}
+  TN{lo: Bt, hi: Bt}
+
+type Ch is Data:
+  Ch{bx: U32, bz: U32, b: P.Body}
+
+type Nb is Data:
+  Nb{bx: U32, bz: U32, xs: List<&2, P.Body>}
+
+type PR is Data:
+  PR{t: Bt, ch: List<&2, Ch>, ev: List<&2, P.Body>, pl: List<&2, P.Body>}
+
+type Tk is Data:
+  Tk{t: Bt, ev: List<&2, P.Body>, pl: P.Body}
+
+def T.key(+x: Nat) -> U32:
+  (W.blk(x) .&. 63 : U32)
+
+# the half a bucket (bx, bz) is in at level l: bit l/2 of x (from 1) at an
+# even level, bit (l + 1)/2 of z at an odd one
+def T.side2(xl: Bool, +l: Nat, +bx: U32, +bz: U32) -> Bool:
+  match xl:
+    case True{}:
+      W.bit(bx, Nat.div(l, 2n))
+    case False{}:
+      W.bit(bz, Nat.div(Nat.add(l, 1n), 2n))
+
+def T.side(+l: Nat, +bx: U32, +bz: U32) -> Bool:
+  T.side2(Nat.is_eq(Nat.mod(l, 2n), 0n), l, bx, bz)
+
+def T.put(l: Nat, t: Bt, s: Bool, +bx: U32, +bz: U32, +b: P.Body) -> Bt:
+  match l t s:
+    case 0n TL{xs} _:
+      TL{b <> xs}
+    case 0n _ _:
+      TL{[b]}
+    case 1n++j TN{lo, hi} False{}:
+      TN{T.put(j, lo, T.side(j, bx, bz), bx, bz, b), hi}
+    case 1n++j TN{lo, hi} True{}:
+      TN{lo, T.put(j, hi, T.side(j, bx, bz), bx, bz, b)}
+    case 1n++j _ False{}:
+      TN{T.put(j, TE{}, T.side(j, bx, bz), bx, bz, b), TE{}}
+    case 1n++j _ True{}:
+      TN{TE{}, T.put(j, TE{}, T.side(j, bx, bz), bx, bz, b)}
+
+def T.add(t: Bt, +b: P.Body) -> Bt:
+  +bx = T.key(P.Body.x(b))
+  +bz = T.key(P.Body.z(b))
+  T.put(12n, t, T.side(12n, bx, bz), bx, bz, b)
+
+def T.adds(xs: List<&2, P.Body>, t: Bt) -> Bt:
+  match xs:
+    case []:
+      t
+    case +b <> rest:
+      T.adds(rest, T.add(t, b))
+
+def T.half_a(p: Two) -> List<&2, P.Body>:
+  Two{a, b} = p
+  a
+
+def T.half_b(p: Two) -> List<&2, P.Body>:
+  Two{a, b} = p
+  b
+
+# the cubes of xs by their half at level l
+def T.side_of(+l: Nat, +b: P.Body) -> Bool:
+  T.side(l, T.key(P.Body.x(b)), T.key(P.Body.z(b)))
+
+def T.part(xs: List<&2, P.Body>, +l: Nat) -> Two:
+  match xs:
+    case []:
+      Two{[], []}
+    case +b <> rest:
+      W.near1(Bool.not(T.side_of(l, b)), b, T.part(rest, l))
+
+# the tree of xs at level l: split by the level's bit, both halves built
+# in parallel (a radix partition: no inserts, no merges)
+def T.radix(l: Nat, xs: List<&2, P.Body>) -> Bt:
+  match l xs:
+    case _ Nil{}:
+      TE{}
+    case 0n _:
+      TL{xs}
+    case 1n++j _:
+      +sp = T.part(xs, l)
+      a b = T.radix(j, T.half_a(sp)) T.radix(j, T.half_b(sp))
+      TN{a, b}
+
+def T.get(l: Nat, t: Bt, s: Bool, +bx: U32, +bz: U32) -> List<&2, P.Body>:
+  match l t s:
+    case _ TE{} _:
+      []
+    case _ TL{xs} _:
+      xs
+    case 0n TN{lo, hi} _:
+      []
+    case 1n++j TN{lo, hi} False{}:
+      T.get(j, lo, T.side(j, bx, bz), bx, bz)
+    case 1n++j TN{lo, hi} True{}:
+      T.get(j, hi, T.side(j, bx, bz), bx, bz)
+
+def T.at(+t: Bt, +bx: U32, +bz: U32) -> List<&2, P.Body>:
+  T.get(12n, t, T.side(12n, bx, bz), bx, bz)
+
+def T.all(t: Bt) -> List<&2, P.Body>:
+  match t:
+    case TE{}:
+      []
+    case TL{xs}:
+      xs
+    case TN{lo, hi}:
+      List.append(&2, P.Body, T.all(lo), T.all(hi))
+
+# is e within reach of the box b (its cubes' corners), r their reach?
+def T.inb(+e: P.Body, +b: Bx, +r: Nat) -> Bool:
+  Bx{+x0, +y0, +z0, +x1, +y1, +z1} = b
+  +d = Nat.add(W.size(), r)
+  Bool.and(Bool.and(Nat.is_lt(x0, Nat.add(P.Body.x(e), d)), Nat.is_lt(P.Body.x(e), Nat.add(x1, d))),
+    Bool.and(Nat.is_lt(z0, Nat.add(P.Body.z(e), d)), Nat.is_lt(P.Body.z(e), Nat.add(z1, d))))
+
+def T.within(xs: List<&2, P.Body>, +b: Bx, +r: Nat) -> List<&2, P.Body>:
+  match xs:
+    case []:
+      []
+    case +e <> rest:
+      W.take_if(T.inb(e, b, r), e, T.within(rest, b, r))
+
+def T.nb(+t: Bt, +bx: U32, +bz: U32, +dx: U32, +dz: U32, +b: Bx, +r: Nat) -> Nb:
+  +x = ((bx + dx) .&. 63 : U32)
+  +z = ((bz + dz) .&. 63 : U32)
+  Nb{x, z, T.within(T.at(t, x, z), b, r)}
+
+# the cubes of the 8 buckets around (bx, bz) that the box b of its cubes
+# can reach (r their reach), bucket by bucket
+def T.nbs(+t: Bt, +bx: U32, +bz: U32, +b: Bx, +r: Nat) -> List<&2, Nb>:
+  [T.nb(t, bx, bz, 63, 63, b, r), T.nb(t, bx, bz, 0, 63, b, r), T.nb(t, bx, bz, 1, 63, b, r), T.nb(t, bx, bz, 63, 0, b, r),
+   T.nb(t, bx, bz, 1, 0, b, r), T.nb(t, bx, bz, 63, 1, b, r), T.nb(t, bx, bz, 0, 1, b, r), T.nb(t, bx, bz, 1, 1, b, r)]
+
+def T.cat(ns: List<&2, Nb>) -> List<&2, P.Body>:
+  match ns:
+    case []:
+      []
+    case Nb{bx, bz, xs} <> rest:
+      List.append(&2, P.Body, xs, T.cat(rest))
+
+def T.d2(+ev: List<&2, P.Body>, sp: Two) -> List<&2, P.Body>:
+  Two{nw, old} = sp
+  List.append(&2, P.Body, nw, O.changed(ev, old))
+
+# the events after a task: its new ones, and those it changed
+def T.delta(+ev: List<&2, P.Body>, +ev2: List<&2, P.Body>) -> List<&2, P.Body>:
+  T.d2(ev, W.split(Nat.sub(List.length(&2, P.Body, ev2), List.length(&2, P.Body, ev)), ev2))
+
+# is the player within a bucket of (bx, bz)?
+def T.near(+p: P.Body, +bx: U32, +bz: U32) -> Bool:
+  Bool.and((((T.key(P.Body.x(p)) - bx + 1 : U32) .&. 63 : U32) <= 2 : U32), (((T.key(P.Body.z(p)) - bz + 1 : U32) .&. 63 : U32) <= 2 : U32))
+
+# the bucket a changed body came from (it is in one of the groups)
+def T.kx(+c: P.Body, ns: List<&2, Nb>) -> U32:
+  match ns:
+    case []:
+      0
+    case Nb{+bx, bz, +xs} <> rest:
+      Pick.u(O.has(c, xs), bx, T.kx(c, rest))
+
+def T.kz(+c: P.Body, ns: List<&2, Nb>) -> U32:
+  match ns:
+    case []:
+      0
+    case Nb{bx, +bz, +xs} <> rest:
+      Pick.u(O.has(c, xs), bz, T.kz(c, rest))
+
+def T.kc(pl: Bool, +c: P.Body, +ns: List<&2, Nb>, rest: List<&2, Ch>) -> List<&2, Ch>:
+  match pl:
+    case True{}:
+      rest
+    case False{}:
+      Ch{T.kx(c, ns), T.kz(c, ns), c} <> rest
+
+def T.keyed(cs: List<&2, P.Body>, +ns: List<&2, Nb>, +p: P.Body) -> List<&2, Ch>:
+  match cs:
+    case []:
+      []
+    case +c <> rest:
+      T.kc(W.same(c, p), c, ns, T.keyed(rest, ns, p))
+
+def T.plch(cs: List<&2, P.Body>, +p: P.Body) -> List<&2, P.Body>:
+  match cs:
+    case []:
+      []
+    case +c <> rest:
+      W.take_if(W.same(c, p), c, T.plch(rest, p))
+
+def T.opt(c: Bool, +p: P.Body) -> List<&2, P.Body>:
+  match c:
+    case True{}:
+      [p]
+    case False{}:
+      []
+
+def T.t2(+ns: List<&2, Nb>, +p: P.Body, q: Sq4, +ev: List<&2, P.Body>) -> PR:
+  Sq4{xs, +chg, ev2} = q
+  PR{TL{xs}, T.keyed(chg, ns, p), T.delta(ev, ev2), T.plch(chg, p)}
+
+# a bucket of the phase's color: its cubes' ticks, among the buckets around
+# (and the player, if near)
+def T.task(on: Bool, +xs: List<&2, P.Body>, +bx: U32, +bz: U32, +all: Bt, +p: P.Body, +k: P.K, +seed: U32, +cells: Cells,
+  +ev: List<&2, P.Body>) -> PR:
+  match on:
+    case False{}:
+      PR{TL{xs}, [], [], []}
+    case True{}:
+      +ns = T.nbs(all, bx, bz, O.box(xs), O.reach(xs, k, 0n))
+      T.t2(ns, p, Q.cseq(k, seed, cells, xs, List.append(&2, P.Body, T.cat(ns), T.opt(T.near(p, bx, bz), p)), ev), ev)
+
+def T.color(+bx: U32, +bz: U32, +c: Nat) -> Bool:
+  U32.is_eq(((bx .&. 1) + (bz .&. 1) * 2 : U32), U32.from_nat(c))
+
+# the bucket coordinates of the upper half at level l: x's bit l/2 - 1 set
+# at an even level, z's bit (l + 1)/2 - 1 at an odd one
+def T.hix(+l: Nat, +bx: U32) -> U32:
+  Pick.u(Nat.is_eq(Nat.mod(l, 2n), 0n), (bx .|. (1 << Nat.sub(Nat.div(l, 2n), 1n)) : U32), bx)
+
+def T.hiz(+l: Nat, +bz: U32) -> U32:
+  Pick.u(Nat.is_eq(Nat.mod(l, 2n), 1n), (bz .|. (1 << Nat.sub(Nat.div(Nat.add(l, 1n), 2n), 1n)) : U32), bz)
+
+def T.pjoin(ra: PR, rb: PR) -> PR:
+  PR{ta, ca, ea, pa} = ra
+  PR{tb, cb, eb, pb} = rb
+  PR{TN{ta, tb}, List.append(&2, Ch, ca, cb), List.append(&2, P.Body, ea, eb), List.append(&2, P.Body, pa, pb)}
+
+# a phase over a subtree whose buckets' coordinates so far are (bx, bz):
+# the two halves in parallel
+def T.phase(l: Nat, t: Bt, +bx: U32, +bz: U32, +all: Bt, +c: Nat, +p: P.Body, +k: P.K, +seed: U32, +cells: Cells,
+  +ev: List<&2, P.Body>) -> PR:
+  match l t:
+    case _ TE{}:
+      PR{TE{}, [], [], []}
+    case _ TL{xs}:
+      T.task(T.color(bx, bz, c), xs, bx, bz, all, p, k, seed, cells, ev)
+    case 0n TN{lo, hi}:
+      PR{TN{lo, hi}, [], [], []}
+    case 1n++j TN{lo, hi}:
+      ra rb = T.phase(j, lo, bx, bz, all, c, p, k, seed, cells, ev) T.phase(j, hi, T.hix(Nat.add(j, 1n), bx), T.hiz(Nat.add(j, 1n), bz), all, c, p, k, seed, cells, ev)
+      T.pjoin(ra, rb)
+
+def T.rp(l: Nat, t: Bt, s: Bool, +bx: U32, +bz: U32, +b: P.Body) -> Bt:
+  match l t s:
+    case _ TE{} _:
+      TE{}
+    case _ TL{xs} _:
+      TL{Q.repl(b, xs)}
+    case 0n TN{lo, hi} _:
+      TN{lo, hi}
+    case 1n++j TN{lo, hi} False{}:
+      TN{T.rp(j, lo, T.side(j, bx, bz), bx, bz, b), hi}
+    case 1n++j TN{lo, hi} True{}:
+      TN{lo, T.rp(j, hi, T.side(j, bx, bz), bx, bz, b)}
+
+# what the phase's cubes pushed of the buckets around, into them
+def T.apply(cs: List<&2, Ch>, t: Bt) -> Bt:
+  match cs:
+    case []:
+      t
+    case Ch{+bx, +bz, +b} <> rest:
+      T.apply(rest, T.rp(12n, t, T.side(12n, bx, bz), bx, bz, b))
+
+def T.after(r: PR, +ev: List<&2, P.Body>, p: P.Body) -> Tk:
+  PR{t, ch, dev, pl} = r
+  Tk{T.apply(ch, t), Q.upsert(dev, ev), W.first(List.append(&2, P.Body, pl, [p]))}
+
+def T.run(+c: Nat, tk: Tk, +k: P.K, +seed: U32, +cells: Cells) -> Tk:
+  Tk{+t, +ev, +p} = tk
+  T.after(T.phase(12n, t, 0, 0, t, c, p, k, seed, cells, ev), ev, p)
+
 def W.cubes_by(few: Bool, +k: P.K, w: World) -> World:
   match few:
     case True{}:
@@ -1117,6 +1606,10 @@ def W.cubes_by(few: Bool, +k: P.K, w: World) -> World:
     case False{}:
       W.cubes_oct(k, w)
 
+# every awake cube's tick (no input), in order, each among the bodies
+# within its reach (the player, the other awake ones) and the sleepers
+# around; what they push wakes. A few cubes look at each other directly;
+# many (from a hundred on), through the octree
 def W.cubes_all(+k: P.K, w: World) -> World:
   World{seed, t, +awake, dirty, p} = w
   W.cubes_by(Nat.is_lt(List.length(&2, P.Body, awake), 128n), k, World{seed, t, awake, dirty, p})
@@ -1183,9 +1676,139 @@ def W.sleep_all(+k: P.K, w: World) -> World:
   World{+seed, t, awake, dirty, p} = w
   W.slept(seed, p, W.sleep(awake, k, seed, Sl{t, dirty, []}))
 
+# Many cubes, whole tick on the block tree
+# ----------------------------------------
+# The player among the 9 buckets around it, the 4 phases, the sleepers the
+# cubes pushed woken, then which cubes rest decided bucket by bucket in
+# parallel (their cells written after, one by one: they are few).
+
+def T.chs(+bx: U32, +bz: U32, xs: List<&2, P.Body>) -> List<&2, Ch>:
+  match xs:
+    case []:
+      []
+    case b <> rest:
+      Ch{bx, bz, b} <> T.chs(bx, bz, rest)
+
+# what changed of the groups ns, pool being theirs in order after a tick
+def T.regroup(ns: List<&2, Nb>, pool: List<&2, P.Body>) -> List<&2, Ch>:
+  match ns:
+    case []:
+      []
+    case Nb{+bx, +bz, +xs} <> rest:
+      +sp = W.split(List.length(&2, P.Body, xs), pool)
+      List.append(&2, Ch, T.chs(bx, bz, O.changed(xs, T.half_a(sp))), T.regroup(rest, T.half_b(sp)))
+
+def T.nc2(xs: List<&2, P.Body>, +m: Nat, +p: P.Body) -> List<&2, P.Body>:
+  match xs:
+    case []:
+      []
+    case +e <> rest:
+      W.take_if(W.close(m, p, e), e, T.nc2(rest, m, p))
+
+def T.nclose(ns: List<&2, Nb>, +m: Nat, +p: P.Body) -> List<&2, Nb>:
+  match ns:
+    case []:
+      []
+    case Nb{bx, bz, xs} <> rest:
+      Nb{bx, bz, T.nc2(xs, m, p)} <> T.nclose(rest, m, p)
+
+type Ps is Data:
+  Ps{bt: Bt, t: Cells, dirty: List<&2, Cell>, p: P.Body}
+
+def T.ps3(bt: Bt, p: P.Body, st: St) -> Ps:
+  St{t, dirty, fresh, work} = st
+  Ps{T.adds(fresh, bt), t, dirty, p}
+
+def T.ps2(+seed: U32, +ns: List<&2, Nb>, bt: Bt, p: P.Body, sp: Two, t: Cells, dirty: List<&2, Cell>) -> Ps:
+  Two{near, sl} = sp
+  T.ps3(T.apply(T.regroup(ns, near), bt), p, W.wake(256n, seed, St{t, dirty, [], W.woken(sl)}))
+
+def T.ps1(+seed: U32, +ns: List<&2, Nb>, +nn: Nat, bt: Bt, r: P.Body & List<&2, P.Body>, t: Cells, dirty: List<&2, Cell>) -> Ps:
+  (p, obs) = r
+  T.ps2(seed, ns, bt, p, W.split(nn, obs), t, dirty)
+
+# the player's tick among the cubes of the 9 buckets around it within reach
+def T.player(+k: P.K, inp: P.In, +seed: U32, +bt: Bt, +t: Cells, dirty: List<&2, Cell>, +p: P.Body) -> Ps:
+  +bx = T.key(P.Body.x(p))
+  +bz = T.key(P.Body.z(p))
+  +ns = T.nclose(Nb{bx, bz, T.at(bt, bx, bz)} <> T.nbs(bt, bx, bz, Bx{0n, 0n, 0n, Nat.sub(O.big(), 1048576n), Nat.sub(O.big(), 1048576n), Nat.sub(O.big(), 1048576n)}, 0n),
+    W.reach(k, p), p)
+  +near = T.cat(ns)
+  T.ps1(seed, ns, List.length(&2, P.Body, near), bt,
+    P.Body.tick(k, List.append(&2, P.Body, near, W.around(k, t, seed, p)), inp, p), t, dirty)
+
+# which cubes of a bucket rest (a), and the others (b)
+def T.rests(xs: List<&2, P.Body>, +k: P.K, +t: Cells, +seed: U32) -> Two:
+  match xs:
+    case []:
+      Two{[], []}
+    case +c <> rest:
+      W.near1(W.still(k, t, seed, c), c, T.rests(rest, k, t, seed))
+
+type SR is Data:
+  SR{bt: Bt, rest: List<&2, P.Body>}
+
+def T.sr1(sp: Two) -> SR:
+  Two{r, keep} = sp
+  SR{TL{keep}, r}
+
+def T.sjoin(a: SR, b: SR) -> SR:
+  SR{ta, ra} = a
+  SR{tb, rb} = b
+  SR{TN{ta, tb}, List.append(&2, P.Body, ra, rb)}
+
+# the cubes at rest out of the tree, bucket by bucket in parallel
+def T.sleep(t: Bt, +k: P.K, +cells: Cells, +seed: U32) -> SR:
+  match t:
+    case TE{}:
+      SR{TE{}, []}
+    case TL{xs}:
+      T.sr1(T.rests(xs, k, cells, seed))
+    case TN{lo, hi}:
+      a b = T.sleep(lo, k, cells, seed) T.sleep(hi, k, cells, seed)
+      T.sjoin(a, b)
+
+def T.m4(+seed: U32, bt: Bt, p: P.Body, fresh: List<&2, P.Body>, s: Sl) -> World:
+  Sl{t, dirty, keep} = s
+  World{seed, t, List.append(&2, P.Body, fresh, List.append(&2, P.Body, keep, T.all(bt))), dirty, p}
+
+def T.m3(+k: P.K, +seed: U32, p: P.Body, fresh: List<&2, P.Body>, sr: SR, t: Cells, dirty: List<&2, Cell>) -> World:
+  SR{bt, rest} = sr
+  T.m4(seed, bt, p, fresh, W.sleep(rest, k, seed, Sl{t, dirty, []}))
+
+def T.m2b(+k: P.K, +seed: U32, bt: Bt, p: P.Body, st: St) -> World:
+  St{+t, dirty, fresh, work} = st
+  T.m3(k, seed, p, fresh, T.sleep(bt, k, t, seed), t, dirty)
+
+def T.m2(+k: P.K, +seed: U32, tk: Tk, t: Cells, dirty: List<&2, Cell>) -> World:
+  Tk{bt, +ev, p} = tk
+  T.m2b(k, seed, bt, p, W.wake(Nat.add(1024n, Nat.mul(16n, List.length(&2, P.Body, ev))), seed, St{t, dirty, [], ev}))
+
+def T.m1(+k: P.K, +seed: U32, ps: Ps) -> World:
+  Ps{bt, +t, dirty, p} = ps
+  T.m2(k, seed, T.run(3n, T.run(2n, T.run(1n, T.run(0n, Tk{bt, [], p}, k, seed, t), k, seed, t), k, seed, t), k, seed, t), t, dirty)
+
+def W.tick_many(+k: P.K, inp: P.In, w: World) -> World:
+  World{+seed, +t, awake, dirty, +p} = w
+  T.m1(k, seed, T.player(k, inp, seed, T.radix(12n, awake), t, dirty, p))
+
+def W.tick_few(+k: P.K, inp: P.In, w: World) -> World:
+  W.sleep_all(k, W.cubes_all(k, W.player_step(k, inp, w)))
+
+# many cubes on the block tree, unless something reaches a metre in a tick
+# (the blocks' separation): then a tick of few, or through the octree
+def W.tick_by(few: Bool, +k: P.K, inp: P.In, w: World) -> World:
+  match few:
+    case True{}:
+      W.tick_few(k, inp, w)
+    case False{}:
+      W.tick_many(k, inp, w)
+
 # a tick of the whole world
 def W.tick(+k: P.K, inp: P.In, w: World) -> World:
-  W.sleep_all(k, W.cubes_all(k, W.player_step(k, inp, w)))
+  World{seed, t, +awake, dirty, p} = w
+  W.tick_by(Bool.or(Nat.is_lt(List.length(&2, P.Body, awake), 128n), Nat.is_lt(229376n, O.reach(awake, k, 0n))), k, inp,
+    World{seed, t, awake, dirty, p})
 
 # a new world of seed, the player standing at the start
 def W.new(+seed: U32) -> World:
