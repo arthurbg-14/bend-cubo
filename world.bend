@@ -1596,14 +1596,28 @@ def T.t2(+ns: List<&2, Nb>, +p: P.Body, q: Sq4, +ev: List<&2, P.Body>) -> PR:
 
 # a bucket of the phase's color: its cubes' ticks, among the buckets around
 # (and the player, if near)
-def T.task(on: Bool, +xs: List<&2, P.Body>, +bx: U32, +bz: U32, +all: Bt, +p: P.Body, +k: P.K, +seed: U32, +cells: Cells,
+# the constants, as a record of this task's own: one shared by every
+# task is a reference count that every core bumps at every read
+def T.kcopy(k: P.K) -> P.K:
+  P.K{g, mu, j, acc, air, vmax, size} = k
+  P.K{g, mu, j, acc, air, vmax, size}
+
+# is the player (its bucket pk) within a bucket of (bx, bz)?
+def T.nearp(+pkx: U32, +pkz: U32, +bx: U32, +bz: U32) -> Bool:
+  Bool.and((((pkx - bx + 1 : U32) .&. 63 : U32) <= 2 : U32), (((pkz - bz + 1 : U32) .&. 63 : U32) <= 2 : U32))
+
+def T.task2(+xs: List<&2, P.Body>, +bx: U32, +bz: U32, +all: Bt, +p: P.Body, +pn: Bool, +k: P.K, +seed: U32, +cells: Cells,
   +ev: List<&2, P.Body>) -> PR:
+  +ns = T.nbs(all, bx, bz, O.box(xs), O.reach(xs, k, 0n))
+  T.t2(ns, p, Q.cseq(k, seed, cells, xs, List.append(&2, P.Body, T.cat(ns), T.opt(pn, p)), ev), ev)
+
+def T.task(on: Bool, +xs: List<&2, P.Body>, +bx: U32, +bz: U32, +all: Bt, +p: P.Body, +pkx: U32, +pkz: U32, +k: P.K,
+  +seed: U32, +cells: Cells, +ev: List<&2, P.Body>) -> PR:
   match on:
     case False{}:
       PR{TL{xs}, [], [], []}
     case True{}:
-      +ns = T.nbs(all, bx, bz, O.box(xs), O.reach(xs, k, 0n))
-      T.t2(ns, p, Q.cseq(k, seed, cells, xs, List.append(&2, P.Body, T.cat(ns), T.opt(T.near(p, bx, bz), p)), ev), ev)
+      T.task2(xs, bx, bz, all, p, T.nearp(pkx, pkz, bx, bz), T.kcopy(k), seed, cells, ev)
 
 def T.color(+bx: U32, +bz: U32, +c: Nat) -> Bool:
   U32.is_eq(((bx .&. 1) + (bz .&. 1) * 2 : U32), U32.from_nat(c))
@@ -1623,17 +1637,17 @@ def T.pjoin(ra: PR, rb: PR) -> PR:
 
 # a phase over a subtree whose buckets' coordinates so far are (bx, bz):
 # the two halves in parallel
-def T.phase(l: Nat, t: Bt, +bx: U32, +bz: U32, +all: Bt, +c: Nat, +p: P.Body, +k: P.K, +seed: U32, +cells: Cells,
-  +ev: List<&2, P.Body>) -> PR:
+def T.phase(l: Nat, t: Bt, +bx: U32, +bz: U32, +all: Bt, +c: Nat, +p: P.Body, +pkx: U32, +pkz: U32, +k: P.K, +seed: U32,
+  +cells: Cells, +ev: List<&2, P.Body>) -> PR:
   match l t:
     case _ TE{}:
       PR{TE{}, [], [], []}
     case _ TL{xs}:
-      T.task(T.color(bx, bz, c), xs, bx, bz, all, p, k, seed, cells, ev)
+      T.task(T.color(bx, bz, c), xs, bx, bz, all, p, pkx, pkz, k, seed, cells, ev)
     case 0n TN{lo, hi}:
       PR{TN{lo, hi}, [], [], []}
     case 1n++j TN{lo, hi}:
-      ra rb = T.phase(j, lo, bx, bz, all, c, p, k, seed, cells, ev) T.phase(j, hi, T.hix(Nat.add(j, 1n), bx), T.hiz(Nat.add(j, 1n), bz), all, c, p, k, seed, cells, ev)
+      ra rb = T.phase(j, lo, bx, bz, all, c, p, pkx, pkz, k, seed, cells, ev) T.phase(j, hi, T.hix(Nat.add(j, 1n), bx), T.hiz(Nat.add(j, 1n), bz), all, c, p, pkx, pkz, k, seed, cells, ev)
       T.pjoin(ra, rb)
 
 def T.rp(l: Nat, t: Bt, s: Bool, +bx: U32, +bz: U32, +b: P.Body) -> Bt:
@@ -1663,7 +1677,7 @@ def T.after(r: PR, +ev: List<&2, P.Body>, p: P.Body) -> Tk:
 
 def T.run(+c: Nat, tk: Tk, +k: P.K, +seed: U32, +cells: Cells) -> Tk:
   Tk{+t, +ev, +p} = tk
-  T.after(T.phase(12n, t, 0, 0, t, c, p, k, seed, cells, ev), ev, p)
+  T.after(T.phase(12n, t, 0, 0, t, c, p, T.key(P.Body.x(p)), T.key(P.Body.z(p)), k, seed, cells, ev), ev, p)
 
 def W.cubes_by(few: Bool, +k: P.K, w: World) -> World:
   match few:
