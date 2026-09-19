@@ -297,12 +297,31 @@ medido do mesmo jeito na mesma máquina). Com mais, a simulação continua certa
 devagar que o relógio. Um cubo parado não custa nada, e o mundo tem quantos
 cubos parados couberem nele.
 
-**Sobre as threads.** O escalonador do Bend reparte as tarefas de uma vez e
-não as move depois. Se outro processo toma um núcleo, a thread que perdeu a
-vez segura o tick inteiro. Nesta máquina, com outras tarefas rodando, uma
-thread só é ~2× mais rápida que todas elas (`./bench --threads 1`); com a
-máquina livre, o paralelismo ganha. O tick reparte o trabalho em ramos
-grandes da árvore (um fork por nó fazia tarefas pequenas demais).
+**Sobre as threads.** Medido nesta máquina (8 núcleos, 16 threads), com ela
+livre:
+
+| o que roda em paralelo | núcleos ocupados | instruções |
+|---|---|---|
+| 8 tarefas de conta pura | 1,9 | iguais |
+| 256 tarefas de conta pura | 8,0 | iguais |
+| 256 mundos, cada um no seu `Array<U32>` | 10,2 | iguais (4,7× mais rápido) |
+| 8 mundos em listas compartilhadas | 5,3 | +270 % |
+| o tick da multidão cortado ao meio (listas entre as folhas) | 2,8 | +41 % |
+
+Duas coisas saem daí. O escalonador do Bend só espalha o trabalho quando há
+centenas de folhas: com 8 tarefas ele usa 2 núcleos, com 256 usa todos.
+E o que uma tarefa lê compartilhado (uma lista `&2`, a trie das células)
+passa a contar referências de forma atômica assim que há mais de uma thread
+— daí as instruções a mais. Um array é de dono único: 256 mundos em arrays
+correm em 10 núcleos sem uma instrução a mais.
+
+Por isso o tick da multidão densa roda hoje **numa thread só**, num array
+só: as versões paralelas que construí (blocos coloridos, e o corte da
+multidão ao meio, `W.tick_par`, que o teste de colisão cobre) gastam de 3 a
+8 vezes mais instruções para repartir e juntar os corpos em listas do que o
+tick gasta para simulá-los, e o pouco que ganham em núcleos não paga isso. O
+caminho para o paralelismo valer é montar os arrays de cada folha antes de
+bifurcar e deixar dentro do fork só o tick, que não lê nada compartilhado.
 
 A GPU desenha no máximo 250 cubos em movimento de uma vez, o jogador
 incluído. Os outros aparecem quando param.
@@ -325,3 +344,4 @@ o HUD mostra):
 | o alcance de um cubo é o que o tick dele move (2 |v| + 2 g), sem a folga de 0,25 m que o jogador precisa: ele recebe só o que pode tocar | 13,1 G instruções | 7,7 |
 | multidão densa num `Array<U32>` (corpos, correntes das células e cabeças no mesmo array), em vez das listas e da trie | 8281 cubos: 25,7 mil instruções por cubo-tick, 24,4 ms/tick | 8,5 mil, 11,0 |
 | varredura sem `match` em número (o Bend desmonta um u32 bit a bit para isso) e com a célula andando de uma em uma, sem divisão | 8281 cubos: 8,5 mil instruções por cubo-tick, 11,0 ms/tick | 6,6 mil, 5,8 |
+| cada bloco colorido (multidão espalhada) num array plano, no lugar das listas | 8281 cubos: 30,8 ms/tick | 21,8 |

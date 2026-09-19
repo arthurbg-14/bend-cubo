@@ -974,6 +974,11 @@ def O.big() -> Nat:
 def O.box(xs: List<&2, P.Body>) -> Bx:
   O.bb(xs, Bx{O.big(), O.big(), O.big(), 0n, 0n, 0n})
 
+def W.sleep_all(+k: P.K, w: World) -> World:
+  World{+seed, t, awake, dirty, p} = w
+  W.slept(seed, p, W.sleep(awake, k, seed, Sl{t, dirty, []}))
+
+
 def W.tick_flat(+k: P.K, inp: P.In, w: World) -> World:
   World{+seed, +t, +awake, dirty, +p} = w
   W.fl1(k, inp, seed, t, dirty, p, awake, U32.from_nat(List.length(&2, P.Body, awake)), O.bb(awake, O.box([p])),
@@ -1241,7 +1246,7 @@ def W.gather(+i: Nat, +m: Nat, +c: P.Body, +x0: U32, +z0: U32, +nx: Nat, a: Gath
   match i:
     case 0n:
       a
-    case 1n+j:
+    case 1n++j:
       W.gather(j, m, c, x0, z0, nx,
         W.g1((x0 + U32.from_nat(Nat.mod(j, nx)) : U32), (z0 + U32.from_nat(Nat.div(j, nx)) : U32), m, c, a))
 
@@ -1790,6 +1795,59 @@ def Q.seq(+k: P.K, +seed: U32, +cells: Cells, +todo: List<&2, P.Body>, +pool: Li
   Q.seq2(Nat.is_lt(Nat.add(List.length(&2, P.Body, todo), List.length(&2, P.Body, pool)), 96n), k, seed,
     Q.source(k, cells, seed, todo), todo, pool, ev)
 
+# A block's tick on a flat array
+# ------------------------------
+# The same contract as Q.cseq -- the block's cubes tick in order, among
+# themselves, the pool (the cubes of the blocks around and the player:
+# pushed, never ticked) and the sleepers of the cells they reach -- but
+# through one array. Two blocks of a colour never touch the same body, so
+# every block of a phase runs this at the same time, each on its own array.
+
+def F.b5(r: Array<U32> & List<&2, P.Body>, todo: List<&2, P.Body>, chg: List<&2, P.Body>,
+  ev: List<&2, P.Body>) -> Sq4:
+  (a, sl) = r
+  Sq4{todo, chg, Q.upsert(F.woken(sl), ev)}
+
+def F.b4(r: Array<U32> & List<&2, P.Body>, +o: Og, +nt: U32, +np: U32, +ns: U32, +pool: List<&2, P.Body>,
+  todo: List<&2, P.Body>, ev: List<&2, P.Body>) -> Sq4:
+  (a, pl) = r
+  F.b5(F.unpack(ns, a, (nt + np : U32), o), todo, Q.chg2(pool, List.reverse(&2, P.Body, pl), []), ev)
+
+def F.b3(r: Array<U32> & List<&2, P.Body>, +o: Og, +nt: U32, +np: U32, +ns: U32, +pool: List<&2, P.Body>,
+  ev: List<&2, P.Body>) -> Sq4:
+  (a, todo) = r
+  F.b4(F.unpack(np, a, nt, o), o, nt, np, ns, pool, todo, ev)
+
+def F.b2(+k: P.K, todo: List<&2, P.Body>, +pool: List<&2, P.Body>, ev: List<&2, P.Body>, +nt: U32, +np: U32,
+  +o: Og, sl: List<&2, P.Body>, +ns: U32, +mm: Nat, r: U32 & Nat) -> Sq4:
+  (+cap, b) = r
+  F.b3(F.unpack(nt,
+    F.ticks(U32.to_nat(nt),
+      F.build((nt + np + ns : U32),
+        F.pack(sl, F.pack(pool, F.pack(todo, Array.new(U32, Nat.add(b, 3n), 0), 0, o, False{}), nt, o, False{}),
+          (nt + np : U32), o, True{}), cap, (cap - 1 : U32)),
+      0, o, k, cap, (cap - 1 : U32), (nt + np : U32), mm), 0, o), o, nt, np, ns, pool, ev)
+
+def F.b1(+k: P.K, +seed: U32, +cells: Cells, todo: List<&2, P.Body>, +pool: List<&2, P.Body>, +ev: List<&2, P.Body>,
+  +nt: U32, +np: U32, +bx: Bx, +mm: Nat) -> Sq4:
+  +sl = Q.shadow(W.rect(Nat.mul(F.gnx(bx, mm), F.gnz(bx, mm)), cells, seed, F.cx0(bx, mm), F.cz0(bx, mm),
+    F.gnx(bx, mm)), ev)
+  +ns = U32.from_nat(List.length(&2, P.Body, sl))
+  F.b2(k, todo, pool, ev, nt, np, F.org(bx, mm), sl, ns, mm, F.cap0((nt + np + ns + 1 : U32)))
+
+def F.blk0(none: Bool, +k: P.K, +seed: U32, +cells: Cells, +todo: List<&2, P.Body>, +pool: List<&2, P.Body>,
+  +ev: List<&2, P.Body>, +nt: U32, +np: U32) -> Sq4:
+  match none:
+    case True{}:
+      Sq4{todo, [], ev}
+    case False{}:
+      F.b1(k, seed, cells, todo, pool, ev, nt, np, O.bb(todo, O.box(pool)), F.mx(k, todo, 0n))
+
+def F.blk(+k: P.K, +seed: U32, +cells: Cells, +todo: List<&2, P.Body>, +pool: List<&2, P.Body>,
+  +ev: List<&2, P.Body>) -> Sq4:
+  +nt = U32.from_nat(List.length(&2, P.Body, todo))
+  F.blk0(U32.is_eq(nt, 0), k, seed, cells, todo, pool, ev, nt, U32.from_nat(List.length(&2, P.Body, pool)))
+
 # The octree's tick
 # -----------------
 
@@ -1896,6 +1954,121 @@ def W.cubes_oct(+k: P.K, w: World) -> World:
   World{+seed, +t, +awake, dirty, +p} = w
   O.w1(k, seed, t, dirty, p, awake, O.box(awake), O.reach(awake, k, 0n))
 
+# The crowd's tick, both sides of a cut at once
+# ---------------------------------------------
+# The crowd's box is cut in half across its longest side. A cube farther
+# from the plane than a cube and the tick's reach only touches cubes of its
+# own side, so the two sides tick at the same time, each on its own flat
+# array, and neither can push what the other pushes. The cubes across the
+# plane tick after both, among what the sides left near it.
+
+# a side stops cutting under this many cubes: a task smaller than this
+# costs more to hand out than to run
+def F.least() -> Nat:
+  32n
+
+def F.p7(far: List<&2, P.Body>, +near: List<&2, P.Body>, chs: List<&2, P.Body>, q: Sq4) -> Sq4:
+  Sq4{st, +c2, ev} = q
+  Sq4{List.append(&2, P.Body, far, List.append(&2, P.Body, O.apply(near, c2), st)),
+    List.append(&2, P.Body, c2, chs), ev}
+
+def F.p6(+k: P.K, +seed: U32, +cells: Cells, sp: Two, chs: List<&2, P.Body>, bd: Two, ev: List<&2, P.Body>) -> Sq4:
+  Two{pool, st} = sp
+  Two{+near, far} = bd
+  F.p7(far, near, chs, F.blk(k, seed, cells, st, List.append(&2, P.Body, near, pool), ev))
+
+def F.p5(+k: P.K, +seed: U32, +cells: Cells, +pool: List<&2, P.Body>, st: List<&2, P.Body>, ev: List<&2, P.Body>,
+  +ax: Nat, +c: Nat, +r: Nat, rl: Sq4, rh: Sq4) -> Sq4:
+  Sq4{dl, cl, el} = rl
+  Sq4{dh, ch, eh} = rh
+  +chs = List.append(&2, P.Body, cl, ch)
+  F.p6(k, seed, cells,
+    W.split(List.length(&2, P.Body, pool), O.apply(List.append(&2, P.Body, pool, st), chs)), chs,
+    O.band(List.append(&2, P.Body, dl, dh), ax, c, Nat.add(Nat.mul(2n, W.size()), Nat.mul(2n, r))),
+    Q.upsert(List.append(&2, P.Body, el, eh), ev))
+
+# the box cut at c across the axis ax: the side below, and the side above
+def O.blo(+b: Bx, +ax: Nat, +c: Nat) -> Bx:
+  Bx{+x0, +y0, +z0, +x1, +y1, +z1} = b
+  match ax:
+    case 0n:
+      Bx{x0, y0, z0, c, y1, z1}
+    case 1n:
+      Bx{x0, y0, z0, x1, c, z1}
+    case _:
+      Bx{x0, y0, z0, x1, y1, c}
+
+def O.bhi(+b: Bx, +ax: Nat, +c: Nat) -> Bx:
+  Bx{+x0, +y0, +z0, +x1, +y1, +z1} = b
+  match ax:
+    case 0n:
+      Bx{c, y0, z0, x1, y1, z1}
+    case 1n:
+      Bx{x0, c, z0, x1, y1, z1}
+    case _:
+      Bx{x0, y0, c, x1, y1, z1}
+
+# how many cuts a crowd of n cubes is worth: one while a side still holds
+# more than F.least() of them, five at the most
+def F.dep(fuel: Nat, +n: Nat) -> Nat:
+  match fuel:
+    case 0n:
+      0n
+    case 1n+f:
+      Pick.n(Nat.is_lt(n, F.least()), 0n, Nat.add(1n, F.dep(f, Nat.div(n, 2n))))
+
+def T.win(xs: List<&2, P.Body>, +x0: Nat, +z0: Nat, +x1: Nat, +z1: Nat, +d: Nat) -> List<&2, P.Body>:
+  match xs:
+    case []:
+      []
+    case P.Body{+ex, ey, +ez, vx, vy, vz, g, h} <> rest:
+      W.take_if(Bool.and(Bool.and(Nat.is_lt(x0, Nat.add(ex, d)), Nat.is_lt(ex, Nat.add(x1, d))),
+          Bool.and(Nat.is_lt(z0, Nat.add(ez, d)), Nat.is_lt(ez, Nat.add(z1, d)))),
+        P.Body{ex, ey, ez, vx, vy, vz, g, h}, T.win(rest, x0, z0, x1, z1, d))
+
+def T.within(xs: List<&2, P.Body>, +b: Bx, +r: Nat) -> List<&2, P.Body>:
+  Bx{+x0, +y0, +z0, +x1, +y1, +z1} = b
+  T.win(xs, x0, z0, x1, z1, Nat.add(W.size(), r))
+
+# the cubes of the two sides tick at once, each on its own array; then the
+# ones across the plane, among what the sides left near it
+def F.par(d: Nat, +k: P.K, +seed: U32, +cells: Cells, p3: P3, +pool: List<&2, P.Body>, ev: List<&2, P.Body>,
+  +b: Bx, +ax: Nat, +c: Nat, +r: Nat) -> Sq4:
+  match d:
+    case 0n:
+      F.blk(k, seed, cells, O.all(p3), pool, ev)
+    case 1n++j:
+      P3{+st, lo, hi} = p3
+      +blo = O.blo(b, ax, c)
+      +bhi = O.bhi(b, ax, c)
+      +alo = O.axis(blo)
+      +ahi = O.axis(bhi)
+      +clo = O.mid(blo, alo)
+      +chi = O.mid(bhi, ahi)
+      rl rh = F.par(j, k, seed, cells, O.part(lo, alo, clo, r),
+                T.within(List.append(&2, P.Body, O.near(pool, 0n, ax, c), st), blo, r), [], blo, alo, clo, r)
+              F.par(j, k, seed, cells, O.part(hi, ahi, chi, r),
+                T.within(List.append(&2, P.Body, O.near(pool, 1n, ax, c), st), bhi, r), [], bhi, ahi, chi, r)
+      F.p5(k, seed, cells, pool, st, ev, ax, c, r, rl, rh)
+
+# the player as the cubes pushed it, the sleepers they pushed woken (and
+# what stood on those)
+def F.w2(+seed: U32, t: Cells, dirty: List<&2, Cell>, +p: P.Body, q: Sq4) -> World:
+  Sq4{done, chg, +ev} = q
+  O.w3(seed, O.find(p, chg), done,
+    W.wake(Nat.add(1024n, Nat.mul(16n, List.length(&2, P.Body, ev))), seed, St{t, dirty, [], ev}))
+
+def F.w1(+k: P.K, +seed: U32, +t: Cells, dirty: List<&2, Cell>, +p: P.Body, +awake: List<&2, P.Body>, +b: Bx,
+  +mm: Nat, +d: Nat) -> World:
+  +ax = O.axis(b)
+  +c = O.mid(b, ax)
+  +r = Nat.add(W.size(), mm)
+  F.w2(seed, t, dirty, p, F.par(d, k, seed, t, O.part(awake, ax, c, r), [p], [], b, ax, c, r))
+
+def W.cubes_par(+k: P.K, w: World) -> World:
+  World{+seed, +t, +awake, dirty, +p} = w
+  F.w1(k, seed, t, dirty, p, awake, O.box(awake), O.reach(awake, k, 0n),
+    F.dep(8n, List.length(&2, P.Body, awake)))
 # Many awake cubes: colored blocks
 # --------------------------------
 # The floor in blocks of 4 x 4 m, each of 4 colors (the parity of its x and
@@ -1931,8 +2104,14 @@ type PR is Data:
 type Tk is Data:
   Tk{t: Bt, ev: List<&2, P.Body>, pl: P.Body}
 
+# a block is 4 m << T.lg() a side: wide enough that two blocks of a colour
+# (a block apart) never reach the same cube, and wide enough that its own
+# cubes outnumber the ones it has to copy from around it
+def T.lg() -> Nat:
+  0n
+
 def T.key(+x: Nat) -> U32:
-  (W.blk(x) .&. 63 : U32)
+  ((W.blk(x) >> T.lg()) .&. 63 : U32)
 
 # the half a bucket (bx, bz) is in at level l: bit l/2 of x (from 1) at an
 # even level, bit (l + 1)/2 of z at an odd one
@@ -2050,19 +2229,6 @@ def T.inb(+e: P.Body, +b: Bx, +r: Nat) -> Bool:
   Bool.and(Bool.and(Nat.is_lt(x0, Nat.add(P.Body.x(e), d)), Nat.is_lt(P.Body.x(e), Nat.add(x1, d))),
     Bool.and(Nat.is_lt(z0, Nat.add(P.Body.z(e), d)), Nat.is_lt(P.Body.z(e), Nat.add(z1, d))))
 
-def T.win(xs: List<&2, P.Body>, +x0: Nat, +z0: Nat, +x1: Nat, +z1: Nat, +d: Nat) -> List<&2, P.Body>:
-  match xs:
-    case []:
-      []
-    case P.Body{+ex, ey, +ez, vx, vy, vz, g, h} <> rest:
-      W.take_if(Bool.and(Bool.and(Nat.is_lt(x0, Nat.add(ex, d)), Nat.is_lt(ex, Nat.add(x1, d))),
-          Bool.and(Nat.is_lt(z0, Nat.add(ez, d)), Nat.is_lt(ez, Nat.add(z1, d)))),
-        P.Body{ex, ey, ez, vx, vy, vz, g, h}, T.win(rest, x0, z0, x1, z1, d))
-
-def T.within(xs: List<&2, P.Body>, +b: Bx, +r: Nat) -> List<&2, P.Body>:
-  Bx{+x0, +y0, +z0, +x1, +y1, +z1} = b
-  T.win(xs, x0, z0, x1, z1, Nat.add(W.size(), r))
-
 def T.nb(+t: Bt, +bx: U32, +bz: U32, +dx: U32, +dz: U32, +b: Bx, +r: Nat) -> Nb:
   +x = ((bx + dx) .&. 63 : U32)
   +z = ((bz + dz) .&. 63 : U32)
@@ -2155,7 +2321,7 @@ def T.nearp(+pkx: U32, +pkz: U32, +bx: U32, +bz: U32) -> Bool:
 def T.task2(+xs: List<&2, P.Body>, +bx: U32, +bz: U32, +all: Bt, +p: P.Body, +pn: Bool, +k: P.K, +seed: U32, +cells: Cells,
   +ev: List<&2, P.Body>) -> PR:
   +ns = T.nbs(all, bx, bz, O.box(xs), O.reach(xs, k, 0n))
-  T.t2(ns, p, Q.cseq(k, seed, cells, xs, List.append(&2, P.Body, T.cat(ns), T.opt(pn, p)), ev), ev)
+  T.t2(ns, p, F.blk(k, seed, cells, xs, List.append(&2, P.Body, T.cat(ns), T.opt(pn, p)), ev), ev)
 
 def T.task(on: Bool, +xs: List<&2, P.Body>, +bx: U32, +bz: U32, +all: Bt, +p: P.Body, +pkx: U32, +pkz: U32, +k: P.K,
   +seed: U32, +cells: Cells, +ev: List<&2, P.Body>) -> PR:
@@ -2243,10 +2409,6 @@ def W.cubes_all(+k: P.K, w: World) -> World:
 
 # Sleep
 # -----
-
-def W.sleep_all(+k: P.K, w: World) -> World:
-  World{+seed, t, awake, dirty, p} = w
-  W.slept(seed, p, W.sleep(awake, k, seed, Sl{t, dirty, []}))
 
 # Many cubes, whole tick on the block tree
 # ----------------------------------------
@@ -2378,6 +2540,10 @@ def W.tick_by(few: Bool, +k: P.K, inp: P.In, w: World) -> World:
       W.tick_few(k, inp, w)
     case False{}:
       W.tick_many(k, inp, w)
+
+# the crowd cut in halves that tick at once, each on its own array
+def W.tick_par(+k: P.K, inp: P.In, w: World) -> World:
+  W.sleep_all(k, W.cubes_par(k, W.player_step(k, inp, w)))
 
 def W.tick_dense(flat: Bool, few: Bool, +k: P.K, inp: P.In, w: World) -> World:
   match flat:
