@@ -172,8 +172,8 @@ Três bugs plausíveis, cada um numa cópia do projeto. Cada um compila
     LAWS.bend     as leis          PROOF.bend   as provas
     world.bend    o mundo: gerador por hash, trie das células mudadas, vizinhança
                   de um corpo, cubos acordados e dormindo, o tick do mundo
-                  (blocos coloridos em paralelo para muitos cubos; a octree
-                  para cubos rapidíssimos)
+                  (array plano quando a multidão é densa; blocos coloridos em
+                  paralelo; a octree para cubos rapidíssimos)
     clash.bend    o teste de colisão (./build.sh test)
     main.bend     o jogo: entrada, câmera, constantes, HUD, o laço de frames
     bench.bend    benchmark sem janela
@@ -198,8 +198,27 @@ Três bugs plausíveis, cada um numa cópia do projeto. Cada um compila
   menos de um cubo e do quanto ele anda nesse tick (`W.reach`). A simulação
   consulta só as células desse alcance (em geral 3×3) e só os corpos
   acordados dentro dele. Os de longe passam intactos.
-- **Muitos cubos: blocos coloridos, em paralelo.** Com poucos acordados
-  (menos de 128), cada um olha os outros diretamente. Com muitos:
+- **A multidão num array plano.** Quando os cubos acordados estão juntos —
+  a caixa deles não tem muito mais células do que cubos —, o tick copia a
+  multidão, os cubos dormindo das células que ela alcança e o jogador para
+  um único `Array<U32>`: 6 palavras por corpo (x, y e z a partir de um canto
+  de célula, vx, vy e vz com as bandeiras em cima), mais uma corrente por
+  célula numa tabela de hash no fim do mesmo array. Ler uma palavra do array
+  custa ~10 instruções, contra a trie e as listas do Bend, onde cada nó é
+  memória compartilhada com contagem de referências. Cada corpo então lê
+  seus vizinhos direto do array, roda o tick provado e escreve de volta, em
+  ordem; no fim tudo volta para as listas e as células do mundo.
+
+  A varredura de um corpo percorre as células de `W.lo` a `W.lo + W.span`,
+  contadas a partir do tamanho do cubo e do quanto ele anda nesse tick —
+  nunca um número fixo de células. A grade é montada uma vez por tick, então
+  o retângulo leva também o maior alcance do tick: quem já andou continua na
+  corrente da célula onde começou. O que decide é a distância medida, exata.
+  A origem do array é um canto de célula por eixo (x e z ficam longe um do
+  outro num mundo infinito, e cada lugar é guardado em 32 bits).
+- **Muitos cubos espalhados: blocos coloridos, em paralelo.** Com poucos
+  acordados (menos de 128), cada um olha os outros diretamente. Com muitos,
+  espalhados:
   - **Os blocos.** O chão é dividido em blocos de 4×4 m, e cada bloco ganha
     uma de 4 cores, pela paridade do x e do z (um xadrez 2×2). Dois blocos
     da mesma cor têm um bloco inteiro entre eles. Esses 4 m são mais que um
@@ -229,8 +248,8 @@ Três bugs plausíveis, cada um numa cópia do projeto. Cada um compila
 
   `./build.sh test` derruba 432 cubos uns sobre os outros por 300 ticks e
   confere, a cada tick, que nenhum entra em outro e que nenhum some. Roda o
-  mesmo cenário pela lista, pela octree, pelos blocos e pela mistura que o
-  jogo usa.
+  mesmo cenário pela lista, pela octree, pelos blocos, pelo array plano e
+  pela mistura que o jogo usa.
 - **Na GPU**, um compute shader em cinco passes por frame:
   1. monta uma grade 256×256 em volta do jogador, já com o gerador calculado;
   2. marca as células mudadas, lidas de uma tabela de hash que o `screen.c`
@@ -253,9 +272,9 @@ AMD Ryzen 7 5700U com a Radeon integrada (Vega 8, RADV), 1280×720:
 | GPU, cena parada (`./cubo still`) | 1,91 ms/frame (~450 fps) |
 | GPU, jogando (`./cubo demo`) | 1,5–2,3 ms/frame (330–550 fps) |
 | um tick de um corpo entre 10 obstáculos (`Body.tick`) | 0,79 µs |
-| tick do mundo andando e empurrando | 7,4 µs, ou ~0,1 % de um núcleo a 128 ticks/s |
-| tick do mundo com 64 cubos caindo e se empilhando | 0,18 ms |
-| tick do mundo com 1024 cubos caindo ao mesmo tempo (blocos) | 2,7 ms |
+| tick do mundo andando e empurrando | 6,3 µs, ou ~0,1 % de um núcleo a 128 ticks/s |
+| tick do mundo com 64 cubos caindo e se empilhando | 0,16 ms |
+| tick do mundo com 1024 cubos caindo ao mesmo tempo (array plano) | 1,05 ms |
 | cabeçalho de um frame (câmera, corpos, HUD) | 12 µs |
 
 `./build.sh bench && ./bench` roda esses cenários sem janela.
@@ -265,14 +284,16 @@ acordados, numa thread (ver abaixo):
 
 | cubos | ms por tick |
 |---|---|
-| 1024 | 2,9 |
-| 4096 | 12,6 |
-| 8281 | 28,3 |
-| 16384 | 67,3 |
+| 1024 | 1,05 |
+| 4096 | 5,7 |
+| 5929 | 6,9 |
+| 8281 | 11,0 |
+| 16384 | 19,8 |
 
-O custo é linear: ~28 mil instruções por cubo por tick, em qualquer tamanho.
-O tempo real pede 7,8 ms por tick (128 por segundo), então cabem ~2700 cubos
-se mexendo ao mesmo tempo. Com mais, a simulação continua certa, só anda mais
+O custo é linear: ~8,5 mil instruções por cubo por tick, em qualquer tamanho.
+O tempo real pede 7,8 ms por tick (128 por segundo), então cabem ~6000 cubos
+se mexendo ao mesmo tempo (eram 2700 antes do array plano, medido do mesmo
+jeito na mesma máquina). Com mais, a simulação continua certa, só anda mais
 devagar que o relógio. Um cubo parado não custa nada, e o mundo tem quantos
 cubos parados couberem nele.
 
@@ -302,3 +323,4 @@ o HUD mostra):
 | trie das células com 8 níveis em vez de 30; vizinhos filtrados pelo alcance do bloco; o que mudou no vizinho anotado a cada passo, sem reordenar | 4096 cubos: 19 ms/tick | 16–17 |
 | cada cubo desmontado uma vez por passo, e a partição da árvore passada adiante em vez de compartilhada (ler um valor compartilhado conta referências a cada campo) | 16,0 G instruções | 13,1 |
 | o alcance de um cubo é o que o tick dele move (2 |v| + 2 g), sem a folga de 0,25 m que o jogador precisa: ele recebe só o que pode tocar | 13,1 G instruções | 7,7 |
+| multidão densa num `Array<U32>` (corpos, correntes das células e cabeças no mesmo array), em vez das listas e da trie | 8281 cubos: 25,7 mil instruções por cubo-tick, 24,4 ms/tick | 8,5 mil, 11,0 |

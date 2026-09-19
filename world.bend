@@ -435,15 +435,557 @@ def W.wake(fuel: Nat, +seed: U32, st: St) -> St:
         case +c <> rest:
           W.wake(f, seed, W.lift(seed, c, St{t, dirty, fresh, rest}))
 
+type Bx is Data:
+  Bx{x0: Nat, y0: Nat, z0: Nat, x1: Nat, y1: Nat, z1: Nat}
+
+type World is Data:
+  World{seed: U32, t: Cells, awake: List<&2, P.Body>, dirty: List<&2, Cell>, player: P.Body}
+
+type Sl is Data:
+  Sl{t: Cells, dirty: List<&2, Cell>, keep: List<&2, P.Body>}
+
+# The flat world
+# --------------
+# For a crowd, the awake cubes (with the sleepers around them and the
+# player) go into one array of words, in a grid of cells chained by index,
+# and the proven tick runs on top of it. Lists and trees cost a heap node
+# and a reference count per body per step; an array read is a read. Every
+# read hands the array back, so a walk down a cell's chain is one function
+# with a phase, not a chain of them (Bend has no mutual recursion).
+
+# the array's origin: a cell's corner on each axis (x and z are far apart in
+# an endless world, so one origin for both would not fit in 32 bits)
+type Og is Data:
+  Og{x: Nat, z: Nat}
+
+def F.ox(+o: Og) -> Nat:
+  Og{x, z} = o
+  x
+
+def F.oz(+o: Og) -> Nat:
+  Og{x, z} = o
+  z
+
+# A body is 6 words: x, y, z (from the patch's origin), vx, vy, and vz
+# with the flags on top (ground, hit, sleeper, woken)
+def F.w() -> U32:
+  6
+
+def F.pz(c: Bool, +a: P.Z, +b: P.Z) -> P.Z:
+  match c:
+    case True{}:
+      a
+    case False{}:
+      b
+
+def F.zof(+w: U32) -> P.Z:
+  F.pz(U32.is_eq((w >> 31n : U32), 0), P.Pos{U32.to_nat((w .&. 2147483647 : U32))},
+    P.Neg{U32.to_nat((w .&. 2147483647 : U32))})
+
+def F.wof(+z: P.Z) -> U32:
+  Pick.u(Nat.is_lt(0n, P.Z.neg(z)), (U32.from_nat(P.Z.neg(z)) .|. 2147483648 : U32), U32.from_nat(P.Z.pos(z)))
+
+# vz keeps its sign in bit 30 and the flags above it
+def F.vzw(+z: P.Z, +g: Bool, +h: Bool, +sl: Bool) -> U32:
+  (Pick.u(Nat.is_lt(0n, P.Z.neg(z)), (U32.from_nat(P.Z.neg(z)) .|. 1073741824 : U32), U32.from_nat(P.Z.pos(z)))
+    .|. (Pick.u(g, 2147483648, 0) .|. (Pick.u(h, 1, 0) << 29n) .|. (Pick.u(sl, 1, 0) << 28n) : U32) : U32)
+
+def F.vzof(+w: U32) -> P.Z:
+  F.pz(U32.is_eq(((w >> 30n) .&. 1 : U32), 0), P.Pos{U32.to_nat((w .&. 268435455 : U32))},
+    P.Neg{U32.to_nat((w .&. 268435455 : U32))})
+
+def F.ground(+w: U32) -> Bool:
+  U32.is_eq((w >> 31n : U32), 1)
+
+def F.hit(+w: U32) -> Bool:
+  U32.is_eq(((w >> 29n) .&. 1 : U32), 1)
+
+def F.sleeper(+w: U32) -> Bool:
+  U32.is_eq(((w >> 28n) .&. 1 : U32), 1)
+
+def F.body(+o: Og, +x: U32, +y: U32, +z: U32, +vx: U32, +vy: U32, +vz: U32) -> P.Body:
+  P.Body{Nat.add(F.ox(o), U32.to_nat(x)), U32.to_nat(y), Nat.add(F.oz(o), U32.to_nat(z)), F.zof(vx), F.zof(vy), F.vzof(vz),
+    F.ground(vz), F.hit(vz)}
+
+# body i into the array (its flags kept as they are, but for a sleeper)
+def F.put(a: Array<U32>, +i: U32, +o: Og, +sl: Bool, b: P.Body) -> Array<U32>:
+  P.Body{+x, +y, +z, +vx, +vy, +vz, +g, +h} = b
+  a[(i * 6 : U32)] <- U32.from_nat(Nat.sub(x, F.ox(o)))
+  a[(i * 6 + 1 : U32)] <- U32.from_nat(y)
+  a[(i * 6 + 2 : U32)] <- U32.from_nat(Nat.sub(z, F.oz(o)))
+  a[(i * 6 + 3 : U32)] <- F.wof(vx)
+  a[(i * 6 + 4 : U32)] <- F.wof(vy)
+  a[(i * 6 + 5 : U32)] <- F.vzw(vz, g, h, sl)
+
+# the array's layout: bodies at 0, the chain links at 6*cap, the cells'
+# heads at 7*cap (cap slots, a power of two)
+def F.nx(+cap: U32) -> U32:
+  (cap * 6 : U32)
+
+def F.hd(+cap: U32) -> U32:
+  (cap * 7 : U32)
+
+def F.putw(a: Array<U32>, +i: U32, +v: U32) -> Array<U32>:
+  a[i] <- v
+
+# the cell of a place (cells of 1 m: 2^18 units), hashed into a slot
+def F.slot(+x: U32, +z: U32, +msk: U32) -> U32:
+  ((((x >> 18n) * 73856093 : U32) .^. ((z >> 18n) * 19349663 : U32) : U32) .&. msk : U32)
+
+def F.pack(xs: List<&2, P.Body>, a: Array<U32>, +i: U32, +o: Og, +sl: Bool) -> Array<U32>:
+  match xs:
+    case []:
+      a
+    case b <> rest:
+      F.pack(rest, F.put(a, i, o, sl, b), (i + 1 : U32), o, sl)
+
+def F.fin(r: Array<U32> & U32) -> Array<U32>:
+  (a, v) = r
+  a
+
+# every body into its cell's chain: read its x and z, then its slot's head,
+# then link it in (one function, a phase per read, the reads handed on)
+def F.grid(n: Nat, ph: Nat, r: Array<U32> & U32, +i: U32, +cap: U32, +msk: U32, +x: U32, +s: U32) -> Array<U32>:
+  match n ph:
+    case 0n _:
+      F.fin(r)
+    case 1n+m 2n:
+      (a, v) = r
+      F.grid(n, 1n, a[(i * 6 + 2 : U32)], i, cap, msk, v, s)
+    case 1n+m 1n:
+      (a, v) = r
+      +sl = F.slot(x, v, msk)
+      F.grid(n, 0n, a[(F.hd(cap) + sl : U32)], i, cap, msk, x, sl)
+    case 1n+m _:
+      (a, v) = r
+      F.grid(m, 2n, F.putw(F.putw(a, (F.nx(cap) + i : U32), v), (F.hd(cap) + s : U32), (i + 1 : U32))[((i + 1) * 6 : U32)],
+        (i + 1 : U32), cap, msk, x, s)
+
+def F.build(+n: U32, a: Array<U32>, +cap: U32, +msk: U32) -> Array<U32>:
+  F.grid(U32.to_nat(n), 2n, a[0], 0, cap, msk, 0, 0)
+
+def F.d(+a: U32, +b: U32) -> U32:
+  Pick.u((a < b : U32), (b - a : U32), (a - b : U32))
+
+def F.cell(+x: U32) -> U32:
+  (x >> 18n : U32)
+
+# the cell of the step cn of a scan over the nx x nz cells from (lox, loz):
+# the range comes from the body's reach and the cube's size (W.lo, W.span),
+# never from a fixed number of cells
+def F.cx(+cn: Nat, +lox: U32, +nx: Nat) -> U32:
+  (lox + U32.from_nat(Nat.mod(Nat.sub(cn, 1n), nx)) : U32)
+
+def F.cz(+cn: Nat, +loz: U32, +nx: Nat) -> U32:
+  (loz + U32.from_nat(Nat.div(Nat.sub(cn, 1n), nx)) : U32)
+
+def F.keep(c: Bool, +j: U32, acc: List<&2, U32>) -> List<&2, U32>:
+  match c:
+    case True{}:
+      j <> acc
+    case False{}:
+      acc
+
+def F.pair(a: Array<U32>, acc: List<&2, U32>) -> Array<U32> & List<&2, U32>:
+  (a, acc)
+
+def F.pfin(r: Array<U32> & U32, acc: List<&2, U32>) -> Array<U32> & List<&2, U32>:
+  (a, v) = r
+  (a, acc)
+
+# the slot of a cell (cx, cz), already in cells
+def F.slot2(+cx: U32, +cz: U32, +msk: U32) -> U32:
+  (((cx * 73856093 : U32) .^. (cz * 19349663 : U32) : U32) .&. msk : U32)
+
+# the bodies within rad of (sx, sy, sz), walking the chains of the 9 cells
+# around it: one function, a phase per read (3: a chain link, 2: x, 1: y,
+# 0: z and the test)
+def F.scan(fuel: Nat, cn: Nat, ph: Nat, r: Array<U32> & U32, +i: U32, +sx: U32, +sy: U32, +sz: U32, +rad: U32, +cap: U32,
+  +msk: U32, +lox: U32, +loz: U32, +nx: Nat, +j: U32, +jx: U32, +jy: U32, acc: List<&2, U32>) -> Array<U32> & List<&2, U32>:
+  match fuel cn ph:
+    case 0n _ _:
+      F.pfin(r, acc)
+    case _ 0n _:
+      F.pfin(r, acc)
+    case 1n+f 1n++c 3n:
+      (a, +v) = r
+      match v:
+        case 0:
+          F.scan(f, c, 3n, a[(F.hd(cap) + F.slot2(F.cx(c, lox, nx), F.cz(c, loz, nx), msk) : U32)], i, sx, sy, sz,
+            rad, cap, msk, lox, loz, nx, 0, 0, 0, acc)
+        case _:
+          F.scan(f, 1n+c, 2n, a[((v - 1) * 6 : U32)], i, sx, sy, sz, rad, cap, msk, lox, loz, nx, (v - 1 : U32), 0, 0, acc)
+    case 1n+f 1n+c 2n:
+      (a, v) = r
+      F.scan(f, 1n+c, 1n, a[(j * 6 + 1 : U32)], i, sx, sy, sz, rad, cap, msk, lox, loz, nx, j, v, jy, acc)
+    case 1n+f 1n+c 1n:
+      (a, v) = r
+      F.scan(f, 1n+c, 0n, a[(j * 6 + 2 : U32)], i, sx, sy, sz, rad, cap, msk, lox, loz, nx, j, jx, v, acc)
+    case 1n+f 1n++c _:
+      (a, +v) = r
+      F.scan(f, 1n+c, 3n, a[(F.nx(cap) + j : U32)], i, sx, sy, sz, rad, cap, msk, lox, loz, nx, j, jx, jy,
+        F.keep(Bool.and(Bool.not(U32.is_eq(j, i)),
+          Bool.and((F.d(sx, jx) < rad : U32), Bool.and((F.d(sz, v) < rad : U32), (F.d(sy, jy) < rad : U32)))), j, acc))
+
+def F.lfin(r: Array<U32> & U32, acc: List<&2, P.Body>) -> Array<U32> & List<&2, P.Body>:
+  (a, v) = r
+  (a, acc)
+
+# the bodies of the indexes idxs out of the array, one word per call (5: x,
+# 4: y, 3: z, 2: vx, 1: vy, 0: vz and the body)
+def F.load(idxs: List<&2, U32>, ph: Nat, r: Array<U32> & U32, +o: Og, +j: U32, +x: U32, +y: U32, +z: U32, +vx: U32,
+  +vy: U32, acc: List<&2, P.Body>) -> Array<U32> & List<&2, P.Body>:
+  match idxs ph:
+    case _ 5n:
+      (a, v) = r
+      F.load(idxs, 4n, a[(j * 6 + 1 : U32)], o, j, v, y, z, vx, vy, acc)
+    case _ 4n:
+      (a, v) = r
+      F.load(idxs, 3n, a[(j * 6 + 2 : U32)], o, j, x, v, z, vx, vy, acc)
+    case _ 3n:
+      (a, v) = r
+      F.load(idxs, 2n, a[(j * 6 + 3 : U32)], o, j, x, y, v, vx, vy, acc)
+    case _ 2n:
+      (a, v) = r
+      F.load(idxs, 1n, a[(j * 6 + 4 : U32)], o, j, x, y, z, v, vy, acc)
+    case _ 1n:
+      (a, v) = r
+      F.load(idxs, 0n, a[(j * 6 + 5 : U32)], o, j, x, y, z, vx, v, acc)
+    case Nil{} _:
+      (a, v) = r
+      (a, F.body(o, x, y, z, vx, vy, v) <> acc)
+    case +j2 <> rest _:
+      (a, v) = r
+      F.load(rest, 5n, a[(j2 * 6 : U32)], o, j2, 0, 0, 0, 0, 0, F.body(o, x, y, z, vx, vy, v) <> acc)
+
+def F.load0(idxs: List<&2, U32>, a: Array<U32>, +o: Og) -> Array<U32> & List<&2, P.Body>:
+  match idxs:
+    case []:
+      (a, [])
+    case +j <> rest:
+      F.load(rest, 5n, a[(j * 6 : U32)], o, j, 0, 0, 0, 0, 0, [])
+
+# what a tick pushed, back into the array (only the velocities and flags
+# change: a push moves no one)
+def F.wb(idxs: List<&2, U32>, obs: List<&2, P.Body>, a: Array<U32>, +o: Og, +na: U32) -> Array<U32>:
+  match idxs obs:
+    case +j <> ir b <> br:
+      P.Body{x, y, z, vx, vy, +vz, +g, +h} = b
+      F.wb(ir, br, F.putw(F.putw(F.putw(a, (j * 6 + 3 : U32), F.wof(vx)), (j * 6 + 4 : U32), F.wof(vy)),
+        (j * 6 + 5 : U32), F.vzw(vz, g, h, (j >= na : U32))), o, na)
+    case _ _:
+      a
+
+# read body i: each read hands the array on
+def F.g5(r: Array<U32> & U32, +o: Og, +x: U32, +y: U32, +z: U32, +vx: U32, +vy: U32) -> Array<U32> & P.Body:
+  (a, v) = r
+  (a, F.body(o, x, y, z, vx, vy, v))
+
+def F.g4(r: Array<U32> & U32, +i: U32, +o: Og, +x: U32, +y: U32, +z: U32, +vx: U32) -> Array<U32> & P.Body:
+  (a, v) = r
+  F.g5(a[(i * 6 + 5 : U32)], o, x, y, z, vx, v)
+
+def F.g3(r: Array<U32> & U32, +i: U32, +o: Og, +x: U32, +y: U32, +z: U32) -> Array<U32> & P.Body:
+  (a, v) = r
+  F.g4(a[(i * 6 + 4 : U32)], i, o, x, y, z, v)
+
+def F.g2(r: Array<U32> & U32, +i: U32, +o: Og, +x: U32, +y: U32) -> Array<U32> & P.Body:
+  (a, v) = r
+  F.g3(a[(i * 6 + 3 : U32)], i, o, x, y, v)
+
+def F.g1(r: Array<U32> & U32, +i: U32, +o: Og, +x: U32) -> Array<U32> & P.Body:
+  (a, v) = r
+  F.g2(a[(i * 6 + 2 : U32)], i, o, x, v)
+
+def F.g0(r: Array<U32> & U32, +i: U32, +o: Og) -> Array<U32> & P.Body:
+  (a, v) = r
+  F.g1(a[(i * 6 + 1 : U32)], i, o, v)
+
+def F.get(a: Array<U32>, +i: U32, +o: Og) -> Array<U32> & P.Body:
+  F.g0(a[(i * 6 : U32)], i, o)
+
+def F.four(a: Array<U32>, +i: U32, +o: Og, +na: U32, idxs: List<&2, U32>, r: P.Body & List<&2, P.Body>) -> Array<U32>:
+  (b, obs) = r
+  F.wb(idxs, obs, F.put(a, i, o, False{}, b), o, na)
+
+def F.three(rl: Array<U32> & List<&2, P.Body>, self: P.Body, +i: U32, +o: Og, +k: P.K, +na: U32,
+  idxs: List<&2, U32>) -> Array<U32>:
+  (a, obs) = rl
+  F.four(a, i, o, na, idxs, P.Body.tick(k, obs, P.In.idle(), self))
+
+def F.two(rs: Array<U32> & List<&2, U32>, self: P.Body, +i: U32, +o: Og, +k: P.K, +na: U32) -> Array<U32>:
+  (a, +idxs) = rs
+  F.three(F.load0(List.reverse(&2, U32, idxs), a, o), self, i, o, k, na, idxs)
+
+def F.three2(rl: Array<U32> & List<&2, P.Body>, self: P.Body, +i: U32, +o: Og, +k: P.K, +na: U32, idxs: List<&2, U32>,
+  inp: P.In) -> Array<U32>:
+  (a, obs) = rl
+  F.four(a, i, o, na, idxs, P.Body.tick(k, obs, inp, self))
+
+def F.two2(rs: Array<U32> & List<&2, U32>, self: P.Body, +i: U32, +o: Og, +k: P.K, +na: U32, inp: P.In) -> Array<U32>:
+  (a, +idxs) = rs
+  F.three2(F.load0(List.reverse(&2, U32, idxs), a, o), self, i, o, k, na, idxs, inp)
+
+# the cubes a body can touch live in the cells of W.lo .. W.lo + W.span,
+# worked out from its reach and the cube's size
+def F.one2(a: Array<U32>, +i: U32, +o: Og, +k: P.K, +cap: U32, +msk: U32, +na: U32, +self: P.Body, +m: Nat,
+  +mm: Nat, inp: P.In) -> Array<U32>:
+  +mr = Nat.add(m, mm)
+  +lox = (W.lo(P.Body.x(self), mr) - W.cell_of(F.ox(o)) : U32)
+  +loz = (W.lo(P.Body.z(self), mr) - W.cell_of(F.oz(o)) : U32)
+  +nx = W.span(P.Body.x(self), mr)
+  +cn = Nat.mul(nx, W.span(P.Body.z(self), mr))
+  F.two2(F.scan(8192n, cn, 3n,
+    a[(F.hd(cap) + F.slot2(F.cx(cn, lox, nx), F.cz(cn, loz, nx), msk) : U32)], i,
+    U32.from_nat(Nat.sub(P.Body.x(self), F.ox(o))), U32.from_nat(P.Body.y(self)),
+    U32.from_nat(Nat.sub(P.Body.z(self), F.oz(o))),
+    U32.from_nat(Nat.add(W.size(), m)), cap, msk, lox, loz, nx, 0, 0, 0, []), self, i, o, k, na, inp)
+
+# one cube's tick: itself, the bodies within reach out of the grid, the
+# proven tick, then back into the array
+def F.one(r: Array<U32> & P.Body, +i: U32, +o: Og, +k: P.K, +cap: U32, +msk: U32, +na: U32, +mm: Nat) -> Array<U32>:
+  (a, +self) = r
+  F.one2(a, i, o, k, cap, msk, na, self, W.creach(k, self), mm, P.In.idle())
+
+def F.ticks(n: Nat, a: Array<U32>, +i: U32, +o: Og, +k: P.K, +cap: U32, +msk: U32, +na: U32,
+  +mm: Nat) -> Array<U32>:
+  match n:
+    case 0n:
+      a
+    case 1n+m:
+      F.ticks(m, F.one(F.get(a, i, o), i, o, k, cap, msk, na, mm), (i + 1 : U32), o, k, cap, msk, na, mm)
+
+def F.ufin(r: Array<U32> & U32, acc: List<&2, P.Body>) -> Array<U32> & List<&2, P.Body>:
+  (a, v) = r
+  (a, acc)
+
+# the bodies 0 .. n-1 back out of the array
+def F.unp(n: Nat, ph: Nat, r: Array<U32> & U32, +i: U32, +o: Og, +x: U32, +y: U32, +z: U32, +vx: U32, +vy: U32,
+  acc: List<&2, P.Body>) -> Array<U32> & List<&2, P.Body>:
+  match n ph:
+    case 0n _:
+      F.ufin(r, acc)
+    case 1n+m 5n:
+      (a, v) = r
+      F.unp(n, 4n, a[(i * 6 + 1 : U32)], i, o, v, y, z, vx, vy, acc)
+    case 1n+m 4n:
+      (a, v) = r
+      F.unp(n, 3n, a[(i * 6 + 2 : U32)], i, o, x, v, z, vx, vy, acc)
+    case 1n+m 3n:
+      (a, v) = r
+      F.unp(n, 2n, a[(i * 6 + 3 : U32)], i, o, x, y, v, vx, vy, acc)
+    case 1n+m 2n:
+      (a, v) = r
+      F.unp(n, 1n, a[(i * 6 + 4 : U32)], i, o, x, y, z, v, vy, acc)
+    case 1n+m 1n:
+      (a, v) = r
+      F.unp(n, 0n, a[(i * 6 + 5 : U32)], i, o, x, y, z, vx, v, acc)
+    case 1n+m _:
+      (a, v) = r
+      F.unp(m, 5n, a[((i + 1) * 6 : U32)], (i + 1 : U32), o, 0, 0, 0, 0, 0, F.body(o, x, y, z, vx, vy, v) <> acc)
+
+def F.unpack(+n: U32, a: Array<U32>, +i: U32, +o: Og) -> Array<U32> & List<&2, P.Body>:
+  F.unp(U32.to_nat(n), 5n, a[(i * 6 : U32)], i, o, 0, 0, 0, 0, 0, [])
+
+def F.cap(fuel: Nat, done: Bool, +n: U32, +c: U32, +b: Nat) -> U32 & Nat:
+  match fuel done:
+    case _ True{}:
+      (c, b)
+    case 0n _:
+      (c, b)
+    case 1n+f _:
+      F.cap(f, (n <= c * 2 : U32), n, (c * 2 : U32), Nat.add(b, 1n))
+
+def F.cap0(+n: U32) -> U32 & Nat:
+  F.cap(30n, (n <= 16 : U32), n, 16, 4n)
+
+
+# The flat tick: the crowd, the sleepers around it and the player in one
+# array; the player ticks first (with the input), then every cube, in
+# order; then the pushed sleepers wake and the cubes at rest sleep.
+
+def F.bx0(+b: Bx) -> Nat:
+  Bx{x0, y0, z0, x1, y1, z1} = b
+  x0
+
+def F.bz0(+b: Bx) -> Nat:
+  Bx{x0, y0, z0, x1, y1, z1} = b
+  z0
+
+def F.bx1(+b: Bx) -> Nat:
+  Bx{x0, y0, z0, x1, y1, z1} = b
+  x1
+
+def F.bz1(+b: Bx) -> Nat:
+  Bx{x0, y0, z0, x1, y1, z1} = b
+  z1
+
+# the cells whose sleeping cubes the crowd can touch: from its box less the
+# tick's greatest reach up to its far side plus the cube's size and that
+# same reach, the very range of W.lo and W.span
+def F.cx0(+b: Bx, +mm: Nat) -> U32:
+  W.lo(F.bx0(b), mm)
+
+def F.cz0(+b: Bx, +mm: Nat) -> U32:
+  W.lo(F.bz0(b), mm)
+
+def F.gnx(+b: Bx, +mm: Nat) -> Nat:
+  Nat.add(U32.to_nat((W.cell_of(Nat.sub(Nat.add(Nat.add(F.bx1(b), W.size()), mm), 1n)) - F.cx0(b, mm) : U32)), 1n)
+
+def F.gnz(+b: Bx, +mm: Nat) -> Nat:
+  Nat.add(U32.to_nat((W.cell_of(Nat.sub(Nat.add(Nat.add(F.bz1(b), W.size()), mm), 1n)) - F.cz0(b, mm) : U32)), 1n)
+
+# the array's origin: the first of those cells on each axis, so every cube
+# of the array is above it (places are kept as 32 bit numbers from it)
+def F.org(+b: Bx, +mm: Nat) -> Og:
+  Og{W.base(F.cx0(b, mm)), W.base(F.cz0(b, mm))}
+
+# the greatest reach of the tick: the player's (it has a motor) and the
+# cubes', so that no cube of the array moves further than it in a tick
+def F.mx(+k: P.K, xs: List<&2, P.Body>, +m: Nat) -> Nat:
+  match xs:
+    case []:
+      m
+    case +b <> rest:
+      F.mx(k, rest, Nat.max(m, W.creach(k, b)))
+
+# one body's tick with a reach and an input of its own (the player's)
+# the player's own tick: its reach (a jump, the motor) and its input
+def F.oneR(r: Array<U32> & P.Body, +i: U32, +o: Og, +k: P.K, +cap: U32, +msk: U32, +na: U32, +mm: Nat,
+  inp: P.In) -> Array<U32>:
+  (a, +self) = r
+  F.one2(a, i, o, k, cap, msk, na, self, W.reach(k, self), mm, inp)
+
+# the sleepers a tick pushed (they are awake from now on)
+def F.woken(xs: List<&2, P.Body>) -> List<&2, P.Body>:
+  match xs:
+    case []:
+      []
+    case +b <> rest:
+      W.take_if(W.moving(b), b, F.woken(rest))
+
+def W.slept(+seed: U32, p: P.Body, s: Sl) -> World:
+  Sl{t, dirty, keep} = s
+  World{seed, t, keep, dirty, p}
+
+def W.sleep1(ok: Bool, +c: P.Body, +cx: U32, +cz: U32, cubes: List<&2, P.Body>, s: Sl) -> Sl:
+  match ok:
+    case True{}:
+      Sl{t, dirty, keep} = s
+      Sl{Cells.set(t, cx, cz, W.cube(P.Body.x(c), P.Body.y(c), P.Body.z(c)) <> cubes), Cell{cx, cz} <> dirty, keep}
+    case False{}:
+      Sl{t, dirty, keep} = s
+      Sl{t, dirty, c <> keep}
+
+def W.fits7(xs: List<&2, P.Body>) -> Bool:
+  Nat.is_lt(List.length(&2, P.Body, xs), 7n)
+
+# (the cell read only for a cube at rest)
+def W.sleep2(still: Bool, +seed: U32, +c: P.Body, s: Sl) -> Sl:
+  match still:
+    case True{}:
+      Sl{+t, dirty, keep} = s
+      +cx = W.cell_of(P.Body.x(c))
+      +cz = W.cell_of(P.Body.z(c))
+      +cubes = Cells.at(t, seed, cx, cz)
+      W.sleep1(W.fits7(cubes), c, cx, cz, cubes, Sl{t, dirty, keep})
+    case False{}:
+      Sl{t, dirty, keep} = s
+      Sl{t, dirty, c <> keep}
+
+def W.still.on(quiet: Bool, +k: P.K, +t: Cells, +seed: U32, +c: P.Body) -> Bool:
+  match quiet:
+    case True{}:
+      Bool.or(Nat.is_eq(P.Body.y(c), 0n), P.Geo.rests(W.size(), P.Body.x(c), P.Body.y(c), P.Body.z(c), W.around(k, t, seed, c)))
+    case False{}:
+      False{}
+
+# at rest: on the ground, still, and on the floor or on sleeping cubes
+# (the cells looked at only for a body already still)
+def W.still(+k: P.K, +t: Cells, +seed: U32, +c: P.Body) -> Bool:
+  W.still.on(Bool.and(P.Body.ground(c), Bool.not(W.moving(c))), k, t, seed, c)
+
+def W.sleep_one(+k: P.K, +seed: U32, +c: P.Body, s: Sl) -> Sl:
+  Sl{+t, dirty, keep} = s
+  W.sleep2(W.still(k, t, seed, c), seed, c, Sl{t, dirty, keep})
+
+def W.sleep(xs: List<&2, P.Body>, +k: P.K, +seed: U32, s: Sl) -> Sl:
+  match xs:
+    case []:
+      s
+    case +c <> rest:
+      W.sleep(rest, k, seed, W.sleep_one(k, seed, c, s))
+
+def F.f5(+k: P.K, +seed: U32, p: P.Body, awake: List<&2, P.Body>, st: St) -> World:
+  St{t, dirty, fresh, work} = st
+  W.slept(seed, p, W.sleep(List.append(&2, P.Body, fresh, awake), k, seed, Sl{t, dirty, []}))
+
+def F.f3(+k: P.K, +seed: U32, t: Cells, dirty: List<&2, Cell>, p: P.Body, awake: List<&2, P.Body>,
+  +wk: List<&2, P.Body>) -> World:
+  F.f5(k, seed, p, awake, W.wake(Nat.add(1024n, Nat.mul(16n, List.length(&2, P.Body, wk))), seed, St{t, dirty, [], wk}))
+
+def F.u3(r: Array<U32> & P.Body, +k: P.K, +seed: U32, t: Cells, dirty: List<&2, Cell>, awake: List<&2, P.Body>,
+  +wk: List<&2, P.Body>) -> World:
+  (a, p) = r
+  F.f3(k, seed, t, dirty, p, awake, wk)
+
+def F.u2(r: Array<U32> & List<&2, P.Body>, +k: P.K, +seed: U32, t: Cells, dirty: List<&2, Cell>, +o: Og, +na: U32,
+  +m: U32, awake: List<&2, P.Body>) -> World:
+  (a, sl) = r
+  F.u3(F.get(a, (na + m : U32), o), k, seed, t, dirty, awake, F.woken(sl))
+
+def F.u1(r: Array<U32> & List<&2, P.Body>, +k: P.K, +seed: U32, t: Cells, dirty: List<&2, Cell>, +o: Og, +na: U32,
+  +m: U32) -> World:
+  (a, awake) = r
+  F.u2(F.unpack(m, a, na, o), k, seed, t, dirty, o, na, m, awake)
+
+def F.f2(+k: P.K, +seed: U32, t: Cells, dirty: List<&2, Cell>, +o: Og, +na: U32, +m: U32, a: Array<U32>) -> World:
+  F.u1(F.unpack(na, a, 0, o), k, seed, t, dirty, o, na, m)
+
+# the crowd, the sleepers of its cells and the player into the array; the
+# player ticks first, then every cube, in order
+def W.fl2(+k: P.K, inp: P.In, +seed: U32, t: Cells, dirty: List<&2, Cell>, +p: P.Body, awake: List<&2, P.Body>,
+  sl: List<&2, P.Body>, +na: U32, +m: U32, +o: Og, +mm: Nat, r: U32 & Nat) -> World:
+  (+cap, b) = r
+  F.f2(k, seed, t, dirty, o, na, m,
+    F.ticks(U32.to_nat(na),
+      F.oneR(F.get(F.build((na + m + 1 : U32), F.put(F.pack(sl, F.pack(awake, Array.new(U32, Nat.add(b, 3n), 0), 0, o, False{}),
+        na, o, True{}), (na + m : U32), o, True{}, p), cap, (cap - 1 : U32)), (na + m : U32), o),
+        (na + m : U32), o, k, cap, (cap - 1 : U32), na, mm, inp),
+      0, o, k, cap, (cap - 1 : U32), na, mm))
+
+def W.fl1(+k: P.K, inp: P.In, +seed: U32, +t: Cells, dirty: List<&2, Cell>, +p: P.Body, +awake: List<&2, P.Body>,
+  +na: U32, +bx: Bx, +mm: Nat) -> World:
+  +sl = W.rect(Nat.mul(F.gnx(bx, mm), F.gnz(bx, mm)), t, seed, F.cx0(bx, mm), F.cz0(bx, mm), F.gnx(bx, mm))
+  W.fl2(k, inp, seed, t, dirty, p, awake, sl, na, U32.from_nat(List.length(&2, P.Body, sl)), F.org(bx, mm), mm,
+    F.cap0((na + U32.from_nat(List.length(&2, P.Body, sl)) + 1 : U32)))
+
+def O.bb(xs: List<&2, P.Body>, b: Bx) -> Bx:
+  match xs:
+    case []:
+      b
+    case +e <> rest:
+      Bx{+x0, +y0, +z0, +x1, +y1, +z1} = b
+      O.bb(rest, Bx{Nat.min(x0, P.Body.x(e)), Nat.min(y0, P.Body.y(e)), Nat.min(z0, P.Body.z(e)),
+        Nat.max(x1, P.Body.x(e)), Nat.max(y1, P.Body.y(e)), Nat.max(z1, P.Body.z(e))})
+
+def O.big() -> Nat:
+  Nat.add(Nat.mul(W.size(), U32.to_nat(1073741823)), 262143n)
+
+def O.box(xs: List<&2, P.Body>) -> Bx:
+  O.bb(xs, Bx{O.big(), O.big(), O.big(), 0n, 0n, 0n})
+
+def W.tick_flat(+k: P.K, inp: P.In, w: World) -> World:
+  World{+seed, +t, +awake, dirty, +p} = w
+  W.fl1(k, inp, seed, t, dirty, p, awake, U32.from_nat(List.length(&2, P.Body, awake)), O.bb(awake, O.box([p])),
+    F.mx(k, awake, W.reach(k, p)))
+
 # The world's tick
 # ----------------
 # The player first (with the input), then every awake cube (no input),
 # each among the sleepers around it and every other awake body; what they
 # pushed wakes. Then the awake cubes that came to rest on the ground or on
 # sleeping cubes go to sleep in their cells.
-
-type World is Data:
-  World{seed: U32, t: Cells, awake: List<&2, P.Body>, dirty: List<&2, Cell>, player: P.Body}
 
 def W.first(xs: List<&2, P.Body>) -> P.Body:
   match xs:
@@ -726,9 +1268,6 @@ type Oct is Data:
 type P3 is Data:
   P3{st: List<&2, P.Body>, lo: List<&2, P.Body>, hi: List<&2, P.Body>}
 
-type Bx is Data:
-  Bx{x0: Nat, y0: Nat, z0: Nat, x1: Nat, y1: Nat, z1: Nat}
-
 # half a cube: the margin between the sides
 def O.half() -> Nat:
   131072n
@@ -739,21 +1278,6 @@ def O.leaf_max() -> Nat:
 
 def O.min_size() -> Nat:
   2097152n
-
-def O.big() -> Nat:
-  Nat.add(Nat.mul(W.size(), U32.to_nat(1073741823)), 262143n)
-
-def O.bb(xs: List<&2, P.Body>, b: Bx) -> Bx:
-  match xs:
-    case []:
-      b
-    case +e <> rest:
-      Bx{+x0, +y0, +z0, +x1, +y1, +z1} = b
-      O.bb(rest, Bx{Nat.min(x0, P.Body.x(e)), Nat.min(y0, P.Body.y(e)), Nat.min(z0, P.Body.z(e)),
-        Nat.max(x1, P.Body.x(e)), Nat.max(y1, P.Body.y(e)), Nat.max(z1, P.Body.z(e))})
-
-def O.box(xs: List<&2, P.Body>) -> Bx:
-  O.bb(xs, Bx{O.big(), O.big(), O.big(), 0n, 0n, 0n})
 
 # the longest side of b (0 x, 1 y, 2 z), and its length
 def O.axis(+b: Bx) -> Nat:
@@ -1721,61 +2245,6 @@ def W.cubes_all(+k: P.K, w: World) -> World:
 # Sleep
 # -----
 
-type Sl is Data:
-  Sl{t: Cells, dirty: List<&2, Cell>, keep: List<&2, P.Body>}
-
-def W.fits7(xs: List<&2, P.Body>) -> Bool:
-  Nat.is_lt(List.length(&2, P.Body, xs), 7n)
-
-def W.still.on(quiet: Bool, +k: P.K, +t: Cells, +seed: U32, +c: P.Body) -> Bool:
-  match quiet:
-    case True{}:
-      Bool.or(Nat.is_eq(P.Body.y(c), 0n), P.Geo.rests(W.size(), P.Body.x(c), P.Body.y(c), P.Body.z(c), W.around(k, t, seed, c)))
-    case False{}:
-      False{}
-
-# at rest: on the ground, still, and on the floor or on sleeping cubes
-# (the cells looked at only for a body already still)
-def W.still(+k: P.K, +t: Cells, +seed: U32, +c: P.Body) -> Bool:
-  W.still.on(Bool.and(P.Body.ground(c), Bool.not(W.moving(c))), k, t, seed, c)
-
-def W.sleep1(ok: Bool, +c: P.Body, +cx: U32, +cz: U32, cubes: List<&2, P.Body>, s: Sl) -> Sl:
-  match ok:
-    case True{}:
-      Sl{t, dirty, keep} = s
-      Sl{Cells.set(t, cx, cz, W.cube(P.Body.x(c), P.Body.y(c), P.Body.z(c)) <> cubes), Cell{cx, cz} <> dirty, keep}
-    case False{}:
-      Sl{t, dirty, keep} = s
-      Sl{t, dirty, c <> keep}
-
-# (the cell read only for a cube at rest)
-def W.sleep2(still: Bool, +seed: U32, +c: P.Body, s: Sl) -> Sl:
-  match still:
-    case True{}:
-      Sl{+t, dirty, keep} = s
-      +cx = W.cell_of(P.Body.x(c))
-      +cz = W.cell_of(P.Body.z(c))
-      +cubes = Cells.at(t, seed, cx, cz)
-      W.sleep1(W.fits7(cubes), c, cx, cz, cubes, Sl{t, dirty, keep})
-    case False{}:
-      Sl{t, dirty, keep} = s
-      Sl{t, dirty, c <> keep}
-
-def W.sleep_one(+k: P.K, +seed: U32, +c: P.Body, s: Sl) -> Sl:
-  Sl{+t, dirty, keep} = s
-  W.sleep2(W.still(k, t, seed, c), seed, c, Sl{t, dirty, keep})
-
-def W.sleep(xs: List<&2, P.Body>, +k: P.K, +seed: U32, s: Sl) -> Sl:
-  match xs:
-    case []:
-      s
-    case +c <> rest:
-      W.sleep(rest, k, seed, W.sleep_one(k, seed, c, s))
-
-def W.slept(+seed: U32, p: P.Body, s: Sl) -> World:
-  Sl{t, dirty, keep} = s
-  World{seed, t, keep, dirty, p}
-
 def W.sleep_all(+k: P.K, w: World) -> World:
   World{+seed, t, awake, dirty, p} = w
   W.slept(seed, p, W.sleep(awake, k, seed, Sl{t, dirty, []}))
@@ -1911,10 +2380,36 @@ def W.tick_by(few: Bool, +k: P.K, inp: P.In, w: World) -> World:
     case False{}:
       W.tick_many(k, inp, w)
 
+def W.tick_dense(flat: Bool, few: Bool, +k: P.K, inp: P.In, w: World) -> World:
+  match flat:
+    case True{}:
+      W.tick_flat(k, inp, w)
+    case False{}:
+      W.tick_by(few, k, inp, w)
+
+# the flat array holds the cubes and the sleepers of the cells of their box,
+# so it is the way when that box is not much wider than the crowd itself
+# (the cells are counted only once both sides are small, to stay in a Nat)
+def W.dense1(ok: Bool, +gx: Nat, +gz: Nat, +lim: Nat) -> Bool:
+  match ok:
+    case True{}:
+      Nat.is_lt(Nat.mul(gx, gz), lim)
+    case False{}:
+      False{}
+
+def W.dense(+bx: Bx, +n: Nat, +mm: Nat) -> Bool:
+  +lim = Nat.mul(2n, Nat.add(n, 1n))
+  +gx = F.gnx(bx, mm)
+  +gz = F.gnz(bx, mm)
+  W.dense1(Bool.and(Nat.is_lt(gx, lim), Nat.is_lt(gz, lim)), gx, gz, lim)
+
+def W.tick2(+k: P.K, inp: P.In, +awake: List<&2, P.Body>, +p: P.Body, +n: Nat, +mm: Nat, w: World) -> World:
+  W.tick_dense(W.dense(O.bb(awake, O.box([p])), n, mm), Bool.or(Nat.is_lt(n, 128n), Nat.is_lt(229376n, mm)), k, inp, w)
+
 # a tick of the whole world
 def W.tick(+k: P.K, inp: P.In, w: World) -> World:
-  World{seed, t, +awake, dirty, p} = w
-  W.tick_by(Bool.or(Nat.is_lt(List.length(&2, P.Body, awake), 128n), Nat.is_lt(229376n, O.reach(awake, k, 0n))), k, inp,
+  World{seed, t, +awake, dirty, +p} = w
+  W.tick2(k, inp, awake, p, List.length(&2, P.Body, awake), F.mx(k, awake, W.reach(k, p)),
     World{seed, t, awake, dirty, p})
 
 # a new world of seed, the player standing at the start

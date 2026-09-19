@@ -16,10 +16,14 @@ Cubo is written in Bend 2 (github.com/bendlang/bend). When working on it:
   order Bend accepts
 - measure with `./bench` (the simulation) and `./cubo still` (the GPU's time
   in the HUD) before and after a performance change
-- after touching world.bend, `./build.sh test` must print OK four times: no
+- after touching world.bend, `./build.sh test` must print OK five times: no
   cube inside another, none made or lost, for the list, the octree, the
-  colored blocks and the game's mix; bit-for-bit comparisons between versions are not the test (a
-  different order of the ticks is a different, equally valid, simulation)
+  colored blocks, the flat array and the game's mix; bit-for-bit comparisons
+  between versions are not the test (a different order of the ticks is a
+  different, equally valid, simulation)
+- no number of cells is written by hand: a neighbour sweep takes its cells
+  from the cube's size and the tick's reach (`W.lo`, `W.span`), so the
+  physics never depends on how big a cube is
 
     phys.bend     the proven physics: bodies, friction, pushes, gated moves, the tick
     ring.bend     the ring tactic (a proven polynomial normalizer)

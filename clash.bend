@@ -1,8 +1,8 @@
 # Cubo -- the collision test: 432 cubes in columns of 3 fall on each
 # other, the top ones sliding sideways into their neighbours, among the
-# world's cubes. For 300 ticks, four ways (the list of few cubes, the
-# octree, the colored blocks, and the game's mix), it checks after every tick
-# that no two cubes overlap (awake, asleep, the player) and, at the end,
+# world's cubes. For 300 ticks, five ways (the list of few cubes, the
+# octree, the colored blocks, the flat array, and the game's mix), it checks
+# after every tick that no two cubes overlap (awake, asleep, the player) and, at the end,
 # that no cube was made or lost.
 #
 #   ./build.sh test
@@ -100,6 +100,8 @@ def tick(v: Nat, +w: W.World) -> W.World:
       W.W.sleep_all(M.Knob.defaults(), W.W.cubes_oct(M.Knob.defaults(), W.W.player_step(M.Knob.defaults(), P.In.idle(), w)))
     case 2n:
       W.W.tick_many(M.Knob.defaults(), P.In.idle(), w)
+    case 3n:
+      W.W.tick_flat(M.Knob.defaults(), P.In.idle(), w)
     case _:
       W.W.tick(M.Knob.defaults(), P.In.idle(), w)
 
@@ -120,7 +122,8 @@ def main2(+w: W.World) -> IO(Unit):
     b : Unit <- IO.print("list:   " ++ run(300n, 0n, 0n, w, 0n))
     c : Unit <- IO.print("octree: " ++ run(300n, 1n, 0n, w, 0n))
     d : Unit <- IO.print("blocks: " ++ run(300n, 2n, 0n, w, 0n))
-    IO.print("game:   " ++ run(300n, 3n, 0n, w, 0n))
+    e : Unit <- IO.print("flat:   " ++ run(300n, 3n, 0n, w, 0n))
+    IO.print("game:   " ++ run(300n, 4n, 0n, w, 0n))
 
 def main() -> IO(Unit):
   main2(start())
