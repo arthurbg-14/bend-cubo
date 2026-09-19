@@ -428,15 +428,19 @@ def Txt.lines(ls: List<&2, String>, +i: U32) -> List<&2, Put>:
 def Frame.rel(+x: Nat, +c: U32) -> U32:
   (U32.from_nat(x) - U32.from_nat(W.W.base(c)) : U32)
 
-def Frame.dyn(bs: List<&2, P.Body>, +j: U32, +ocx: U32, +ocz: U32) -> List<&2, Put>:
-  match bs:
-    case []:
+# the moving bodies, the player first: at most 250 (the header holds 256,
+# the GPU draws 250; the rest are drawn once they sleep)
+def Frame.dyn(n: Nat, bs: List<&2, P.Body>, +j: U32, +ocx: U32, +ocz: U32) -> List<&2, Put>:
+  match n bs:
+    case 0n _:
       []
-    case +b <> rest:
+    case _ Nil{}:
+      []
+    case 1n+m +b <> rest:
       +o = (32 + j * 4 : U32)
       Put{o, Frame.rel(P.Body.x(b), ocx)} <> Put{(o + 1 : U32), U32.from_nat(P.Body.y(b))}
         <> Put{(o + 2 : U32), Frame.rel(P.Body.z(b), ocz)} <> Put{(o + 3 : U32), Pick.u(U32.is_eq(j, 0), 1, 0)}
-        <> Frame.dyn(rest, (j + 1 : U32), ocx, ocz)
+        <> Frame.dyn(m, rest, (j + 1 : U32), ocx, ocz)
 
 # a cell's cubes, four words each: where in the cell, x y z
 def Frame.cubes(bs: List<&2, P.Body>, +o: U32, +cx: U32, +cz: U32) -> List<&2, Put>:
@@ -588,7 +592,7 @@ def Play.head(+s: Play, +now: Nat, +pts: Patches, hdr: Array<U32>) -> Array<U32>
      Put{10, U32.from_nat(Nat.min(Nat.add(List.length(&2, P.Body, awake), 1n), 250n))},
      Put{11, Play.hud_count(s)}, Put{12, U32.from_nat(Nat.add(sel, 3n))}, Put{13, 1},
      Put{2048, n}],
-    List.append(&2, Put, Frame.dyn(eye <> awake, 0, ocx, ocz), List.append(&2, Put, Play.hud_puts(hv, s), puts))), hdr)
+    List.append(&2, Put, Frame.dyn(250n, eye <> awake, 0, ocx, ocz), List.append(&2, Put, Play.hud_puts(hv, s), puts))), hdr)
 
 def Play.untake(s: Play, rest: List<&2, W.Cell>) -> Play:
   Play{w, k, inp, t0, ticks, rep, prev, yaw, pitch, dist, sel, help, gpu, fus, hv} = s
