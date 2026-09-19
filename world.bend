@@ -570,15 +570,6 @@ def F.d(+a: U32, +b: U32) -> U32:
 def F.cell(+x: U32) -> U32:
   (x >> 18n : U32)
 
-# the cell of the step cn of a scan over the nx x nz cells from (lox, loz):
-# the range comes from the body's reach and the cube's size (W.lo, W.span),
-# never from a fixed number of cells
-def F.cx(+cn: Nat, +lox: U32, +nx: Nat) -> U32:
-  (lox + U32.from_nat(Nat.mod(Nat.sub(cn, 1n), nx)) : U32)
-
-def F.cz(+cn: Nat, +loz: U32, +nx: Nat) -> U32:
-  (loz + U32.from_nat(Nat.div(Nat.sub(cn, 1n), nx)) : U32)
-
 def F.keep(c: Bool, +j: U32, acc: List<&2, U32>) -> List<&2, U32>:
   match c:
     case True{}:
@@ -600,8 +591,15 @@ def F.slot2(+cx: U32, +cz: U32, +msk: U32) -> U32:
 # the bodies within rad of (sx, sy, sz), walking the chains of the 9 cells
 # around it: one function, a phase per read (3: a chain link, 2: x, 1: y,
 # 0: z and the test)
-def F.scan(fuel: Nat, cn: Nat, ph: Nat, r: Array<U32> & U32, +i: U32, +sx: U32, +sy: U32, +sz: U32, +rad: U32, +cap: U32,
-  +msk: U32, +lox: U32, +loz: U32, +nx: Nat, +j: U32, +jx: U32, +jy: U32, acc: List<&2, U32>) -> Array<U32> & List<&2, U32>:
+# a body's neighbourhood, cell by cell over the rectangle its reach spans,
+# and inside a cell down the chain of the cubes homed in it. A read of the
+# array is a step, so a step is a phase: 3 takes the chain's next link, 2, 1
+# and 0 the cube's x, y and z. The cell walks on when a chain ends (a link
+# of 0). Nothing here matches on a number -- Bend takes a u32 apart bit by
+# bit for that -- so the next cell and the next address are picked.
+def F.scan(fuel: Nat, cn: Nat, ph: Nat, r: Array<U32> & U32, +i: U32, +sx: U32, +sy: U32, +sz: U32, +rad: U32,
+  +cap: U32, +msk: U32, +lox: U32, +hix: U32, +cx: U32, +cz: U32, +j: U32, +jx: U32, +jy: U32,
+  acc: List<&2, U32>) -> Array<U32> & List<&2, U32>:
   match fuel cn ph:
     case 0n _ _:
       F.pfin(r, acc)
@@ -609,21 +607,22 @@ def F.scan(fuel: Nat, cn: Nat, ph: Nat, r: Array<U32> & U32, +i: U32, +sx: U32, 
       F.pfin(r, acc)
     case 1n+f 1n++c 3n:
       (a, +v) = r
-      match v:
-        case 0:
-          F.scan(f, c, 3n, a[(F.hd(cap) + F.slot2(F.cx(c, lox, nx), F.cz(c, loz, nx), msk) : U32)], i, sx, sy, sz,
-            rad, cap, msk, lox, loz, nx, 0, 0, 0, acc)
-        case _:
-          F.scan(f, 1n+c, 2n, a[((v - 1) * 6 : U32)], i, sx, sy, sz, rad, cap, msk, lox, loz, nx, (v - 1 : U32), 0, 0, acc)
+      +e = U32.is_eq(v, 0)
+      +w = U32.is_eq(cx, hix)
+      +ncx = Pick.u(w, lox, (cx + 1 : U32))
+      +ncz = Pick.u(w, (cz + 1 : U32), cz)
+      F.scan(f, Pick.n(e, c, 1n+c), Pick.n(e, 3n, 2n),
+        a[Pick.u(e, (F.hd(cap) + F.slot2(ncx, ncz, msk) : U32), ((v - 1) * 6 : U32))], i, sx, sy, sz, rad, cap, msk,
+        lox, hix, Pick.u(e, ncx, cx), Pick.u(e, ncz, cz), Pick.u(e, 0, (v - 1 : U32)), 0, 0, acc)
     case 1n+f 1n+c 2n:
       (a, v) = r
-      F.scan(f, 1n+c, 1n, a[(j * 6 + 1 : U32)], i, sx, sy, sz, rad, cap, msk, lox, loz, nx, j, v, jy, acc)
+      F.scan(f, 1n+c, 1n, a[(j * 6 + 1 : U32)], i, sx, sy, sz, rad, cap, msk, lox, hix, cx, cz, j, v, jy, acc)
     case 1n+f 1n+c 1n:
       (a, v) = r
-      F.scan(f, 1n+c, 0n, a[(j * 6 + 2 : U32)], i, sx, sy, sz, rad, cap, msk, lox, loz, nx, j, jx, v, acc)
-    case 1n+f 1n++c _:
-      (a, +v) = r
-      F.scan(f, 1n+c, 3n, a[(F.nx(cap) + j : U32)], i, sx, sy, sz, rad, cap, msk, lox, loz, nx, j, jx, jy,
+      F.scan(f, 1n+c, 0n, a[(j * 6 + 2 : U32)], i, sx, sy, sz, rad, cap, msk, lox, hix, cx, cz, j, jx, v, acc)
+    case 1n+f 1n+c _:
+      (a, v) = r
+      F.scan(f, 1n+c, 3n, a[(F.nx(cap) + j : U32)], i, sx, sy, sz, rad, cap, msk, lox, hix, cx, cz, j, jx, jy,
         F.keep(Bool.and(Bool.not(U32.is_eq(j, i)),
           Bool.and((F.d(sx, jx) < rad : U32), Bool.and((F.d(sz, v) < rad : U32), (F.d(sy, jy) < rad : U32)))), j, acc))
 
@@ -734,12 +733,12 @@ def F.one2(a: Array<U32>, +i: U32, +o: Og, +k: P.K, +cap: U32, +msk: U32, +na: U
   +lox = (W.lo(P.Body.x(self), mr) - W.cell_of(F.ox(o)) : U32)
   +loz = (W.lo(P.Body.z(self), mr) - W.cell_of(F.oz(o)) : U32)
   +nx = W.span(P.Body.x(self), mr)
-  +cn = Nat.mul(nx, W.span(P.Body.z(self), mr))
-  F.two2(F.scan(8192n, cn, 3n,
-    a[(F.hd(cap) + F.slot2(F.cx(cn, lox, nx), F.cz(cn, loz, nx), msk) : U32)], i,
+  F.two2(F.scan(8192n, Nat.mul(nx, W.span(P.Body.z(self), mr)), 3n,
+    a[(F.hd(cap) + F.slot2(lox, loz, msk) : U32)], i,
     U32.from_nat(Nat.sub(P.Body.x(self), F.ox(o))), U32.from_nat(P.Body.y(self)),
     U32.from_nat(Nat.sub(P.Body.z(self), F.oz(o))),
-    U32.from_nat(Nat.add(W.size(), m)), cap, msk, lox, loz, nx, 0, 0, 0, []), self, i, o, k, na, inp)
+    U32.from_nat(Nat.add(W.size(), m)), cap, msk, lox, (lox + U32.from_nat(nx) - 1 : U32), lox, loz, 0, 0, 0, []),
+    self, i, o, k, na, inp)
 
 # one cube's tick: itself, the bodies within reach out of the grid, the
 # proven tick, then back into the array

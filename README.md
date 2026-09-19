@@ -274,7 +274,7 @@ AMD Ryzen 7 5700U com a Radeon integrada (Vega 8, RADV), 1280×720:
 | um tick de um corpo entre 10 obstáculos (`Body.tick`) | 0,79 µs |
 | tick do mundo andando e empurrando | 6,3 µs, ou ~0,1 % de um núcleo a 128 ticks/s |
 | tick do mundo com 64 cubos caindo e se empilhando | 0,16 ms |
-| tick do mundo com 1024 cubos caindo ao mesmo tempo (array plano) | 1,05 ms |
+| tick do mundo com 1024 cubos caindo ao mesmo tempo (array plano) | 0,66 ms |
 | cabeçalho de um frame (câmera, corpos, HUD) | 12 µs |
 
 `./build.sh bench && ./bench` roda esses cenários sem janela.
@@ -284,16 +284,16 @@ acordados, numa thread (ver abaixo):
 
 | cubos | ms por tick |
 |---|---|
-| 1024 | 1,05 |
-| 4096 | 5,7 |
-| 5929 | 6,9 |
-| 8281 | 11,0 |
-| 16384 | 19,8 |
+| 1024 | 0,66 |
+| 4096 | 2,9 |
+| 8281 | 5,8 |
+| 11664 | 9,1 |
+| 16384 | 12,9 |
 
-O custo é linear: ~8,5 mil instruções por cubo por tick, em qualquer tamanho.
-O tempo real pede 7,8 ms por tick (128 por segundo), então cabem ~6000 cubos
-se mexendo ao mesmo tempo (eram 2700 antes do array plano, medido do mesmo
-jeito na mesma máquina). Com mais, a simulação continua certa, só anda mais
+O custo é linear: ~6,6 mil instruções por cubo por tick, em qualquer tamanho.
+O tempo real pede 7,8 ms por tick (128 por segundo), então cabem ~10 mil cubos
+se mexendo ao mesmo tempo, numa thread só (eram 2700 antes do array plano,
+medido do mesmo jeito na mesma máquina). Com mais, a simulação continua certa, só anda mais
 devagar que o relógio. Um cubo parado não custa nada, e o mundo tem quantos
 cubos parados couberem nele.
 
@@ -324,3 +324,4 @@ o HUD mostra):
 | cada cubo desmontado uma vez por passo, e a partição da árvore passada adiante em vez de compartilhada (ler um valor compartilhado conta referências a cada campo) | 16,0 G instruções | 13,1 |
 | o alcance de um cubo é o que o tick dele move (2 |v| + 2 g), sem a folga de 0,25 m que o jogador precisa: ele recebe só o que pode tocar | 13,1 G instruções | 7,7 |
 | multidão densa num `Array<U32>` (corpos, correntes das células e cabeças no mesmo array), em vez das listas e da trie | 8281 cubos: 25,7 mil instruções por cubo-tick, 24,4 ms/tick | 8,5 mil, 11,0 |
+| varredura sem `match` em número (o Bend desmonta um u32 bit a bit para isso) e com a célula andando de uma em uma, sem divisão | 8281 cubos: 8,5 mil instruções por cubo-tick, 11,0 ms/tick | 6,6 mil, 5,8 |
