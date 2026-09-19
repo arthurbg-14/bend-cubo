@@ -1,0 +1,9 @@
+# binaries and outputs
+/cubo
+/bench
+*.ppm
+*.png
+!docs/*.png
+perf*.data*
+# Claude Code local settings
+.claude/
