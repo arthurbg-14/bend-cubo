@@ -776,10 +776,21 @@ def Play.arm(+x: Nat, +s: Nat) -> P.Z:
 # the weight comes in here: it is what a body's turning has to fight, so
 # the same corner at the same speed spins a heavy cube less. Eight is one
 # green cube's worth.
+# only a real knock turns him: he has to have been in the air. Standing
+# on the ground the friction changes his speed every tick, and taking
+# that as a knock would leave him spinning for ever -- on the ground the
+# spin is rubbed away instead.
+def Play.spun2(down: Bool, sp: P.Spin) -> P.Spin:
+  match down:
+    case True{}:
+      P.Spin.free(P.Spin.slow(sp))
+    case False{}:
+      P.Spin.free(sp)
+
 def Play.spun(hit: Bool, +s: Nat, sp: P.Spin, +a: P.Body, +b: P.Body, +ms: Nat) -> P.Spin:
   match hit:
     case False{}:
-      P.Spin.free(sp)
+      Play.spun2(P.Body.ground(b), sp)
     case True{}:
       P.Spin.free(P.Spin.hit(sp, Play.arm(P.Body.x(b), s), P.Neg{Nat.div(s, 2n)}, Play.arm(P.Body.z(b), s),
         P.Z.q12(Nat.div(32768n, Nat.max(ms, 1n)), P.Z.sub(P.Body.vx(a), P.Body.vx(b))),
@@ -790,7 +801,8 @@ def Play.ran(r: W.World & P.Body, +k: P.K, inp: Inp, +t0: Nat, +ticks: Nat, +rep
   +sel: Nat, help: Bool, +gpu: U32, +fus: U32, hud: Bool, sp: P.Spin, +ms: Nat) -> Play:
   (+w, +prev) = r
   Play{w, k, inp, t0, ticks, rep, prev, yaw, pitch, dist, sel, help, gpu, fus, hud,
-    Play.spun(P.Body.hit(Play.pl(w)), P.K.size(k), sp, prev, Play.pl(w), ms), ms}
+    Play.spun(Bool.and(P.Body.hit(Play.pl(w)), Bool.not(P.Body.ground(prev))), P.K.size(k), sp, prev,
+      Play.pl(w), ms), ms}
 
 # the physics' ticks due by now (128 a second), at most 8 a frame
 def Play.physics(+keys: U32, +now: Nat, s: Play) -> Play:

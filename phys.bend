@@ -19,6 +19,13 @@
 
 import Base
 
+def Pick.w(c: Bool, +a: U32, +b: U32) -> U32:
+  match c:
+    case True{}:
+      a
+    case False{}:
+      b
+
 def Pick.n(c: Bool, +a: Nat, +b: Nat) -> Nat:
   match c:
     case True{}:
@@ -269,6 +276,15 @@ def Spin.step(+a: U32, +w: U32) -> U32:
 def Spin.free(sp: Spin) -> Spin:
   Spin{+wx, +wy, +wz, +ax, +ay, +az} = sp
   Spin{wx, wy, wz, Spin.step(ax, wx), Spin.step(ay, wy), Spin.step(az, wz)}
+
+# a body on the ground stops turning: the ground rubs the spin away, an
+# eighth of it a tick, until it lies flat again
+def Spin.slow1(+w: U32) -> U32:
+  Pick.w((w < 2147483648 : U32), (w - (w >> 4n) : U32), (w + ((0 - w) >> 4n) : U32))
+
+def Spin.slow(sp: Spin) -> Spin:
+  Spin{+wx, +wy, +wz, ax, ay, az} = sp
+  Spin{Spin.slow1(wx), Spin.slow1(wy), Spin.slow1(wz), ax, ay, az}
 
 # the turning a hit adds to the rates
 def Spin.bump(sp: Spin, +tx: U32, +ty: U32, +tz: U32) -> Spin:
