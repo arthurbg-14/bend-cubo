@@ -1034,15 +1034,18 @@ type Chk is Type:
   ChL{a: Array<U32>, n: U32, cap: U32, ox: U32, oz: U32}
   ChN{lo: Chk, hi: Chk}
 
-# a chunk is C.side() cells across, C.g() counting the band
+# a chunk is C.side() cells across, C.g() counting the band. The band is
+# one cell wide: a cube reaches at most the cell next to its own (W.lo and
+# W.span give three cells for a tick's reach), so one cell of the chunk
+# next door is all a cube needs to see
 def C.side() -> Nat:
   16n
 
 def C.g() -> Nat:
-  20n
+  18n
 
 def C.gg() -> Nat:
-  400n
+  324n
 
 # the bodies a cube can touch, out of the sorted array: for each row of
 # cells in reach, the cells it spans are one run, so the whole row costs
@@ -1191,12 +1194,12 @@ def C.tag(+x: U32, +y: U32, +z: U32, +vx: U32, +vy: U32, +vz: U32, +ox: U32, +oz
   +nbx: U32, +nbz: U32, +side: U32, +nc: Nat, ms: List<&2, Msg>) -> List<&2, Msg>:
   +cx = (F.cell(x) - ox : U32)
   +cz = (F.cell(z) - oz : U32)
-  +out = Bool.or(Bool.or((cx < 2 : U32), (cx >= side + 2 : U32)), Bool.or((cz < 2 : U32), (cz >= side + 2 : U32)))
+  +out = Bool.or(Bool.or((cx < 1 : U32), (cx >= side + 1 : U32)), Bool.or((cz < 1 : U32), (cz >= side + 1 : U32)))
   +dx = Pick.u((cx < 2 : U32), (ix - 1 : U32), Pick.u((cx >= side + 2 : U32), (ix + 1 : U32), ix))
   +dz = Pick.u((cz < 2 : U32), (iz - 1 : U32), Pick.u((cz >= side + 2 : U32), (iz + 1 : U32), iz))
-  +lx = Bool.and(Bool.not(out), (cx < 4 : U32))
+  +lx = Bool.and(Bool.not(out), (cx < 2 : U32))
   +hx = Bool.and(Bool.not(out), (cx >= side : U32))
-  +lz = Bool.and(Bool.not(out), (cz < 4 : U32))
+  +lz = Bool.and(Bool.not(out), (cz < 2 : U32))
   +hz = Bool.and(Bool.not(out), (cz >= side : U32))
   C.mv(out, C.ix(dx, dz, nbx, nbz), True{}, x, y, z, vx, vy, vz,
     C.mv(Bool.and(lx, C.next((ix - 1 : U32), iz, nc)), C.ix((ix - 1 : U32), iz, nbx, nbz), False{}, x, y, z, vx, vy, vz,
@@ -1250,8 +1253,8 @@ def C.emit(fuel: Nat, n: Nat, ph: Nat, r: Array<U32> & U32, +i: U32, +cap: U32, 
       C.emit(f, n, 0n, a[(i * 6 + 5 : U32)], i, cap, ox, oz, ix, iz, nbx, nbz, side, nc, x, y, z, vx, v, ms)
     case 1n+f 1n+m _:
       (a, +v) = r
-      +gone = Bool.or(Bool.or(((F.cell(x) - ox) < 2 : U32), ((F.cell(x) - ox) >= side + 2 : U32)),
-        Bool.or(((F.cell(z) - oz) < 2 : U32), ((F.cell(z) - oz) >= side + 2 : U32)))
+      +gone = Bool.or(Bool.or(((F.cell(x) - ox) < 1 : U32), ((F.cell(x) - ox) >= side + 1 : U32)),
+        Bool.or(((F.cell(z) - oz) < 1 : U32), ((F.cell(z) - oz) >= side + 1 : U32)))
       C.emit(f, m, 6n,
         (a[(C.roa(cap) + i : U32)] <- Pick.u(gone, 0, 1))[(C.roa(cap) + i + 1 : U32)], (i + 1 : U32), cap, ox, oz,
         ix, iz, nbx, nbz, side, nc, x, y, z, vx, vy,
@@ -1315,7 +1318,7 @@ def C.l5(r: Array<U32> & List<&2, Msg>, +n: U32, +cap: U32, +ox: U32, +oz: U32) 
 def C.l4c(a: Array<U32>, +nall: U32, +cap: U32, +ox: U32, +oz: U32, +o: Og, +nbx: U32, +nbz: U32,
   +side: U32, +nc: Nat) -> Cr:
   C.l5(C.emit(Nat.add(Nat.mul(8n, U32.to_nat(nall)), 16n), U32.to_nat(nall), 6n, a[(C.roa(cap) : U32)], 0, cap,
-    ox, oz, ((ox + 2) / side : U32), ((oz + 2) / side : U32), nbx, nbz, side, nc, 0, 0, 0, 0, 0, []),
+    ox, oz, ((ox + 1) / side : U32), ((oz + 1) / side : U32), nbx, nbz, side, nc, 0, 0, 0, 0, 0, []),
     nall, cap, ox, oz)
 
 def C.l4b(a: Array<U32>, +nall: U32, +cap: U32, +ox: U32, +oz: U32, +o: Og, +nbx: U32, +nbz: U32,
@@ -1325,7 +1328,7 @@ def C.l4b(a: Array<U32>, +nall: U32, +cap: U32, +ox: U32, +oz: U32, +o: Og, +nbx
 def C.l4x(a: Array<U32>, +n: U32, +nall: U32, +cap: U32, +ox: U32, +oz: U32, +o: Og, +nbx: U32, +nbz: U32,
   +side: U32, +nc: Nat) -> Cr:
   C.l5(C.emit(Nat.add(Nat.mul(8n, U32.to_nat(nall)), 16n), U32.to_nat(nall), 6n, a[(C.roa(cap) : U32)], 0, cap,
-    ox, oz, ((ox + 2) / side : U32), ((oz + 2) / side : U32), nbx, nbz, side, nc, 0, 0, 0, 0, 0, []), n, cap,
+    ox, oz, ((ox + 1) / side : U32), ((oz + 1) / side : U32), nbx, nbz, side, nc, 0, 0, 0, 0, 0, []), n, cap,
     ox, oz)
 
 def C.l4z(r: Array<U32> & U32, +nall: U32, +cap: U32, +ox: U32, +oz: U32, +o: Og, +nbx: U32, +nbz: U32,
@@ -1390,7 +1393,7 @@ def C.join(ra: Cr, rb: Cr) -> Cr:
 
 # is the chunk at (ix, iz) of this round's colour?
 def C.mine(+ox: U32, +oz: U32, +side: U32, +c: Nat) -> Bool:
-  U32.is_eq(((((ox + 2) / side) .&. 1) + ((((oz + 2) / side) .&. 1) * 2) : U32), U32.from_nat(c))
+  U32.is_eq(((((ox + 1) / side) .&. 1) + ((((oz + 1) / side) .&. 1) * 2) : U32), U32.from_nat(c))
 
 # Handing cubes over, array to array
 # ---------------------------------
@@ -1409,11 +1412,11 @@ def C.atb(+cx: U32, +cz: U32, +dx: Nat, +dz: Nat, +side: U32) -> Bool:
     case 1n _:
       (cx >= side : U32)
     case 2n _:
-      (cx < 4 : U32)
+      (cx < 2 : U32)
     case _ 1n:
       (cz >= side : U32)
     case _ _:
-      (cz < 4 : U32)
+      (cz < 2 : U32)
 
 def C.gfin(r: Array<U32> & U32, b: Array<U32>, +j: U32) -> Array<U32> & Array<U32> & U32:
   (a, v) = r
@@ -1455,10 +1458,10 @@ def C.give(fuel: Nat, n: Nat, ph: Nat, r: Array<U32> & U32, b: Array<U32>, +i: U
     case 1n+f 1n+m _:
       (a, +v) = r
       +take = Bool.and(U32.is_eq(fl, 1), C.atb((F.cell(x) - oxa : U32), (F.cell(z) - oza : U32), dx, dz, side))
-      +mine = Bool.and(Bool.and(((F.cell(x) - oxb) >= 2 : U32), ((F.cell(x) - oxb) < side + 2 : U32)),
-        Bool.and(((F.cell(z) - ozb) >= 2 : U32), ((F.cell(z) - ozb) < side + 2 : U32)))
-      +gone = Bool.not(Bool.and(Bool.and(((F.cell(x) - oxa) >= 2 : U32), ((F.cell(x) - oxa) < side + 2 : U32)),
-        Bool.and(((F.cell(z) - oza) >= 2 : U32), ((F.cell(z) - oza) < side + 2 : U32))))
+      +mine = Bool.and(Bool.and(((F.cell(x) - oxb) >= 1 : U32), ((F.cell(x) - oxb) < side + 1 : U32)),
+        Bool.and(((F.cell(z) - ozb) >= 1 : U32), ((F.cell(z) - ozb) < side + 1 : U32)))
+      +gone = Bool.not(Bool.and(Bool.and(((F.cell(x) - oxa) >= 1 : U32), ((F.cell(x) - oxa) < side + 1 : U32)),
+        Bool.and(((F.cell(z) - oza) >= 1 : U32), ((F.cell(z) - oza) < side + 1 : U32))))
       C.give(f, m, 7n,
         (a[(C.roa(cap) + i : U32)] <- Pick.u(Bool.and(gone, take), 0, fl))[(C.roa(cap) + i + 1 : U32)],
         C.put_if(take, b, j, capb, Bool.and(mine, U32.is_eq(fl, 1)), x, y, z, vx, vy, v), (i + 1 : U32),
