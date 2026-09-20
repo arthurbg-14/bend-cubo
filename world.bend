@@ -1710,6 +1710,104 @@ def C.gz(g: Gr, +side: U32) -> Gr:
     case GrC{r, rest}:
       C.gz1(r, rest, side)
 
+# Between the two shapes
+# ----------------------
+# The grid is kept as rows so that two chunks side by side can be held at
+# once (that is how they hand cubes over). The tick wants the other shape:
+# a balanced tree, which is what Bend's scheduler spreads over the cores.
+# Going from one to the other is a walk over the chunks, and costs nothing
+# next to the tick.
+
+def C.rcat(a: Rw, b: Rw) -> Rw:
+  match a:
+    case RwE{}:
+      b
+    case RwC{c, rest}:
+      RwC{c, C.rcat(rest, b)}
+
+def C.gcat(g: Gr) -> Rw:
+  match g:
+    case GrE{}:
+      RwE{}
+    case GrC{r, rest}:
+      C.rcat(r, C.gcat(rest))
+
+# the chunks paired into nodes, over and over, until one tree is left
+def C.pairup(r: Rw, have: Bool, a: Chk) -> Rw:
+  match r have:
+    case RwE{} False{}:
+      C.kill(a)
+    case RwC{b, more} False{}:
+      C.kill2(a, C.pairup(more, True{}, b))
+    case RwE{} True{}:
+      RwC{a, RwE{}}
+    case RwC{b, more} True{}:
+      RwC{ChN{a, b}, C.pairup(more, False{}, ChE{})}
+
+def C.build(lv: Nat, r: Rw) -> Rw:
+  match lv:
+    case 0n:
+      r
+    case 1n+m:
+      C.build(m, C.pairup(r, False{}, ChE{}))
+
+def C.kill3(c: Chk, rest: Rw) -> Chk:
+  match rest:
+    case RwE{}:
+      c
+    case RwC{d, more}:
+      c
+
+def C.one1(r: Rw) -> Chk:
+  match r:
+    case RwE{}:
+      ChE{}
+    case RwC{c, rest}:
+      C.kill3(c, rest)
+
+def C.mktree(lv: Nat, r: Rw) -> Chk:
+  C.one1(C.build(lv, r))
+
+# and the tree back into a list
+def C.unt(t: Chk, acc: Rw) -> Rw:
+  match t:
+    case ChE{}:
+      acc
+    case ChL{a, n, cap, ox, oz}:
+      RwC{ChL{a, n, cap, ox, oz}, acc}
+    case ChN{lo, hi}:
+      C.unt(lo, C.unt(hi, acc))
+
+def C.rev(r: Rw, acc: Rw) -> Rw:
+  match r:
+    case RwE{}:
+      acc
+    case RwC{c, rest}:
+      C.rev(rest, RwC{c, acc})
+
+# the list back into rows of nbx chunks
+def C.rsplit(n: Nat, r: Rw, acc: Rw) -> Rw2:
+  match n r:
+    case 0n _:
+      Rw2{C.rev(acc, RwE{}), r}
+    case _ RwE{}:
+      Rw2{C.rev(acc, RwE{}), RwE{}}
+    case 1n+m RwC{c, rest}:
+      C.rsplit(m, rest, RwC{c, acc})
+
+# the list back into rows of nbx chunks
+def C.grows(rows: Nat, p: Rw2, +nbx: Nat) -> Gr:
+  match rows:
+    case 0n:
+      Rw2{a, b} = p
+      C.gkill2(a, C.gkill(b))
+    case 1n+m:
+      Rw2{a, b} = p
+      GrC{a, C.grows(m, C.rsplit(nbx, b, RwE{}), nbx)}
+
+def C.rows0(r: Rw, +nbx: Nat, rows: Nat) -> Gr:
+  C.grows(rows, C.rsplit(nbx, r, RwE{}), nbx)
+
 # a chunk tidied: only its own cubes kept, packed from the start (the
 # copies of the round before and the ones that walked out are dropped)
 def C.tidy1(r: Array<U32> & U32, +cap: U32, +ox: U32, +oz: U32) -> Chk:
@@ -1780,6 +1878,40 @@ def C.gtick(g: Gr, +c: Nat, +o: Og, +k: P.K, +mm: Nat, +side: U32) -> Gr:
     case GrC{r, rest}:
       a b = C.rtick(r, c, o, k, mm, side) C.gtick(rest, c, o, k, mm, side)
       GrC{a, b}
+
+# the tick over the tree: the chunks of this colour sort and tick, and
+# every chunk then keeps only its own cubes (the copies of the round
+# before go, and so do the ones that walked out). Both halves at once --
+# the walk does nothing but fork, which is what fills the cores
+def C.ft2(mine: Bool, a: Array<U32>, +n: U32, +cap: U32, +ox: U32, +oz: U32, +o: Og, +k: P.K, +mm: Nat) -> Chk:
+  match mine:
+    case True{}:
+      C.tidy1(C.keepown(n, C.r2(C.copy(n, C.sort(n, a, 0, C.rb(cap), cap, U32.from_nat(C.gg()), ox, oz,
+        U32.from_nat(C.g())), cap), n, o, k, cap, ox, oz, mm), cap), cap, ox, oz)
+    case False{}:
+      C.tidy1(C.keepown(n, a, cap), cap, ox, oz)
+
+def C.ftick(t: Chk, +c: Nat, +o: Og, +k: P.K, +mm: Nat, +side: U32) -> Chk:
+  match t:
+    case ChE{}:
+      ChE{}
+    case ChL{a, +n, +cap, +ox, +oz}:
+      C.ft2(C.mine(ox, oz, side, c), a, n, cap, ox, oz, o, k, mm)
+    case ChN{lo, hi}:
+      x y = C.ftick(lo, c, o, k, mm, side) C.ftick(hi, c, o, k, mm, side)
+      ChN{x, y}
+
+# a round the other way round: the cubes tick in the tree shape (all
+# cores), then the grid goes back to rows so that neighbours can hand
+# cubes over array to array. Measured slower than the messages above (the
+# handover walks every cube of every chunk, four ways a round), kept for
+# the record
+def C.round3(g: Gr, +c: Nat, +o: Og, +k: P.K, +mm: Nat, +side: U32, +lv: Nat, +nbx: Nat, +rows: Nat) -> Gr:
+  C.gzr2(C.gxr(C.rows0(C.unt(C.ftick(C.mktree(lv, C.gcat(g)), c, o, k, mm, side), RwE{}), nbx, rows), side), side)
+
+def C.tick3(g: Gr, +o: Og, +k: P.K, +mm: Nat, +side: U32, +lv: Nat, +nbx: Nat, +rows: Nat) -> Gr:
+  C.round3(C.round3(C.round3(C.round3(g, 0n, o, k, mm, side, lv, nbx, rows), 1n, o, k, mm, side, lv, nbx, rows),
+    2n, o, k, mm, side, lv, nbx, rows), 3n, o, k, mm, side, lv, nbx, rows)
 
 # a round: every chunk tidied, the borders handed over (along the rows,
 # then between them), and the chunks of this colour ticked -- two chunks
