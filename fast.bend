@@ -107,7 +107,8 @@ def tip(n: Nat, +bad: Nat, +w: W.World) -> String:
 # cubo girando que dorme, muda de chunk ou e empacotado tem que sair de la
 # girando igual -- senao o giro some sem lei nenhuma pedir.
 def spin() -> P.Rot:
-  P.Rot{2n, 123456789, P.Neg{4321n}}
+  P.Rot{P.Quat{P.Pos{31000n}, P.Neg{5000n}, P.Pos{7000n}, P.Neg{3000n}},
+    P.Wv{P.Pos{123456n}, P.Neg{4321n}, P.Pos{999n}}}
 
 def spun() -> P.Body:
   +o = W.W.base(W.W.origin())
@@ -118,21 +119,29 @@ def og() -> W.Og:
   +o = W.W.base(W.W.origin())
   W.Og{o, o}
 
+def zeq(+a: P.Z, +b: P.Z) -> Bool:
+  Bool.and(Nat.is_eq(P.Z.pos(a), P.Z.pos(b)), Nat.is_eq(P.Z.neg(a), P.Z.neg(b)))
+
+def qeq(+a: P.Quat, +b: P.Quat) -> Bool:
+  Bool.and(Bool.and(zeq(P.Quat.a(a), P.Quat.a(b)), zeq(P.Quat.b(a), P.Quat.b(b))),
+    Bool.and(zeq(P.Quat.c(a), P.Quat.c(b)), zeq(P.Quat.d(a), P.Quat.d(b))))
+
+def weq(+a: P.Wv, +b: P.Wv) -> Bool:
+  Bool.and(zeq(P.Wv.x(a), P.Wv.x(b)), Bool.and(zeq(P.Wv.y(a), P.Wv.y(b)), zeq(P.Wv.z(a), P.Wv.z(b))))
+
 def same(+a: P.Rot, +b: P.Rot) -> Bool:
-  Bool.and(Nat.is_eq(P.Rot.ax(a), P.Rot.ax(b)),
-    Bool.and(U32.is_eq(P.Rot.ang(a), P.Rot.ang(b)),
-      Bool.and(Nat.is_eq(P.Z.pos(P.Rot.w(a)), P.Z.pos(P.Rot.w(b))),
-        Nat.is_eq(P.Z.neg(P.Rot.w(a)), P.Z.neg(P.Rot.w(b))))))
+  Bool.and(qeq(P.Rot.q(a), P.Rot.q(b)), weq(P.Rot.w(a), P.Rot.w(b)))
 
 def turn2(bs: List<&2, P.Body>) -> String:
   match bs:
     case []:
       "FAIL: o cubo sumiu do array"
     case +b <> rest:
-      M.Pick.s(same(P.Body.rot(b), spin()), "OK", "FAIL") ++ ": eixo "
-        ++ Nat.show(P.Rot.ax(P.Body.rot(b))) ++ ", angulo "
-        ++ Nat.show(U32.to_nat(P.Rot.ang(P.Body.rot(b)))) ++ ", giro -"
-        ++ Nat.show(P.Z.neg(P.Rot.w(P.Body.rot(b)))) ++ " (eixo 2, angulo 123456789, giro -4321)"
+      M.Pick.s(same(P.Body.rot(b), spin()), "OK", "FAIL") ++ ": quaternio "
+        ++ Nat.show(P.Z.mag(P.Quat.a(P.Rot.q(P.Body.rot(b))))) ++ "/"
+        ++ Nat.show(P.Z.mag(P.Quat.b(P.Rot.q(P.Body.rot(b))))) ++ ", giro "
+        ++ Nat.show(P.Z.mag(P.Wv.x(P.Rot.w(P.Body.rot(b))))) ++ "/"
+        ++ Nat.show(P.Z.mag(P.Wv.y(P.Rot.w(P.Body.rot(b))))) ++ " (31000/5000, 123456/4321)"
 
 def turn1(r: Array<U32> & List<&2, P.Body>) -> String:
   (a, bs) = r

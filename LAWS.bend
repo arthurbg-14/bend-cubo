@@ -256,12 +256,30 @@ law no_clip:
 # turning the same about every axis, so there is no wobble to change its
 # angular velocity, and the angle it has turned grows by exactly that rate
 # every tick -- whatever the rate and whatever the angle.
-law free_spin_is_exact:
+law free_spin_keeps_the_turning:
   for +r: P.Rot
   s1 = P.Rot.free(r)
-  {P.Rot.w(s1) == P.Rot.w(r) : P.Z}
-  & {P.Rot.ax(s1) == P.Rot.ax(r) : Nat}
-  & {P.Rot.ang(s1) == P.Rot.step(P.Rot.ang(r), P.Rot.w(r)) : U32}
+  {P.Wv.x(P.Rot.w(s1)) == P.Wv.x(P.Rot.w(r)) : P.Z}
+  & {P.Wv.y(P.Rot.w(s1)) == P.Wv.y(P.Rot.w(r)) : P.Z}
+  & {P.Wv.z(P.Rot.w(s1)) == P.Wv.z(P.Rot.w(r)) : P.Z}
+
+# LAW: a hit puts the whole of its turning into the body -- all three
+# parts of the arm crossed with the impulse, not just the part that lies
+# along some axis the body was already turning on. A cube hit on a corner
+# comes off turning about the axis that hit asks for.
+law a_hit_adds_the_whole_turning:
+  for +r: P.Rot
+  for +rx: P.Z
+  for +ry: P.Z
+  for +rz: P.Z
+  for +jx: P.Z
+  for +jy: P.Z
+  for +jz: P.Z
+  s1 = P.Rot.w(P.Rot.hit(r, rx, ry, rz, jx, jy, jz))
+  k = P.Rot.kick(rx, ry, rz, jx, jy, jz)
+  {P.Wv.x(s1) == P.Z.add(P.Wv.x(P.Rot.w(r)), P.Wv.x(k)) : P.Z}
+  & {P.Wv.y(s1) == P.Z.add(P.Wv.y(P.Rot.w(r)), P.Wv.y(k)) : P.Z}
+  & {P.Wv.z(s1) == P.Z.add(P.Wv.z(P.Rot.w(r)), P.Wv.z(k)) : P.Z}
 
 # LAW: a hit dead centre does not turn anything. What turns a body is the
 # arm -- how far from its middle it was hit -- crossed with the impulse,

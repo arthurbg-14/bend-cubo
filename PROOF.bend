@@ -2369,10 +2369,22 @@ def Laws.no_clip(k, obs, inp, b, clear):
 # Rot.free hands back the same three rates and the angle plus the rate,
 # which is the law word for word.
 
-def Laws.free_spin_is_exact(r):
+def Laws.free_spin_keeps_the_turning(r):
   match r:
-    case P.Rot{+ax, +ang, +w}:
-      ({==}, {==}, {==})
+    case P.Rot{+q, +w}:
+      match w:
+        case P.Wv{+x, +y, +z}:
+          ({==}, {==}, {==})
+
+# A hit adds the crossing to the turning, part by part: it is what
+# Rot.hit is written to do, so each of the three comes out by itself.
+
+def Laws.a_hit_adds_the_whole_turning(r, rx, ry, rz, jx, jy, jz):
+  match r:
+    case P.Rot{+q, +w}:
+      match w:
+        case P.Wv{+x, +y, +z}:
+          ({==}, {==}, {==})
 
 # An arm of zero: every product in the crossing is zero times something,
 # and Nat.mul counts down its first number, so those fall out at once.

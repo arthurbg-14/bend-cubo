@@ -35,8 +35,7 @@ def sgn(c: Bool, +v: Nat) -> P.Z:
 # cada cubo entra girando de um jeito: o giro tem que atravessar a
 # ordenacao, a troca entre chunks e o sono sem mudar
 def spin(+i: Nat, +j: Nat, +l: Nat) -> P.Rot:
-  P.Rot{Nat.mod(Nat.add(Nat.add(i, j), l), 3n), U32.from_nat(Nat.add(Nat.mul(i, 977n), Nat.mul(j, 13n))),
-    P.Pos{Nat.add(Nat.mul(l, 100n), i)}}
+  P.Rot{P.Quat.one(), P.Wv{P.Pos{Nat.mul(i, 977n)}, P.Neg{Nat.mul(j, 13n)}, P.Pos{Nat.add(Nat.mul(l, 100n), i)}}}
 
 def body(+i: Nat, +j: Nat, +l: Nat) -> P.Body:
   +o = W.W.base(W.W.origin())
@@ -127,8 +126,9 @@ def spins(xs: List<&2, P.Body>, +s: Nat) -> Nat:
     case []:
       s
     case +b <> rest:
-      spins(rest, Nat.add(s, Nat.add(Nat.add(P.Z.pos(P.Rot.w(P.Body.rot(b))), P.Z.neg(P.Rot.w(P.Body.rot(b)))),
-        Nat.mul(P.Rot.ax(P.Body.rot(b)), 1000000n))))
+      spins(rest, Nat.add(s, Nat.add(Nat.add(P.Z.mag(P.Wv.x(P.Rot.w(P.Body.rot(b)))),
+        Nat.mul(P.Z.mag(P.Wv.y(P.Rot.w(P.Body.rot(b)))), 1000n)),
+        Nat.mul(P.Z.mag(P.Wv.z(P.Rot.w(P.Body.rot(b)))), 1000000n))))
 
 def out(+bs: List<&2, P.Body>) -> IO(Unit):
   IO.print("chunks: " ++ Nat.show(clash(bs)) ++ " overlaps, " ++ Nat.show(List.length(&2, P.Body, bs))

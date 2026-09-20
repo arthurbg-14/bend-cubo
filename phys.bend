@@ -178,6 +178,93 @@ def K.fric(k: K) -> Nat:
   K{+g, +mu, jump, acc, size} = k
   Nat.div(Nat.mul(mu, g), 256n)
 
+# Square roots
+# ------------
+# Newton's, on whole numbers: from any x0 at or above the root it comes
+# down to it. Friction uses it for the speed, the turning for the size of
+# the turning.
+
+def Fric.next(+n: Nat, +x: Nat) -> Nat:
+  Nat.div(Nat.add(x, Nat.div(n, x)), 2n)
+
+def Fric.newton(fuel: Nat, +n: Nat, +x: Nat, more: Bool) -> Nat:
+  match fuel more:
+    case 0n _:
+      x
+    case 1n+f True{}:
+      Fric.newton(f, n, Fric.next(n, x), Nat.is_lt(Fric.next(n, Fric.next(n, x)), Fric.next(n, x)))
+    case 1n+f False{}:
+      x
+
+# the square root of n rounded down, from x0 >= it
+def Fric.floor(+n: Nat, +x0: Nat) -> Nat:
+  Fric.newton(64n, n, x0, Nat.is_lt(Fric.next(n, x0), x0))
+
+def Fric.ceil(+n: Nat, +r: Nat) -> Nat:
+  Pick.n(Nat.is_lt(Nat.mul(r, r), n), Nat.add(r, 1n), r)
+
+
+# Turning: the sine and the cosine
+# --------------------------------
+# An angle is a whole word: the whole of it is a whole turn, so an angle
+# never rounds and never runs off the end. Its sine and cosine come out in
+# 2^-16, each from its own series, worked out in 2^-20 with every division
+# rounded. They are dead on at the quarter turns -- a cube that has not
+# turned is exactly square, and the old boxes are untouched -- and 2^-16
+# out of true at worst in between (a hundredth of a millimetre on a cube of
+# a metre). The GPU is handed these same two numbers, so the shape that is
+# drawn is the shape that collides, to the unit.
+
+def Trig.dv(+a: Nat, +b: Nat) -> Nat:
+  Nat.div(Nat.add(a, Nat.div(b, 2n)), b)
+
+# an angle inside a quarter turn, in radians in 2^-20 (2 pi is 6588397 of
+# those; the angle is cut by 2^8 first, to keep the product small)
+def Trig.th(+u: U32) -> Nat:
+  Trig.dv(Nat.mul(U32.to_nat((u >> 8n : U32)), 6588397n), 16777216n)
+
+# t - t^3/6 + t^5/120 - t^7/5040 + t^9/362880, the pluses gathered apart
+# from the minuses (there are no negative Nats, and the pluses always win)
+def Trig.sq(+u: U32) -> Nat:
+  +t = Trig.th(u)
+  +t2 = Trig.dv(Nat.mul(t, t), 1048576n)
+  +t3 = Trig.dv(Nat.mul(t2, t), 1048576n)
+  +t5 = Trig.dv(Nat.mul(t3, t2), 1048576n)
+  +t7 = Trig.dv(Nat.mul(t5, t2), 1048576n)
+  +t9 = Trig.dv(Nat.mul(t7, t2), 1048576n)
+  Trig.dv(Nat.mul(Nat.sub(Nat.add(Nat.add(t, Trig.dv(t5, 120n)), Trig.dv(t9, 362880n)),
+    Nat.add(Trig.dv(t3, 6n), Trig.dv(t7, 5040n))), 65536n), 1048576n)
+
+# 1 - t^2/2 + t^4/24 - t^6/720 + t^8/40320 - t^10/3628800
+def Trig.cq(+u: U32) -> Nat:
+  +t = Trig.th(u)
+  +t2 = Trig.dv(Nat.mul(t, t), 1048576n)
+  +t4 = Trig.dv(Nat.mul(t2, t2), 1048576n)
+  +t6 = Trig.dv(Nat.mul(t4, t2), 1048576n)
+  +t8 = Trig.dv(Nat.mul(t6, t2), 1048576n)
+  +t10 = Trig.dv(Nat.mul(t8, t2), 1048576n)
+  Trig.dv(Nat.mul(Nat.sub(Nat.add(Nat.add(1048576n, Trig.dv(t4, 24n)), Trig.dv(t8, 40320n)),
+    Nat.add(Nat.add(Trig.dv(t2, 2n), Trig.dv(t6, 720n)), Trig.dv(t10, 3628800n))), 65536n), 1048576n)
+
+# which quarter the angle is in tells which of the two to take, and its sign
+def Trig.pick(q: Nat, +s: Nat, +c: Nat) -> Z:
+  match q:
+    case 0n:
+      Pos{s}
+    case 1n:
+      Pos{c}
+    case 2n:
+      Neg{s}
+    case _:
+      Neg{c}
+
+def Trig.sin(+a: U32) -> Z:
+  Trig.pick(U32.to_nat((a >> 30n : U32)), Trig.sq((a .&. 1073741823 : U32)), Trig.cq((a .&. 1073741823 : U32)))
+
+# the cosine is the sine a quarter turn on
+def Trig.cos(+a: U32) -> Z:
+  Trig.sin((a + 1073741824 : U32))
+
 # Rotation
 # --------
 # A cube resists turning the same about every axis: its inertia is
@@ -193,42 +280,90 @@ def K.fric(k: K) -> Nat:
 # Two: a hit out of the middle turns the body by the arm crossed with the
 # impulse, over that same I -- no tensor to carry around.
 #
-# What is kept is the angular velocity as a vector (exact) and the angle
-# turned about it, as a whole word: a full turn is the whole of it, so the
-# angle comes back around by itself and adding to it never rounds.
+# What is kept is the turning as a vector -- exact: a hit adds to it, and
+# nothing else ever touches it -- and the orientation as a quaternion in
+# 2^-15. The turning counts shares of a whole turn a tick, a whole turn
+# being a whole word. The quaternion is the one thing here that is not
+# exact: a tick of turning multiplies it by the turn of that tick and
+# brings its size back to 2^15, which is right to 2^-15 of itself; the
+# turning it carries, and every law about it, stay exact.
+
+type Wv is Data:
+  Wv{x: Z, y: Z, z: Z}
+
+type Quat is Data:
+  Quat{a: Z, b: Z, c: Z, d: Z}
 
 type Rot is Data:
-  Rot{ax: Nat, ang: U32, w: Z}
+  Rot{q: Quat, w: Wv}
+
+def Quat.one() -> Quat:
+  Quat{Pos{32768n}, Pos{0n}, Pos{0n}, Pos{0n}}
+
+def Wv.zero() -> Wv:
+  Wv{Pos{0n}, Pos{0n}, Pos{0n}}
 
 def Rot.rest() -> Rot:
-  Rot{0n, 0, Pos{0n}}
+  Rot{Quat.one(), Wv.zero()}
 
-def Rot.ax(r: Rot) -> Nat:
-  Rot{ax, ang, w} = r
-  ax
+def Rot.q(r: Rot) -> Quat:
+  Rot{q, w} = r
+  q
 
-def Rot.w(r: Rot) -> Z:
-  Rot{ax, ang, w} = r
+def Rot.w(r: Rot) -> Wv:
+  Rot{q, w} = r
   w
 
-def Rot.ang(r: Rot) -> U32:
-  Rot{ax, ang, w} = r
-  ang
+def Wv.x(v: Wv) -> Z:
+  Wv{x, y, z} = v
+  x
 
-# the angle a tick later: a whole turn is a whole word, so this comes back
-# around by itself and never rounds
-def Rot.step(+a: U32, w: Z) -> U32:
-  match w:
-    case Pos{+p}:
-      (a + U32.from_nat(p) : U32)
-    case Neg{+q}:
-      (a - U32.from_nat(q) : U32)
+def Wv.y(v: Wv) -> Z:
+  Wv{x, y, z} = v
+  y
 
-# a tick of a body that touches nothing: same rate, same axis, and the
-# angle moved on by exactly that rate
-def Rot.free(r: Rot) -> Rot:
-  Rot{+ax, +ang, +w} = r
-  Rot{ax, Rot.step(ang, w), w}
+def Wv.z(v: Wv) -> Z:
+  Wv{x, y, z} = v
+  z
+
+def Quat.a(q: Quat) -> Z:
+  Quat{a, b, c, d} = q
+  a
+
+def Quat.b(q: Quat) -> Z:
+  Quat{a, b, c, d} = q
+  b
+
+def Quat.c(q: Quat) -> Z:
+  Quat{a, b, c, d} = q
+  c
+
+def Quat.d(q: Quat) -> Z:
+  Quat{a, b, c, d} = q
+  d
+
+# nothing turning, nothing turned: a cube like this is square to the world
+# and every box around it is the old one, to the unit
+def Wv.null(v: Wv) -> Bool:
+  Wv{+x, +y, +z} = v
+  Bool.and(Nat.is_eq(Z.mag(x), 0n), Bool.and(Nat.is_eq(Z.mag(y), 0n), Nat.is_eq(Z.mag(z), 0n)))
+
+def Quat.flat(q: Quat) -> Bool:
+  Quat{a, +b, +c, +d} = q
+  Bool.and(Nat.is_eq(Z.mag(b), 0n), Bool.and(Nat.is_eq(Z.mag(c), 0n), Nat.is_eq(Z.mag(d), 0n)))
+
+def Rot.still(r: Rot) -> Bool:
+  Rot{+q, +w} = r
+  Bool.and(Quat.flat(q), Wv.null(w))
+
+
+def Z.shr16(v: Z) -> Z:
+  match v:
+    case Pos{+n}:
+      Pos{Nat.div(n, 65536n)}
+    case Neg{+n}:
+      Neg{Nat.div(n, 65536n)}
+
 
 def Z.opp(v: Z) -> Z:
   match v:
@@ -252,6 +387,90 @@ def Z.mul(u: Z, v: Z) -> Z:
     case Neg{+a} Pos{+b}:
       Neg{Nat.mul(a, b)}
 
+# n with the sign of v
+def Z.like(v: Z, +n: Nat) -> Z:
+  match v:
+    case Pos{p}:
+      Pos{n}
+    case Neg{p}:
+      Neg{n}
+
+# how fast the body turns, in the same shares of a turn a tick: the parts
+# are cut by 2^8 before squaring, so the sum stays well inside a word
+def Wv.mag(v: Wv) -> Nat:
+  Wv{+x, +y, +z} = v
+  +a = Nat.div(Z.mag(x), 256n)
+  +b = Nat.div(Z.mag(y), 256n)
+  +c = Nat.div(Z.mag(z), 256n)
+  +n = Nat.add(Nat.add(Nat.mul(a, a), Nat.mul(b, b)), Nat.mul(c, c))
+  Nat.mul(256n, Fric.floor(n, Nat.max(Nat.add(Nat.add(a, b), c), 1n)))
+
+# one part of the turn of a tick: sin(half the angle) along the axis the
+# body turns on, in 2^-16
+def Quat.part(+s: Z, +v: Z, +m: Nat) -> Z:
+  Z.like(v, Nat.div(Nat.mul(Z.mag(s), Z.mag(v)), Nat.max(m, 1n)))
+
+# the turn of one tick as a quaternion in 2^-16: half the angle, about the
+# axis of the turning itself
+def Quat.step(+w: Wv, +m: Nat) -> Quat:
+  +h = U32.from_nat(Nat.div(m, 2n))
+  Quat{Trig.cos(h), Quat.part(Trig.sin(h), Wv.x(w), m), Quat.part(Trig.sin(h), Wv.y(w), m),
+    Quat.part(Trig.sin(h), Wv.z(w), m)}
+
+# one quaternion after the other, the first in 2^-15 and the second in
+# 2^-16, out in 2^-15
+def Quat.mul(+p: Quat, +r: Quat) -> Quat:
+  Quat{Z.shr16(Z.sub(Z.mul(Quat.a(p), Quat.a(r)), Z.add(Z.add(Z.mul(Quat.b(p), Quat.b(r)),
+         Z.mul(Quat.c(p), Quat.c(r))), Z.mul(Quat.d(p), Quat.d(r))))),
+    Z.shr16(Z.sub(Z.add(Z.add(Z.mul(Quat.a(p), Quat.b(r)), Z.mul(Quat.b(p), Quat.a(r))),
+         Z.mul(Quat.c(p), Quat.d(r))), Z.mul(Quat.d(p), Quat.c(r)))),
+    Z.shr16(Z.sub(Z.add(Z.add(Z.mul(Quat.a(p), Quat.c(r)), Z.mul(Quat.c(p), Quat.a(r))),
+         Z.mul(Quat.d(p), Quat.b(r))), Z.mul(Quat.b(p), Quat.d(r)))),
+    Z.shr16(Z.sub(Z.add(Z.add(Z.mul(Quat.a(p), Quat.d(r)), Z.mul(Quat.d(p), Quat.a(r))),
+         Z.mul(Quat.b(p), Quat.c(r))), Z.mul(Quat.c(p), Quat.b(r))))}
+# the size of a quaternion in 2^-15
+def Quat.mag(+q: Quat) -> Nat:
+  +n = Nat.add(Nat.add(Nat.mul(Z.mag(Quat.a(q)), Z.mag(Quat.a(q))), Nat.mul(Z.mag(Quat.b(q)), Z.mag(Quat.b(q)))),
+    Nat.add(Nat.mul(Z.mag(Quat.c(q)), Z.mag(Quat.c(q))), Nat.mul(Z.mag(Quat.d(q)), Z.mag(Quat.d(q)))))
+  Fric.floor(n, Nat.max(Nat.add(Nat.add(Z.mag(Quat.a(q)), Z.mag(Quat.b(q))),
+    Nat.add(Z.mag(Quat.c(q)), Z.mag(Quat.d(q)))), 1n))
+
+def Quat.scale(+v: Z, +m: Nat) -> Z:
+  Z.like(v, Nat.div(Nat.mul(Z.mag(v), 32768n), Nat.max(m, 1n)))
+
+# its size brought back to 2^15, so the turning never grows or shrinks the
+# cube: this is where the 2^-15 of slack comes from
+def Quat.unit(+q: Quat) -> Quat:
+  Quat{Quat.scale(Quat.a(q), Quat.mag(q)), Quat.scale(Quat.b(q), Quat.mag(q)),
+    Quat.scale(Quat.c(q), Quat.mag(q)), Quat.scale(Quat.d(q), Quat.mag(q))}
+
+# the rotation with one of its seven numbers put in: how a walk that
+# reads an array one word at a time builds it back up
+def Rot.put(k: Nat, +r: Rot, +v: Z) -> Rot:
+  match k:
+    case 0n:
+      Rot{Quat{v, Quat.b(Rot.q(r)), Quat.c(Rot.q(r)), Quat.d(Rot.q(r))}, Rot.w(r)}
+    case 1n:
+      Rot{Quat{Quat.a(Rot.q(r)), v, Quat.c(Rot.q(r)), Quat.d(Rot.q(r))}, Rot.w(r)}
+    case 2n:
+      Rot{Quat{Quat.a(Rot.q(r)), Quat.b(Rot.q(r)), v, Quat.d(Rot.q(r))}, Rot.w(r)}
+    case 3n:
+      Rot{Quat{Quat.a(Rot.q(r)), Quat.b(Rot.q(r)), Quat.c(Rot.q(r)), v}, Rot.w(r)}
+    case 4n:
+      Rot{Rot.q(r), Wv{v, Wv.y(Rot.w(r)), Wv.z(Rot.w(r))}}
+    case 5n:
+      Rot{Rot.q(r), Wv{Wv.x(Rot.w(r)), v, Wv.z(Rot.w(r))}}
+    case _:
+      Rot{Rot.q(r), Wv{Wv.x(Rot.w(r)), Wv.y(Rot.w(r)), v}}
+
+# a tick of a body that touches nothing: the same turning, and the
+# orientation carried on by exactly that turning
+def Rot.turn(+q: Quat, +w: Wv) -> Quat:
+  Quat.unit(Quat.mul(q, Quat.step(w, Wv.mag(w))))
+
+def Rot.free(r: Rot) -> Rot:
+  Rot{+q, +w} = r
+  Rot{Rot.turn(q, w), w}
 # v / 8: what is left, in the units kept here, of dividing by a cube's
 # resistance to turning. The arm is in 2^-18 m and the impulse in 2^-10
 # m/s; their product over I = m s^2 / 6, turned into a share of a whole
@@ -277,22 +496,18 @@ def Rot.cry(+rz: Z, +rx: Z, +jz: Z, +jx: Z) -> Z:
 def Rot.crz(+rx: Z, +ry: Z, +jx: Z, +jy: Z) -> Z:
   Z.sub(Z.mul(rx, jy), Z.mul(ry, jx))
 
-# the part of a turning that lies along one axis
-def Rot.pick(ax: Nat, tx: Z, ty: Z, tz: Z) -> Z:
-  match ax:
-    case 0n:
-      tx
-    case 1n:
-      ty
-    case _:
-      tz
-
 # the body after a hit of impulse j at the point the arm r points to: the
-# turning it gives, about the axis this body turns on
+# whole of the arm crossed with the impulse goes into the turning, not
+# just the part that lies along some axis
+def Wv.add(+v: Wv, +u: Wv) -> Wv:
+  Wv{Z.add(Wv.x(v), Wv.x(u)), Z.add(Wv.y(v), Wv.y(u)), Z.add(Wv.z(v), Wv.z(u))}
+
+def Rot.kick(+rx: Z, +ry: Z, +rz: Z, +jx: Z, +jy: Z, +jz: Z) -> Wv:
+  Wv{Z.shr3(Rot.crx(ry, rz, jy, jz)), Z.shr3(Rot.cry(rz, rx, jz, jx)), Z.shr3(Rot.crz(rx, ry, jx, jy))}
+
 def Rot.hit(r: Rot, +rx: Z, +ry: Z, +rz: Z, +jx: Z, +jy: Z, +jz: Z) -> Rot:
-  Rot{+ax, ang, w} = r
-  Rot{ax, ang, Z.add(w, Z.shr3(Rot.pick(ax, Rot.crx(ry, rz, jy, jz), Rot.cry(rz, rx, jz, jx),
-    Rot.crz(rx, ry, jx, jy))))}
+  Rot{+q, +w} = r
+  Rot{q, Wv.add(w, Rot.kick(rx, ry, rz, jx, jy, jz))}
 
 # Bodies
 # ------
@@ -411,25 +626,6 @@ def Geo.rests(+s: Nat, +x: Nat, +y: Nat, +z: Nat, obs: List<&2, Body>) -> Bool:
 # speed), never more than it has. s is the speed rounded up, from Newton's
 # square root, checked (s^2 >= a^2 + b^2, s <= a + b; else a + b, which
 # always is).
-
-def Fric.next(+n: Nat, +x: Nat) -> Nat:
-  Nat.div(Nat.add(x, Nat.div(n, x)), 2n)
-
-def Fric.newton(fuel: Nat, +n: Nat, +x: Nat, more: Bool) -> Nat:
-  match fuel more:
-    case 0n _:
-      x
-    case 1n+f True{}:
-      Fric.newton(f, n, Fric.next(n, x), Nat.is_lt(Fric.next(n, Fric.next(n, x)), Fric.next(n, x)))
-    case 1n+f False{}:
-      x
-
-# the square root of n rounded down, from x0 >= it
-def Fric.floor(+n: Nat, +x0: Nat) -> Nat:
-  Fric.newton(64n, n, x0, Nat.is_lt(Fric.next(n, x0), x0))
-
-def Fric.ceil(+n: Nat, +r: Nat) -> Nat:
-  Pick.n(Nat.is_lt(Nat.mul(r, r), n), Nat.add(r, 1n), r)
 
 # the speed of (a, b), rounded up
 def Fric.speed(+a: Nat, +b: Nat) -> Nat:
