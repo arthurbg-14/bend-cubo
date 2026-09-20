@@ -305,6 +305,32 @@ medido do mesmo jeito na mesma máquina). Com mais, a simulação continua certa
 devagar que o relógio. Um cubo parado não custa nada, e o mundo tem quantos
 cubos parados couberem nele.
 
+**A multidão em chunks (em construção).** Para 100 mil cubos, o mundo é
+dividido em chunks de 16×16 m que **guardam os seus cubos entre os ticks**
+(nada de montar e desmontar listas a cada tick) e mantêm os corpos
+**ordenados por célula** dentro do array: a vizinhança de um cubo vira uma
+faixa contígua de palavras, e uma linha de células custa duas leituras,
+seja qual for a largura. Cada chunk tica no seu próprio array, e como dois
+chunks da mesma cor (xadrez 2×2) ficam a dois chunks de distância, nenhum
+cubo é empurrado por dois deles: o tick roda em quatro rodadas, uma por
+cor. Os cubos da borda são copiados para o vizinho, e quem atravessa muda
+de dono.
+
+Medido com 98 304 cubos em 1024 chunks, todos se mexendo (máquina
+compartilhada com outros trabalhos, 8 núcleos):
+
+| | instruções por cubo-tick | ms por tick | núcleos ocupados |
+|---|---|---|---|
+| só o tick (ordenar, varrer, física, escrever) | 2 926 | 10,3 | 7,5 |
+| com a troca de franja entre chunks | 4 296 | 28,1 | 4,3 |
+
+O tick sozinho cabe no tempo real (7,8 ms por tick) — numa máquina livre
+mediu 7,08 ms com 10 núcleos. O que falta é a troca de franja: ela custa
++47% de instruções e derruba a ocupação, porque em Bend um array é de dono
+único e não há índice: ou se roteia por listas (que alocam em cada nível da
+árvore) ou se percorrem os vizinhos em sequência. As duas versões estão no
+código e passam no teste de conservação (98 304 cubos entram, 98 304 saem).
+
 **Sobre as threads.** Medido nesta máquina (8 núcleos, 16 threads), com ela
 livre:
 
