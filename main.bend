@@ -194,6 +194,7 @@ type Act is Data:
   Zoom{out: Bool}
   Stats{gpu: U32, all: U32}
   Choose{i: U32}
+  Align{}
 
 type Inp is Data:
   Inp{keys: U32, mx: U32, my: U32, seen: Bool, dx: U32, dy: U32, acts: List<&2, Act>}
@@ -225,6 +226,13 @@ def Inp.digit(ok: Bool, +code: U32) -> Maybe<&2, Act>:
     case False{}:
       None{}
 
+def Inp.act_c(c: Bool, +code: U32) -> Maybe<&2, Act>:
+  match c:
+    case True{}:
+      Some{Align{}}
+    case False{}:
+      Inp.digit(Bool.and((code >= 49 : U32), (code <= 54 : U32)), code)
+
 def Inp.act_more(r: Bool, h: Bool, enter: Bool, n: Bool, wup: Bool, wdown: Bool, +code: U32) -> Maybe<&2, Act>:
   match r h enter n wup wdown:
     case True{} _ _ _ _ _:
@@ -240,7 +248,7 @@ def Inp.act_more(r: Bool, h: Bool, enter: Bool, n: Bool, wup: Bool, wdown: Bool,
     case False{} False{} False{} False{} False{} True{}:
       Some{Zoom{True{}}}
     case False{} False{} False{} False{} False{} False{}:
-      Inp.digit(Bool.and((code >= 49 : U32), (code <= 54 : U32)), code)
+      Inp.act_c(U32.is_eq(code, 99), code)
 
 def Inp.act_at(tab: Bool, upk: Bool, down: Bool, left: Bool, right: Bool, +code: U32) -> Maybe<&2, Act>:
   match tab upk down left right:
@@ -500,6 +508,7 @@ def Play.helps(help: Bool) -> List<&2, String>:
   match help:
     case True{}:
       ["", "W A S D anda (para onde a câmera olha) · Espaço pula",
+        "C alinha você no meio da pista, reto: aí é só segurar W",
         "mouse gira a câmera · roda aproxima e afasta",
         "Enter volta ao início · N mundo novo · Esc sai",
         "empurre os cubos verdes · suba neles pulando",
@@ -603,6 +612,31 @@ def Play.home(s: Play) -> Play:
   Play{W.World{seed, t, awake, dirty, Play.pl(W.W.new(seed))}, k, inp, t0, ticks, rep,
     Play.pl(W.W.new(seed)), yaw, pitch, dist, sel, help, gpu, fus, hv}
 
+# The runway's middle line, in x: the player is born there (half a metre
+# into the cell of the origin), and the lane the generator leaves empty is
+# the 8 cells around it, so this is its centre with 3,5 m of room on each
+# side of the cube.
+def Play.mid() -> Nat:
+  Nat.add(W.W.base(W.W.origin()), 131072n)
+
+# on the line, with no sideways speed of its own; what it carries along the
+# lane (and in the air) is kept
+def Align.body(b: P.Body) -> P.Body:
+  P.Body{x, y, z, vx, vy, vz, ground, hit} = b
+  P.Body{Play.mid(), y, z, P.Pos{0n}, vy, vz, ground, hit}
+
+# the camera to the nearer end of the lane: a turn is 1024 steps, so 0 looks
+# down +z and 512 down -z. Only these two walk EXACTLY straight (sin is 0),
+# which is what holding W down a 8 m lane at 100 m/s needs.
+def Align.yaw(+yaw: U32) -> U32:
+  Pick.u((yaw < 256 : U32), 0, Pick.u((yaw < 768 : U32), 512, 0))
+
+def Play.align(s: Play) -> Play:
+  Play{w, k, inp, t0, ticks, rep, prev, +yaw, pitch, dist, sel, help, gpu, fus, hv} = s
+  W.World{seed, t, awake, dirty, +p} = w
+  Play{W.World{seed, t, awake, dirty, Align.body(p)}, k, inp, t0, ticks, rep,
+    Align.body(p), Align.yaw(yaw), pitch, dist, sel, help, gpu, fus, hv}
+
 def Play.fresh(+now: Nat, s: Play) -> Play:
   Play{w, k, inp, t0, ticks, rep, prev, yaw, pitch, dist, sel, help, gpu, fus, hv} = s
   W.World{+seed, t, awake, dirty, p} = w
@@ -642,6 +676,8 @@ def Play.act(a: Act, +now: Nat, s: Play) -> Play:
       Play.stats(g2, all, s)
     case Choose{i}:
       Play.choose(i, s)
+    case Align{}:
+      Play.align(s)
 
 def Play.acts(xs: List<&2, Act>, +now: Nat, s: Play) -> Play:
   match xs:

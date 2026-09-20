@@ -32,6 +32,7 @@ A GPU desenha (Vulkan); o Bend simula.
 | Tab, ↑ ↓, 1 … 4 | escolher uma constante |
 | ← → | mudar a constante escolhida (segurar repete) |
 | R | constantes de volta ao padrão |
+| C | alinhar no meio da pista, reto |
 | Enter | voltar ao início |
 | N | mundo novo (outra semente) |
 | H | mostrar / esconder as teclas |
@@ -42,9 +43,16 @@ Andar acelera 20 m/s² enquanto a tecla estiver segurada, e o atrito tira
 máxima**, e a aceleração é a mesma em qualquer velocidade (`motor_is_steady`).
 Num trecho limpo dá 12 m/s em 1 s e 122 m/s em 10 s; no mundo de verdade os
 cubos que você encontra pelo caminho seguram você por volta de 6 m/s. Por isso
-o ponto de partida fica numa **pista reta**: 7 m de largura pelo eixo z (para
-onde a câmera olha ao começar), sem fim e sem nenhum cubo verde, que é onde dá
-para acelerar até onde você quiser. No ar
+o ponto de partida fica numa **pista reta**: 8 m de largura pelo eixo z (para
+onde a câmera olha ao começar), sem fim e sem nenhum cubo verde, pintada no
+chão com a faixa do meio tracejada.
+
+Acertar a pista no olho não dá: a câmera tem 1024 passos por volta, e um passo
+torto já põe um empurrão para o lado (76 de 4096) que em dez segundos te joga
+na parede de cubos. **C alinha**: põe você exatamente na faixa do meio, zera a
+velocidade lateral e aponta a câmera para a ponta mais próxima da pista — as
+duas únicas direções em que o passo para o lado é exatamente zero. Daí é só
+segurar W. No ar
 o motor não faz nada: saiu do chão, o que manda é a parábola
 (`no_air_control`).
 

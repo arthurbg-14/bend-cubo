@@ -65,7 +65,7 @@ uint gcount(uint seed, uint cx, uint cz) {
   uint h    = hcell(seed + 1u, cx, cz);
   uint hh   = (h >> 8) & 255u;
   bool near = (cx - ORIGIN + 3u) < 6u && (cz - ORIGIN + 3u) < 6u;
-  bool lane = (cx - ORIGIN + 3u) < 7u;   // the runway, down the z axis
+  bool lane = (cx - ORIGIN + 3u) < 8u;   // the runway, down the z axis
   if (near || lane || (h & 255u) >= dens) {
     return 0u;
   }
@@ -300,6 +300,17 @@ vec3 shade(Hit h, vec3 ro, vec3 rd, vec3 L) {
     uvec3 big = wcell(p, 1u) >> 3u;
     float chk = ((big.x ^ big.z) & 1u) == 0u ? 1.0 : 0.94;
     base = vec3(0.60, 0.66, 0.55) * line * chk;
+    // the runway: the same lane the generator leaves empty, painted. Its
+    // middle line is exactly where C puts the player, so the lane can be
+    // taken by eye too, and the edges say where the cubes start again.
+    float rx = float(int(F[H_OCX] - ORIGIN)) + p.x;
+    float rz = float(int(F[H_OCZ] - ORIGIN)) + p.z;
+    if (rx > -3.0 && rx < 5.0) {
+      float dash = fract(rz * 0.25) < 0.5 ? 1.0 : 0.0;
+      float mid  = smoothstep(0.13, 0.10, abs(rx - 1.0)) * dash;
+      float edge = smoothstep(0.13, 0.10, min(abs(rx + 2.85), abs(rx - 4.85)));
+      base = mix(vec3(0.30, 0.31, 0.32) * line, vec3(0.90, 0.90, 0.86), max(mid, edge));
+    }
     ao = groundshade(p);
   } else {
     base = h.kind == 5u ? vec3(0.10, 0.32, 0.95) : vec3(0.28, 0.70, 0.24);
