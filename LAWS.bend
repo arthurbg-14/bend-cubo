@@ -200,7 +200,7 @@ law rest_stays:
   for h: Bool
   for +rt: P.Rot
   for on: {Bool.or(Nat.is_eq(y, 0n), P.Geo.rests(P.K.size(k), x, y, z, obs)) == True{} : Bool}
-  for clear: {P.Geo.free(P.K.size(k), x, y, z, obs) == True{} : Bool}
+  for clear: {P.Geo.free(P.K.size(k), x, y, z, P.Rot.q(rt), obs) == True{} : Bool}
   {P.Body.tick(k, obs, P.In.idle(), P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, rt})
     == (P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, False{}, rt}, obs) : P.Body & List<&2, P.Body>}
 
@@ -238,15 +238,20 @@ law energy_never_grows:
 
 # LAW: no clipping: a body clear of its obstacles is still clear of them
 # after a tick, whatever the input -- nothing walks, falls or is pushed
-# into another cube.
+# into another cube. With turning in, the law asks for more than it used
+# to: the body has to be clear where it ends up AND turned the way it
+# ends up turned, so a cube can no more turn into a neighbour than walk
+# into one.
 law no_clip:
   for +k: P.K
   for +obs: List<&2, P.Body>
   for inp: P.In
   for +b: P.Body
-  for clear: {P.Geo.free(P.K.size(k), P.Body.x(b), P.Body.y(b), P.Body.z(b), obs) == True{} : Bool}
+  for clear: {P.Geo.free(P.K.size(k), P.Body.x(b), P.Body.y(b), P.Body.z(b), P.Rot.q(P.Body.rot(b)), obs)
+    == True{} : Bool}
   r = P.Body.tick(k, obs, inp, b)
-  {P.Geo.free(P.K.size(k), P.Body.x(P.Tick.body(r)), P.Body.y(P.Tick.body(r)), P.Body.z(P.Tick.body(r)), P.Tick.obs(r)) == True{} : Bool}
+  {P.Geo.free(P.K.size(k), P.Body.x(P.Tick.body(r)), P.Body.y(P.Tick.body(r)), P.Body.z(P.Tick.body(r)),
+    P.Rot.q(P.Body.rot(P.Tick.body(r))), P.Tick.obs(r)) == True{} : Bool}
 
 
 # Turning

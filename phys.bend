@@ -518,44 +518,44 @@ type Body is Data:
   Body{x: Nat, y: Nat, z: Nat, vx: Z, vy: Z, vz: Z, ground: Bool, hit: Bool, rot: Rot}
 
 def Body.rot(b: Body) -> Rot:
-  Body{x, y, z, vx, vy, vz, ground, hit, rt} = b
+  Body{x, y, z, vx, vy, vz, ground, hit, +rt} = b
   rt
 
 def Body.hit(b: Body) -> Bool:
-  Body{x, y, z, vx, vy, vz, ground, hit, rt} = b
+  Body{x, y, z, vx, vy, vz, ground, hit, +rt} = b
   hit
 
 def Body.ground(b: Body) -> Bool:
-  Body{x, y, z, vx, vy, vz, ground, hit, rt} = b
+  Body{x, y, z, vx, vy, vz, ground, hit, +rt} = b
   ground
 
 def Body.x(b: Body) -> Nat:
-  Body{x, y, z, vx, vy, vz, ground, hit, rt} = b
+  Body{x, y, z, vx, vy, vz, ground, hit, +rt} = b
   x
 
 def Body.y(b: Body) -> Nat:
-  Body{x, y, z, vx, vy, vz, ground, hit, rt} = b
+  Body{x, y, z, vx, vy, vz, ground, hit, +rt} = b
   y
 
 def Body.z(b: Body) -> Nat:
-  Body{x, y, z, vx, vy, vz, ground, hit, rt} = b
+  Body{x, y, z, vx, vy, vz, ground, hit, +rt} = b
   z
 
 def Body.vx(b: Body) -> Z:
-  Body{x, y, z, vx, vy, vz, ground, hit, rt} = b
+  Body{x, y, z, vx, vy, vz, ground, hit, +rt} = b
   vx
 
 def Body.vy(b: Body) -> Z:
-  Body{x, y, z, vx, vy, vz, ground, hit, rt} = b
+  Body{x, y, z, vx, vy, vz, ground, hit, +rt} = b
   vy
 
 def Body.vz(b: Body) -> Z:
-  Body{x, y, z, vx, vy, vz, ground, hit, rt} = b
+  Body{x, y, z, vx, vy, vz, ground, hit, +rt} = b
   vz
 
 # the mechanical energy, kinetic plus potential: vx^2 + vy^2 + vz^2 + g y
 def Body.energy(+g: Nat, b: Body) -> Nat:
-  Body{x, y, z, vx, vy, vz, ground, hit, rt} = b
+  Body{x, y, z, vx, vy, vz, ground, hit, +rt} = b
   Nat.add(Nat.add(Nat.add(Z.sq(vx), Z.sq(vy)), Z.sq(vz)), Nat.mul(g, y))
 
 def Body.energies(+g: Nat, bs: List<&2, Body>) -> Nat:
@@ -572,11 +572,6 @@ def Body.energies(+g: Nat, bs: List<&2, Body>) -> Nat:
 # do [a, a + S) and [b, b + S) overlap?
 def Geo.ovl(+s: Nat, +a: Nat, +b: Nat) -> Bool:
   Bool.and(Nat.is_lt(a, Nat.add(b, s)), Nat.is_lt(b, Nat.add(a, s)))
-
-# does the box at (x, y, z) overlap o's?
-def Geo.meets(+s: Nat, +x: Nat, +y: Nat, +z: Nat, o: Body) -> Bool:
-  Body{ox, oy, oz, vx, vy, vz, ground, hit, rt} = o
-  Bool.and(Geo.ovl(s, x, ox), Bool.and(Geo.ovl(s, z, oz), Geo.ovl(s, y, oy)))
 
 # Turned boxes
 # ------------
@@ -687,25 +682,40 @@ def Geo.sat(+s: Nat, +ax: Nat, +ay: Nat, +az: Nat, +qa: Quat, +bx: Nat, +by: Nat
   Geo.sat2(Nat.div(s, 2n), Z.diff(Nat.is_lt(bx, ax), bx, ax), Z.diff(Nat.is_lt(by, ay), by, ay),
     Z.diff(Nat.is_lt(bz, az), bz, az), Rot.mat(qa), Rot.mat(qb))
 
+# do the box at (x, y, z), turned by qa, and o's box overlap? While
+# neither has turned this is the plain box test, to the unit; the moment
+# one of them has, the fifteen directions decide.
+def Geo.pair(flat: Bool, +s: Nat, +x: Nat, +y: Nat, +z: Nat, +qa: Quat, +ox: Nat, +oy: Nat, +oz: Nat,
+  +qb: Quat) -> Bool:
+  match flat:
+    case True{}:
+      Bool.and(Geo.ovl(s, x, ox), Bool.and(Geo.ovl(s, z, oz), Geo.ovl(s, y, oy)))
+    case False{}:
+      Geo.sat(s, x, y, z, qa, ox, oy, oz, qb)
+
+def Geo.meets(+s: Nat, +x: Nat, +y: Nat, +z: Nat, +qa: Quat, o: Body) -> Bool:
+  Body{+ox, +oy, +oz, vx, vy, vz, ground, hit, +rt} = o
+  Geo.pair(Bool.and(Quat.flat(qa), Quat.flat(Rot.q(rt))), s, x, y, z, qa, ox, oy, oz, Rot.q(rt))
+
 # is the box at (x, y, z) clear of every obstacle?
-def Geo.free(+s: Nat, +x: Nat, +y: Nat, +z: Nat, obs: List<&2, Body>) -> Bool:
+def Geo.free(+s: Nat, +x: Nat, +y: Nat, +z: Nat, +qa: Quat, obs: List<&2, Body>) -> Bool:
   match obs:
     case []:
       True{}
     case o <> rest:
-      Bool.and(Bool.not(Geo.meets(s, x, y, z, o)), Geo.free(s, x, y, z, rest))
+      Bool.and(Bool.not(Geo.meets(s, x, y, z, qa, o)), Geo.free(s, x, y, z, qa, rest))
 
 # does the box at (x, y, z) meet the first obstacle of obs?
-def Geo.head(+s: Nat, +x: Nat, +y: Nat, +z: Nat, obs: List<&2, Body>) -> Bool:
+def Geo.head(+s: Nat, +x: Nat, +y: Nat, +z: Nat, +qa: Quat, obs: List<&2, Body>) -> Bool:
   match obs:
     case []:
       False{}
     case o <> rest:
-      Geo.meets(s, x, y, z, o)
+      Geo.meets(s, x, y, z, qa, o)
 
 # the top of o, if it is under the column (x, z) at most at height y
 def Geo.floor1(+s: Nat, +x: Nat, +y: Nat, +z: Nat, o: Body, +best: Nat) -> Nat:
-  Body{+ox, +oy, +oz, vx, vy, vz, ground, hit, rt} = o
+  Body{+ox, +oy, +oz, vx, vy, vz, ground, hit, +rt} = o
   +top = Nat.add(oy, s)
   Pick.n(Bool.and(Bool.and(Geo.ovl(s, x, ox), Geo.ovl(s, z, oz)), Bool.and(Nat.is_le(top, y), Nat.is_lt(best, top))), top, best)
 
@@ -724,7 +734,7 @@ def Geo.rests(+s: Nat, +x: Nat, +y: Nat, +z: Nat, obs: List<&2, Body>) -> Bool:
     case []:
       False{}
     case o <> rest:
-      Body{+ox, +oy, +oz, vx, vy, vz, ground, hit, rt} = o
+      Body{+ox, +oy, +oz, vx, vy, vz, ground, hit, +rt} = o
       Bool.or(Bool.and(Bool.and(Geo.ovl(s, x, ox), Geo.ovl(s, z, oz)), Nat.is_eq(Nat.add(oy, s), y)),
         Geo.rests(s, x, y, z, rest))
 
@@ -811,7 +821,7 @@ def Drive.go(gr: Bool, +k: K, walk: Maybe<&2, Wish>, jump: Bool, +x: Nat, +y: Na
 
 def Body.drive(+k: K, inp: In, b: Body) -> Body:
   In{walk, jump} = inp
-  Body{x, y, z, vx, vy, vz, gr, hit, rt} = b
+  Body{x, y, z, vx, vy, vz, gr, hit, +rt} = b
   Drive.go(gr, k, walk, jump, x, y, z, vx, vy, vz, rt)
 
 # Sharing
@@ -933,17 +943,17 @@ def Push.xput(vw: Z & Z, +at: Nat, +ox: Nat, +oy: Nat, +oz: Nat, +ovy: Z, +ovz: 
   Pushed{v2, Body{ox, oy, oz, w2, ovy, ovz, og, oh, rt} <> rest, Some{at}}
 
 def Push.xone(+s: Nat, +d: Z, +v: Z, o: Body, rest: List<&2, Body>) -> Pushed:
-  Body{+ox, +oy, +oz, +ovx, +ovy, +ovz, +og, +oh, rt} = o
+  Body{+ox, +oy, +oz, +ovx, +ovy, +ovz, +og, +oh, +rt} = o
   Push.xput(Push.share(Push.closing(d, v, ovx), v, ovx), Push.stop(s, d, ox), ox, oy, oz, ovy, ovz, og, oh, rest, rt)
 
-def Push.x(+s: Nat, obs: List<&2, Body>, +d: Z, +cx: Nat, +y: Nat, +z: Nat, +v: Z, here: Bool) -> Pushed:
+def Push.x(+s: Nat, obs: List<&2, Body>, +d: Z, +cx: Nat, +y: Nat, +z: Nat, +v: Z, +qa: Quat, here: Bool) -> Pushed:
   match obs here:
     case Nil{} _:
       Pushed{v, [], None{}}
     case o <> rest True{}:
       Push.xone(s, d, v, o, rest)
     case +o <> +rest False{}:
-      Push.cons(o, Push.x(s, rest, d, cx, y, z, v, Geo.head(s, cx, y, z, rest)))
+      Push.cons(o, Push.x(s, rest, d, cx, y, z, v, qa, Geo.head(s, cx, y, z, qa, rest)))
 
 def Push.zput(vw: Z & Z, +at: Nat, +ox: Nat, +oy: Nat, +oz: Nat, +ovx: Z, +ovy: Z, +og: Bool, +oh: Bool,
   rest: List<&2, Body>, +rt: Rot) -> Pushed:
@@ -951,17 +961,17 @@ def Push.zput(vw: Z & Z, +at: Nat, +ox: Nat, +oy: Nat, +oz: Nat, +ovx: Z, +ovy: 
   Pushed{v2, Body{ox, oy, oz, ovx, ovy, w2, og, oh, rt} <> rest, Some{at}}
 
 def Push.zone(+s: Nat, +d: Z, +v: Z, o: Body, rest: List<&2, Body>) -> Pushed:
-  Body{+ox, +oy, +oz, +ovx, +ovy, +ovz, +og, +oh, rt} = o
+  Body{+ox, +oy, +oz, +ovx, +ovy, +ovz, +og, +oh, +rt} = o
   Push.zput(Push.share(Push.closing(d, v, ovz), v, ovz), Push.stop(s, d, oz), ox, oy, oz, ovx, ovy, og, oh, rest, rt)
 
-def Push.z(+s: Nat, obs: List<&2, Body>, +d: Z, +x: Nat, +y: Nat, +cz: Nat, +v: Z, here: Bool) -> Pushed:
+def Push.z(+s: Nat, obs: List<&2, Body>, +d: Z, +x: Nat, +y: Nat, +cz: Nat, +v: Z, +qa: Quat, here: Bool) -> Pushed:
   match obs here:
     case Nil{} _:
       Pushed{v, [], None{}}
     case o <> rest True{}:
       Push.zone(s, d, v, o, rest)
     case +o <> +rest False{}:
-      Push.cons(o, Push.z(s, rest, d, x, y, cz, v, Geo.head(s, x, y, cz, rest)))
+      Push.cons(o, Push.z(s, rest, d, x, y, cz, v, qa, Geo.head(s, x, y, cz, qa, rest)))
 
 # Moves
 # -----
@@ -982,7 +992,7 @@ def Move.xat(+s: Nat, at: Maybe<&2, Nat>, +obs: List<&2, Body>, +x: Nat, +y: Nat
     case None{}:
       (Body{x, y, z, v, vy, vz, gr, True{}, rt}, obs)
     case Some{+cx}:
-      Move.xput(Geo.free(s, cx, y, z, obs), obs, cx, x, y, z, v, vy, vz, gr, rt)
+      Move.xput(Geo.free(s, cx, y, z, Rot.q(rt), obs), obs, cx, x, y, z, v, vy, vz, gr, rt)
 
 def Move.xhit(+s: Nat, r: Pushed, +x: Nat, +y: Nat, +z: Nat, +vy: Z, +vz: Z, +gr: Bool, +rt: Rot) -> Body & List<&2, Body>:
   Pushed{v, obs, at} = r
@@ -994,14 +1004,14 @@ def Move.xgo(+s: Nat, ok: Bool, +obs: List<&2, Body>, +d: Z, +cx: Nat, +x: Nat, 
     case True{}:
       (Body{cx, y, z, vx, vy, vz, gr, hit, rt}, obs)
     case False{}:
-      Move.xhit(s, Push.x(s, obs, d, cx, y, z, vx, Geo.head(s, cx, y, z, obs)), x, y, z, vy, vz, gr, rt)
+      Move.xhit(s, Push.x(s, obs, d, cx, y, z, vx, Rot.q(rt), Geo.head(s, cx, y, z, Rot.q(rt), obs)), x, y, z, vy, vz, gr, rt)
 
 # the move along x, by the start and end velocities added
 def Move.x(+s: Nat, +obs: List<&2, Body>, +v0: Z, b: Body) -> Body & List<&2, Body>:
-  Body{+x, +y, +z, +vx, +vy, +vz, +gr, +hit, rt} = b
+  Body{+x, +y, +z, +vx, +vy, +vz, +gr, +hit, +rt} = b
   +d = Z.add(v0, vx)
   +cx = Z.shift(x, d)
-  Move.xgo(s, Bool.and(Z.fits(x, d), Geo.free(s, cx, y, z, obs)), obs, d, cx, x, y, z, vx, vy, vz, gr, hit, rt)
+  Move.xgo(s, Bool.and(Z.fits(x, d), Geo.free(s, cx, y, z, Rot.q(rt), obs)), obs, d, cx, x, y, z, vx, vy, vz, gr, hit, rt)
 
 def Move.zput(ok: Bool, +obs: List<&2, Body>, +cz: Nat, +x: Nat, +y: Nat, +z: Nat, +vx: Z, +vy: Z, +v: Z, +gr: Bool, +rt: Rot)
   -> Body & List<&2, Body>:
@@ -1017,7 +1027,7 @@ def Move.zat(+s: Nat, at: Maybe<&2, Nat>, +obs: List<&2, Body>, +x: Nat, +y: Nat
     case None{}:
       (Body{x, y, z, vx, vy, v, gr, True{}, rt}, obs)
     case Some{+cz}:
-      Move.zput(Geo.free(s, x, y, cz, obs), obs, cz, x, y, z, vx, vy, v, gr, rt)
+      Move.zput(Geo.free(s, x, y, cz, Rot.q(rt), obs), obs, cz, x, y, z, vx, vy, v, gr, rt)
 
 def Move.zhit(+s: Nat, r: Pushed, +x: Nat, +y: Nat, +z: Nat, +vx: Z, +vy: Z, +gr: Bool, +rt: Rot) -> Body & List<&2, Body>:
   Pushed{v, obs, at} = r
@@ -1029,13 +1039,13 @@ def Move.zgo(+s: Nat, ok: Bool, +obs: List<&2, Body>, +d: Z, +cz: Nat, +x: Nat, 
     case True{}:
       (Body{x, y, cz, vx, vy, vz, gr, hit, rt}, obs)
     case False{}:
-      Move.zhit(s, Push.z(s, obs, d, x, y, cz, vz, Geo.head(s, x, y, cz, obs)), x, y, z, vx, vy, gr, rt)
+      Move.zhit(s, Push.z(s, obs, d, x, y, cz, vz, Rot.q(rt), Geo.head(s, x, y, cz, Rot.q(rt), obs)), x, y, z, vx, vy, gr, rt)
 
 def Move.z(+s: Nat, +obs: List<&2, Body>, +v0: Z, b: Body) -> Body & List<&2, Body>:
-  Body{+x, +y, +z, +vx, +vy, +vz, +gr, +hit, rt} = b
+  Body{+x, +y, +z, +vx, +vy, +vz, +gr, +hit, +rt} = b
   +d = Z.add(v0, vz)
   +cz = Z.shift(z, d)
-  Move.zgo(s, Bool.and(Z.fits(z, d), Geo.free(s, x, y, cz, obs)), obs, d, cz, x, y, z, vx, vy, vz, gr, hit, rt)
+  Move.zgo(s, Bool.and(Z.fits(z, d), Geo.free(s, x, y, cz, Rot.q(rt), obs)), obs, d, cz, x, y, z, vx, vy, vz, gr, hit, rt)
 
 # Gravity: a tick takes g from the vertical velocity; the move is the
 # start and end velocities added, (v', v + v'). Rising at s < g, the body
@@ -1074,16 +1084,16 @@ def Move.fall(+s: Nat, ok: Bool, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat
     case True{}:
       Body{x, Nat.sub(y, q), z, vx, v, vz, False{}, hit, rt}
     case False{}:
-      Move.land(Bool.and(Nat.is_le(fl, y), Geo.free(s, x, fl, z, obs)), x, y, z, fl, vx, vz, rt)
+      Move.land(Bool.and(Nat.is_le(fl, y), Geo.free(s, x, fl, z, Rot.q(rt), obs)), x, y, z, fl, vx, vz, rt)
 
 def Move.fly(+s: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +vx: Z, +vz: Z, +hit: Bool, st: Z & Z, +rt: Rot) -> Body:
   (v, d) = st
   match d:
     case Pos{+p}:
-      Move.rise(Geo.free(s, x, Nat.add(y, p), z, obs), x, y, z, p, vx, v, vz, hit, rt)
+      Move.rise(Geo.free(s, x, Nat.add(y, p), z, Rot.q(rt), obs), x, y, z, p, vx, v, vz, hit, rt)
     case Neg{+q}:
       +fl = Geo.floor(s, x, y, z, obs, 0n)
-      Move.fall(s, Bool.and(Nat.is_le(Nat.add(fl, q), y), Geo.free(s, x, Nat.sub(y, q), z, obs)), obs, x, y, z, q, fl,
+      Move.fall(s, Bool.and(Nat.is_le(Nat.add(fl, q), y), Geo.free(s, x, Nat.sub(y, q), z, Rot.q(rt), obs)), obs, x, y, z, q, fl,
         vx, v, vz, hit, rt)
 
 def Move.ygo(+s: Nat, gr: Bool, +g: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +vx: Z, +vy: Z, +vz: Z,
@@ -1098,7 +1108,7 @@ def Move.ygo(+s: Nat, gr: Bool, +g: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat,
 # gravity, a free fall or rise, or a landing (on the highest top under the
 # body, the ground at 0) or a bump
 def Move.y(+s: Nat, +g: Nat, +obs: List<&2, Body>, b: Body) -> Body:
-  Body{+x, +y, +z, +vx, +vy, +vz, gr, +hit, rt} = b
+  Body{+x, +y, +z, +vx, +vy, +vz, gr, +hit, +rt} = b
   Move.ygo(s, gr, g, obs, x, y, z, vx, vy, vz, hit, rt)
 
 # The tick
@@ -1115,7 +1125,7 @@ def Tick.z(+s: Nat, +g: Nat, +vz0: Z, r: Body & List<&2, Body>) -> Body & List<&
   Tick.y(s, g, Move.z(s, obs, vz0, b))
 
 def Body.tick(+k: K, +obs: List<&2, Body>, inp: In, b: Body) -> Body & List<&2, Body>:
-  Body{+x, +y, +z, +vx, +vy, +vz, +gr, +hit, rt} = b
+  Body{+x, +y, +z, +vx, +vy, +vz, +gr, +hit, +rt} = b
   Tick.z(K.size(k), K.g(k), vz, Move.x(K.size(k), obs, vx, Body.drive(k, inp, Body{x, y, z, vx, vy, vz, gr, hit, rt})))
 
 def Tick.body(r: Body & List<&2, Body>) -> Body:

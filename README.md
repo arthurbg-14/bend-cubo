@@ -124,10 +124,43 @@ movimento. O tick marca isso no próprio corpo (`hit`).
 | `push_energy` | uma colisão nunca cria energia cinética |
 | `energy_never_grows` | sem entrada, nenhum tick aumenta a energia do corpo mais a dos obstáculos que ele toca; só o motor e o pulo põem energia |
 | `no_clip` | um corpo livre dos obstáculos continua livre depois do tick, com qualquer entrada: nada anda, cai ou é empurrado para dentro de outro cubo |
-| `no_slip_when_held` | o que segura um corpo é o que está embaixo do **meio** dele: apoiado em cheio (ou no ar) ele não sai do lugar |
-| `slip_makes_no_energy` | escorregar de uma beirada não cria energia: mesma velocidade, mesma altura |
+| `free_spin_keeps_the_turning` | um corpo que não toca em nada mantém o giro **exatamente**: um cubo resiste igual a girar em torno de qualquer eixo, então nada alimenta uma bamboleada |
+| `a_hit_adds_the_whole_turning` | uma batida põe no corpo **todo** o giro que ela pede — as três partes do braço cruzado com o impulso, não só a que cai num eixo que o corpo já usava |
+| `no_spin_from_the_middle` | uma batida no meio não gira nada: o que gira é o braço, e braço zero não cruza com nada |
+| `spin_is_across_the_push` | uma batida só gira em torno dos eixos atravessados a ela |
 
-Não há `@unsafe`, `?TODO` nem axiomas. A verificação leva cerca de 10 s.
+Não há `@unsafe`, `?TODO` nem axiomas. A verificação leva cerca de 1 min.
+
+### Rotação: o que é exato e o que não é
+
+Cada corpo carrega **o giro como vetor** (quanto de uma volta inteira ele
+faz em cada eixo por tick) e **a orientação como quatérnio** em 2⁻¹⁵. A
+escolha é deliberada, e a fronteira entre exato e aproximado está aqui:
+
+- **Exato:** o giro. Uma batida soma ao giro o braço cruzado com o impulso,
+  em inteiros, sem arredondar nada; um tick sem contato não mexe nele. As
+  quatro leis acima são sobre essas contas.
+- **Aproximado:** a orientação. Compor rotação com rotação em ponto fixo não
+  fecha em inteiros (é o mesmo motivo pelo qual nenhum motor faz isso): cada
+  tick que gira multiplica o quatérnio pela volta daquele tick e traz o
+  tamanho de volta para 2¹⁵ — certo a 2⁻¹⁵ de si mesmo, um micrômetro num
+  cubo de um metro.
+- **O seno e o cosseno** saem de séries em 2⁻²⁰ com toda divisão arredondada
+  (`Trig`): erro máximo medido de 1,2 · 10⁻⁵, e **exatos** nos quartos de
+  volta — um cubo que não girou é exatamente quadrado.
+- **A colisão de um cubo virado** é o teste dos quinze eixos separadores
+  (`Geo.sat`): as três faces de cada cubo e os nove cruzamentos das arestas,
+  tudo multiplicado para não dividir. Enquanto os dois cubos estão quadrados
+  com o mundo, ele dá **exatamente** o mesmo que o teste de caixa de sempre
+  (o teste `quinze eixos x caixa` de `./fast` confere isso em 3375 posições),
+  então a multidão parada não paga nada pela rotação.
+
+**O que ainda não está aqui:** o giro existe, é guardado, viaja com o cubo e
+decide colisão, mas **nada ainda o põe em movimento** — falta a dinâmica de
+contato (o apoio que aperta fora do meio vira torque, e o cubo tomba). Esse
+trabalho está no ramo `giro-dinamica`: lá o cubo empoleirado tomba e cai
+(o teste `quina` passa), mas ele ainda deixa sobreposições na multidão, que
+é justamente o que `no_clip` proíbe — por isso não está no master.
 
 ### Por que a energia fecha exatamente
 
@@ -235,8 +268,10 @@ Três bugs plausíveis, cada um numa cópia do projeto. Cada um compila
 - **A multidão num array plano.** Quando os cubos acordados estão juntos —
   a caixa deles não tem muito mais células do que cubos —, o tick copia a
   multidão, os cubos dormindo das células que ela alcança e o jogador para
-  um único `Array<U32>`: 6 palavras por corpo (x, y e z a partir de um canto
-  de célula, vx, vy e vz com as bandeiras em cima), mais uma corrente por
+  um único `Array<U32>`: 16 palavras por corpo (x, y e z a partir de um canto
+  de célula, vx, vy e vz com as bandeiras em cima, as quatro do quatérnio e as
+  três do giro — dezesseis, e não treze, para o endereço de um corpo ser um
+  deslocamento e um corpo ser uma linha de cache), mais uma corrente por
   célula numa tabela de hash no fim do mesmo array. Ler uma palavra do array
   custa ~10 instruções, contra a trie e as listas do Bend, onde cada nó é
   memória compartilhada com contagem de referências. Cada corpo então lê
