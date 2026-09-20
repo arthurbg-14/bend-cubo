@@ -2214,6 +2214,12 @@ def C.round(t: Chk, z: Mz, +lo: U32, +hi: U32, +c: Nat, +o: Og, +k: P.K, +mm: Na
             C.round(h, C.part(mb, ((mid + hi) / 2 : U32)), mid, hi, c, o, k, mm, nbx, nbz, side)
       C.join(x, y)
 
+# (The way below hands the border cubes over as messages down the tree.
+# It is faster on paper -- 3,8 mil instructions a cube-tick against 6,5
+# mil -- but the collision test still finds an overlap in it, so the tick
+# the game would use is the one above, which hands cubes over array to
+# array. Kept for the measurement.)
+#
 # Handing the messages out and ticking are two walks, not one: the tick's
 # walk then forks and does nothing else, which is what fills the cores
 # (measured: one walk that also splits lists stops at five of them).

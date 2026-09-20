@@ -134,31 +134,7 @@ def start() -> IO(Unit):
 
 # the same scene held in a balanced tree of 8 x 8 chunks, ticked through
 # the messages (the faster of the two ways to hand cubes over)
-def mkt(d: Nat, +i: Nat, +nbx: Nat, +xs: List<&2, P.Body>) -> W.Chk:
-  match d:
-    case 0n:
-      mk(Nat.mod(i, nbx), Nat.div(i, nbx), xs)
-    case 1n++j:
-      W.ChN{mkt(j, Nat.mul(2n, i), nbx, xs), mkt(j, Nat.add(Nat.mul(2n, i), 1n), nbx, xs)}
-
-def tickm(t: Nat, r: W.Cr) -> W.Cr:
-  match t:
-    case 0n:
-      r
-    case 1n+m:
-      tickm(m, W.C.tick(r, 64, oar(), M.Knob.defaults(), 32768n, 8, 8, 16))
-
-def fin2b(r: W.ChL2) -> IO(Unit):
-  W.ChL2{c, +bs} = r
-  IO.print("mensagens: " ++ Nat.show(clash(bs)) ++ " overlaps, " ++ Nat.show(List.length(&2, P.Body, bs))
-    ++ " cubes (432 at the start)")
-
-def finm(r: W.Cr) -> IO(Unit):
-  W.Cr{t, ms} = r
-  fin2b(W.C.cbodies(t, oar()))
-
 def main() -> IO(Unit):
   do IO<Unit>:
     a : Unit <- start()
-    b : Unit <- fin(W.C.gbodies(ticks(300n, grid(6n, 6n, scene(12n))), oar()))
-    finm(tickm(300n, W.Cr{mkt(6n, 0n, 8n, scene(12n)), []}))
+    fin(W.C.gbodies(ticks(300n, grid(6n, 6n, scene(12n))), oar()))
