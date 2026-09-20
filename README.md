@@ -445,6 +445,18 @@ segundo), então o número bom é o da primeira corrida depois de esfriar.
 | **100 489** | **15,42** | **64,9** |
 | 102 400 | 15,69 | 63,7 |
 
+**O que a rotação cobrou.** Desde que cada corpo carrega rotação, o array da
+multidão tem 16 palavras por corpo em vez de 6, e a mesma corrida de 100 489
+cubos passou a **23,7 ms por tick (42 por segundo)**, medido três vezes com
+a máquina a 86 °C. A conta não é do giro em si: quem não girou não escreve,
+não lê e não copia as sete palavras da rotação (bandeira no bit 27 da
+palavra das velocidades) — isso já foi feito e valeu 7 %. O que pesa é a
+**distância entre corpos vizinhos**: 64 bytes em vez de 24, então uma
+varredura de célula toca quase três vezes mais linhas de cache. O conserto
+claro é pôr as sete palavras numa **área à parte** no fim do array, deixando
+os corpos com 6 palavras de novo; é mecânico, mas passa por todas as
+máquinas de fase e pela família `F.*`, que precisaria receber `cap`.
+
 Numa thread só, os mesmos 102 400 levam 39,4 ms — o ganho medido lado a lado
 é 2,5×. Antes dos chunks o jogo segurava cerca de 10 mil cubos.
 
