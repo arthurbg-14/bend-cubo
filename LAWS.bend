@@ -247,3 +247,38 @@ law no_clip:
   r = P.Body.tick(k, obs, inp, b)
   {P.Geo.free(P.K.size(k), P.Body.x(P.Tick.body(r)), P.Body.y(P.Tick.body(r)), P.Body.z(P.Tick.body(r)), P.Tick.obs(r)) == True{} : Bool}
 
+
+# Turning
+# -------
+
+# LAW: a cube in flight turns for ever at the same rate. A cube resists
+# turning the same about every axis, so there is no wobble to change its
+# angular velocity, and the angle it has turned grows by exactly that rate
+# every tick -- whatever the rate and whatever the angle.
+law free_spin_is_exact:
+  for +r: P.Rot
+  s1 = P.Rot.free(r)
+  {P.Rot.wx(s1) == P.Rot.wx(r) : P.Z}
+  & {P.Rot.wy(s1) == P.Rot.wy(r) : P.Z}
+  & {P.Rot.wz(s1) == P.Rot.wz(r) : P.Z}
+  & {P.Rot.ang(s1) == (P.Rot.ang(r) + U32.from_nat(P.Rot.rate(r)) : U32) : U32}
+
+# LAW: a hit dead centre does not turn anything. What turns a body is the
+# arm -- how far from its middle it was hit -- crossed with the impulse,
+# so an arm of zero gives nothing to cross with, however hard the hit.
+law no_spin_from_the_middle:
+  for +jx: P.Z
+  for +jy: P.Z
+  for +jz: P.Z
+  {P.Z.mag(P.Rot.crx(P.Pos{0n}, P.Pos{0n}, jy, jz)) == 0n : Nat}
+  & {P.Z.mag(P.Rot.cry(P.Pos{0n}, P.Pos{0n}, jz, jx)) == 0n : Nat}
+  & {P.Z.mag(P.Rot.crz(P.Pos{0n}, P.Pos{0n}, jx, jy)) == 0n : Nat}
+
+# LAW: a hit only turns a body about the axes across it. The turning about
+# x comes from the arm and the impulse in y and z; a hit whose arm and
+# push both point along x turns nothing about y or z either.
+law spin_is_across_the_push:
+  for +rx: P.Z
+  for +jx: P.Z
+  {P.Z.mag(P.Rot.crx(P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, P.Pos{0n})) == 0n : Nat}
+  & {P.Z.mag(P.Rot.cry(P.Pos{0n}, rx, P.Pos{0n}, jx)) == 0n : Nat}

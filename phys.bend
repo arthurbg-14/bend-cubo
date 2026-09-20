@@ -729,3 +729,109 @@ def Flight.clear(+k: K, obss: List<&2, List<&2, Body>>, +b: Body) -> Bool:
     case obs <> rest:
       +b2 = Tick.body(Body.tick(k, obs, In.idle(), b))
       Bool.and(Bool.and(Bool.not(Body.ground(b)), Bool.not(Body.hit(b2))), Flight.clear(k, rest, b2))
+
+# Rotation
+# --------
+# A cube resists turning the same about every axis: its inertia is
+# I = m s^2 / 6 times the identity. Two things follow, and the whole model
+# here rests on them.
+#
+# One: a cube in flight does not wobble. The term that makes a brick
+# tumble oddly, w x I w, is zero when I is a multiple of the identity, so
+# the angular velocity of a cube in flight never changes and the angle it
+# has turned grows by exactly the same amount every tick. That is exact in
+# integers, the way the parabola of a fall already is.
+#
+# Two: a hit out of the middle turns the body by the arm crossed with the
+# impulse, over that same I -- no tensor to carry around.
+#
+# What is kept is the angular velocity as a vector (exact) and the angle
+# turned about it, as a whole word: a full turn is the whole of it, so the
+# angle comes back around by itself and adding to it never rounds.
+
+type Rot is Data:
+  Rot{wx: Z, wy: Z, wz: Z, ang: U32}
+
+def Rot.rest() -> Rot:
+  Rot{Pos{0n}, Pos{0n}, Pos{0n}, 0}
+
+def Rot.wx(r: Rot) -> Z:
+  Rot{wx, wy, wz, ang} = r
+  wx
+
+def Rot.wy(r: Rot) -> Z:
+  Rot{wx, wy, wz, ang} = r
+  wy
+
+def Rot.wz(r: Rot) -> Z:
+  Rot{wx, wy, wz, ang} = r
+  wz
+
+def Rot.ang(r: Rot) -> U32:
+  Rot{wx, wy, wz, ang} = r
+  ang
+
+# how fast it turns: the size of the angular velocity, which is how much
+# of a turn it gets through in a tick
+def Rot.rate(r: Rot) -> Nat:
+  Rot{+wx, +wy, +wz, ang} = r
+  Fric.speed(Fric.speed(Z.mag(wx), Z.mag(wy)), Z.mag(wz))
+
+# a tick of a body that touches nothing: same angular velocity, and the
+# angle moved on by exactly that much
+def Rot.free(r: Rot) -> Rot:
+  Rot{+wx, +wy, +wz, +ang} = r
+  Rot{wx, wy, wz, (ang + U32.from_nat(Rot.rate(Rot{wx, wy, wz, ang})) : U32)}
+
+def Z.opp(v: Z) -> Z:
+  match v:
+    case Pos{n}:
+      Neg{n}
+    case Neg{n}:
+      Pos{n}
+
+def Z.sub(a: Z, b: Z) -> Z:
+  Z.add(a, Z.opp(b))
+
+# u v, the sign kept
+def Z.mul(u: Z, v: Z) -> Z:
+  match u v:
+    case Pos{+a} Pos{+b}:
+      Pos{Nat.mul(a, b)}
+    case Neg{+a} Neg{+b}:
+      Pos{Nat.mul(a, b)}
+    case Pos{+a} Neg{+b}:
+      Neg{Nat.mul(a, b)}
+    case Neg{+a} Pos{+b}:
+      Neg{Nat.mul(a, b)}
+
+# v / 8: what is left, in the units kept here, of dividing by a cube's
+# resistance to turning. The arm is in 2^-18 m and the impulse in 2^-10
+# m/s; their product over I = m s^2 / 6, turned into a share of a whole
+# turn a tick (a turn being a whole word), comes to a division by eight.
+# Landing on a corner at 5 m/s comes off turning two and a half times a
+# second, which is what a cube of a metre really does.
+def Z.shr3(v: Z) -> Z:
+  match v:
+    case Pos{+n}:
+      Pos{Nat.div(n, 8n)}
+    case Neg{+n}:
+      Neg{Nat.div(n, 8n)}
+
+# the arm crossed with the impulse, one part for each axis. Nothing comes
+# of an arm of zero (hit dead centre), and nothing about an axis from a
+# push along it.
+def Rot.crx(+ry: Z, +rz: Z, +jy: Z, +jz: Z) -> Z:
+  Z.sub(Z.mul(ry, jz), Z.mul(rz, jy))
+
+def Rot.cry(+rz: Z, +rx: Z, +jz: Z, +jx: Z) -> Z:
+  Z.sub(Z.mul(rz, jx), Z.mul(rx, jz))
+
+def Rot.crz(+rx: Z, +ry: Z, +jx: Z, +jy: Z) -> Z:
+  Z.sub(Z.mul(rx, jy), Z.mul(ry, jx))
+
+# the body after a hit of impulse j at the point the arm r points to
+def Rot.hit(r: Rot, +rx: Z, +ry: Z, +rz: Z, +jx: Z, +jy: Z, +jz: Z) -> Rot:
+  Rot{wx, wy, wz, ang} = r
+  Rot{Z.add(wx, Z.shr3(Rot.crx(ry, rz, jy, jz))), Z.add(wy, Z.shr3(Rot.cry(rz, rx, jz, jx))),
+    Z.add(wz, Z.shr3(Rot.crz(rx, ry, jx, jy))), ang}

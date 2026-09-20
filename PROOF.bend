@@ -2363,3 +2363,81 @@ def Laws.no_clip(k, obs, inp, b, clear):
     case P.K{+g, +mu, +j, +acc, +s} P.Body{+x, +y, +z, +vx, +vy, +vz, +gr, +hit}:
       nclip(g, mu, j, acc, s, obs, inp, x, y, z, vx, vy, vz, gr, hit, clear)
 
+
+# Turning
+# -------
+# Rot.free hands back the same three rates and the angle plus the rate,
+# which is the law word for word.
+
+def Laws.free_spin_is_exact(r):
+  match r:
+    case P.Rot{+wx, +wy, +wz, +ang}:
+      ({==}, {==}, {==}, {==})
+
+# An arm of zero: every product in the crossing is zero times something,
+# and Nat.mul counts down its first number, so those fall out at once.
+
+def Laws.no_spin_from_the_middle(jx, jy, jz):
+  match jx jy jz:
+    case P.Pos{+a} P.Pos{+b} P.Pos{+c}:
+      ({==}, {==}, {==})
+    case P.Pos{+a} P.Pos{+b} P.Neg{+c}:
+      ({==}, {==}, {==})
+    case P.Pos{+a} P.Neg{+b} P.Pos{+c}:
+      ({==}, {==}, {==})
+    case P.Pos{+a} P.Neg{+b} P.Neg{+c}:
+      ({==}, {==}, {==})
+    case P.Neg{+a} P.Pos{+b} P.Pos{+c}:
+      ({==}, {==}, {==})
+    case P.Neg{+a} P.Pos{+b} P.Neg{+c}:
+      ({==}, {==}, {==})
+    case P.Neg{+a} P.Neg{+b} P.Pos{+c}:
+      ({==}, {==}, {==})
+    case P.Neg{+a} P.Neg{+b} P.Neg{+c}:
+      ({==}, {==}, {==})
+
+# An arm and a push both along one axis. One of the two products in each
+# crossing has the nothing on the left, where Nat.mul counts down and it
+# falls out at once; the other has it on the right, and that one takes the
+# induction below: anything times nothing is nothing.
+def mul_zero(a: Nat) -> {Nat.mul(a, 0n) == 0n : Nat}:
+  match a:
+    case 0n:
+      {==}
+    case 1n+p:
+      mul_zero(p)
+
+def across_pp(+a: Nat, +b: Nat)
+  -> {P.Z.mag(P.Rot.cry(P.Pos{0n}, P.Pos{a}, P.Pos{0n}, P.Pos{b})) == 0n : Nat}:
+  %Equal.sym(Nat, Nat.mul(a, 0n), 0n, mul_zero(a))
+    : {P.Z.mag(P.Z.add(P.Pos{Nat.mul(0n, b)}, P.Z.opp(P.Pos{_}))) == 0n : Nat}
+  {==}
+
+def across_pn(+a: Nat, +b: Nat)
+  -> {P.Z.mag(P.Rot.cry(P.Pos{0n}, P.Pos{a}, P.Pos{0n}, P.Neg{b})) == 0n : Nat}:
+  %Equal.sym(Nat, Nat.mul(a, 0n), 0n, mul_zero(a))
+    : {P.Z.mag(P.Z.add(P.Neg{Nat.mul(0n, b)}, P.Z.opp(P.Pos{_}))) == 0n : Nat}
+  {==}
+
+def across_np(+a: Nat, +b: Nat)
+  -> {P.Z.mag(P.Rot.cry(P.Pos{0n}, P.Neg{a}, P.Pos{0n}, P.Pos{b})) == 0n : Nat}:
+  %Equal.sym(Nat, Nat.mul(a, 0n), 0n, mul_zero(a))
+    : {P.Z.mag(P.Z.add(P.Pos{Nat.mul(0n, b)}, P.Z.opp(P.Neg{_}))) == 0n : Nat}
+  {==}
+
+def across_nn(+a: Nat, +b: Nat)
+  -> {P.Z.mag(P.Rot.cry(P.Pos{0n}, P.Neg{a}, P.Pos{0n}, P.Neg{b})) == 0n : Nat}:
+  %Equal.sym(Nat, Nat.mul(a, 0n), 0n, mul_zero(a))
+    : {P.Z.mag(P.Z.add(P.Neg{Nat.mul(0n, b)}, P.Z.opp(P.Neg{_}))) == 0n : Nat}
+  {==}
+
+def Laws.spin_is_across_the_push(rx, jx):
+  match rx jx:
+    case P.Pos{+a} P.Pos{+b}:
+      ({==}, across_pp(a, b))
+    case P.Pos{+a} P.Neg{+b}:
+      ({==}, across_pn(a, b))
+    case P.Neg{+a} P.Pos{+b}:
+      ({==}, across_np(a, b))
+    case P.Neg{+a} P.Neg{+b}:
+      ({==}, across_nn(a, b))
