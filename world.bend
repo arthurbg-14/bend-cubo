@@ -1389,23 +1389,28 @@ def C.only(ms: List<&2, Msg>, +lo: U32, +hi: U32) -> List<&2, Msg>:
 # a round: the messages walk down the tree with the halves, so handing
 # them out runs at the same time as the ticks. Only the chunks of this
 # round's colour tick; the rest just take in what came to them
-def C.round(t: Chk, +ms: List<&2, Msg>, +lo: U32, +hi: U32, +c: Nat, +o: Og, +k: P.K, +mm: Nat, +nbx: U32, +nbz: U32,
+# each half is handed its own list, split by the one above it: two tasks
+# reading one list would count references on every cell, atomically
+def C.round(t: Chk, z: Mz, +lo: U32, +hi: U32, +c: Nat, +o: Og, +k: P.K, +mm: Nat, +nbx: U32, +nbz: U32,
   +side: U32) -> Cr:
   match t:
     case ChE{}:
+      Mz{ma, mb} = z
       Cr{ChE{}, []}
     case ChL{a, +n, +cap, +ox, +oz}:
-      C.leaf(a, n, cap, ox, oz, ms, o, k, mm, nbx, nbz, side, Nat.mod(Nat.add(c, 1n), 4n),
-        C.mine(ox, oz, side, c))
+      Mz{ma, mb} = z
+      C.leaf(a, n, cap, ox, oz, List.append(&2, Msg, ma, mb), o, k, mm, nbx, nbz, side,
+        Nat.mod(Nat.add(c, 1n), 4n), C.mine(ox, oz, side, c))
     case ChN{l, h}:
+      Mz{ma, mb} = z
       +mid = ((lo + hi) / 2 : U32)
-      x y = C.round(l, C.only(ms, lo, mid), lo, mid, c, o, k, mm, nbx, nbz, side)
-            C.round(h, C.only(ms, mid, hi), mid, hi, c, o, k, mm, nbx, nbz, side)
+      x y = C.round(l, C.part(ma, ((lo + mid) / 2 : U32)), lo, mid, c, o, k, mm, nbx, nbz, side)
+            C.round(h, C.part(mb, ((mid + hi) / 2 : U32)), mid, hi, c, o, k, mm, nbx, nbz, side)
       C.join(x, y)
 
 def C.t2(r: Cr, +c: Nat, +nch: U32, +o: Og, +k: P.K, +mm: Nat, +nbx: U32, +nbz: U32, +side: U32) -> Cr:
   Cr{t, ms} = r
-  C.round(t, ms, 0, nch, c, o, k, mm, nbx, nbz, side)
+  C.round(t, C.part(C.only(ms, 0, nch), ((nch) / 2 : U32)), 0, nch, c, o, k, mm, nbx, nbz, side)
 
 # a tick of the whole crowd: four rounds, one per colour. What a round's
 # chunks send is handed out at the start of the next one -- and what the
