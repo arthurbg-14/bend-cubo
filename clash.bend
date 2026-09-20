@@ -109,27 +109,31 @@ def tick(v: Nat, +w: W.World) -> W.World:
     case _:
       W.W.tick(M.Knob.defaults(), P.In.idle(), w)
 
-def run(n: Nat, +v: Nat, +bad: Nat, +w: W.World, +i: Nat) -> String:
+# n0 = the cubes the scene started with: the count is taken from the world
+# the test was handed, not written down here, so changing the generator
+# (the runway, say) cannot turn conservation into a false alarm
+def run(n: Nat, +v: Nat, +bad: Nat, +w: W.World, +i: Nat, +n0: Nat) -> String:
   match n:
     case 0n:
-      M.Pick.s(Bool.and(Nat.is_eq(bad, 0n), Nat.is_eq(List.length(&2, P.Body, region(w)), 624n)), "OK", "FAIL") ++ ": " ++ Nat.show(i) ++ " ticks, "
-        ++ Nat.show(bad) ++ " overlaps, " ++ Nat.show(List.length(&2, P.Body, region(w))) ++ " cubes (624 at the start), "
+      M.Pick.s(Bool.and(Nat.is_eq(bad, 0n), Nat.is_eq(List.length(&2, P.Body, region(w)), n0)), "OK", "FAIL") ++ ": " ++ Nat.show(i) ++ " ticks, "
+        ++ Nat.show(bad) ++ " overlaps, " ++ Nat.show(List.length(&2, P.Body, region(w))) ++ " cubes (" ++ Nat.show(n0) ++ " at the start), "
         ++ Nat.show(List.length(&2, P.Body, awk(w))) ++ " awake"
     case 1n+m:
       +w2 = tick(v, w)
-      run(m, v, Nat.add(bad, clash(region(w2))), w2, Nat.add(i, 1n))
+      run(m, v, Nat.add(bad, clash(region(w2))), w2, Nat.add(i, 1n), n0)
 
 def main2(+w: W.World) -> IO(Unit):
+  +n0 = List.length(&2, P.Body, region(w))
   do IO<Unit>:
     a : Unit <- IO.print("start: " ++ Nat.show(List.length(&2, P.Body, region(w))) ++ " cubes, "
       ++ Nat.show(List.length(&2, P.Body, awk(w))) ++ " awake, " ++ Nat.show(clash(region(w))) ++ " overlaps")
-    b : Unit <- IO.print("list:   " ++ run(300n, 0n, 0n, w, 0n))
-    c : Unit <- IO.print("octree: " ++ run(300n, 1n, 0n, w, 0n))
-    d : Unit <- IO.print("blocks: " ++ run(300n, 2n, 0n, w, 0n))
-    e : Unit <- IO.print("flat:   " ++ run(300n, 3n, 0n, w, 0n))
-    f : Unit <- IO.print("par:    " ++ run(300n, 4n, 0n, w, 0n))
-    g : Unit <- IO.print("blocos: " ++ run(300n, 5n, 0n, w, 0n))
-    IO.print("game:   " ++ run(300n, 6n, 0n, w, 0n))
+    b : Unit <- IO.print("list:   " ++ run(300n, 0n, 0n, w, 0n, n0))
+    c : Unit <- IO.print("octree: " ++ run(300n, 1n, 0n, w, 0n, n0))
+    d : Unit <- IO.print("blocks: " ++ run(300n, 2n, 0n, w, 0n, n0))
+    e : Unit <- IO.print("flat:   " ++ run(300n, 3n, 0n, w, 0n, n0))
+    f : Unit <- IO.print("par:    " ++ run(300n, 4n, 0n, w, 0n, n0))
+    g : Unit <- IO.print("blocos: " ++ run(300n, 5n, 0n, w, 0n, n0))
+    IO.print("game:   " ++ run(300n, 6n, 0n, w, 0n, n0))
 
 def main() -> IO(Unit):
   main2(start())
