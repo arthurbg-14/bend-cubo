@@ -826,6 +826,251 @@ def F.cap0(+n: U32) -> U32 & Nat:
   F.cap(30n, (n <= 16 : U32), n, 16, 4n)
 
 
+# The crowd in chunks: bodies sorted by cell
+# -----------------------------------------
+# A chunk keeps its bodies in one array, sorted by the cell they are in, so
+# the neighbours of a cube are a handful of words side by side: no chain to
+# follow, no hash, and the cells of a row are one run of the array. The
+# array holds two body areas (the sort writes into the other one), the
+# cells' first indexes (off) and the cursors the sort walks with (cur).
+#
+#   0        bodies A (6 words each)
+#   6 cap    bodies B
+#   12 cap   off: the first body of each cell, gg + 1 of them
+#   ...      cur: the same, for the sort to walk
+
+def C.rb(+cap: U32) -> U32:
+  (cap * 6 : U32)
+
+def C.roff(+cap: U32) -> U32:
+  (cap * 12 : U32)
+
+def C.rcur(+cap: U32, +gg: U32) -> U32:
+  (cap * 12 + gg + 1 : U32)
+
+# a body that left the chunk's grid (before the tick that moves it out has
+# been carried over) falls into the last cell instead of a place of its own
+def C.clamp(+c: U32, +gg: U32) -> U32:
+  Pick.u((c < gg : U32), c, (gg - 1 : U32))
+
+# the cell of a body inside the chunk's grid (g cells a side, the first at
+# (ox, oz)), as one number
+def C.ci(+x: U32, +z: U32, +ox: U32, +oz: U32, +g: U32) -> U32:
+  C.clamp(((F.cell(z) - oz) * g + (F.cell(x) - ox) : U32), (g * g : U32))
+
+# how many bodies each cell holds, into off (a cell's count at off + c + 1)
+def C.cnt(n: Nat, ph: Nat, r: Array<U32> & U32, +i: U32, +src: U32, +off: U32, +ox: U32, +oz: U32, +g: U32,
+  +x: U32, +c: U32) -> Array<U32>:
+  match n ph:
+    case 0n _:
+      F.fin(r)
+    case 1n+m 2n:
+      (a, +v) = r
+      C.cnt(n, 1n, a[(src + i * 6 + 2 : U32)], i, src, off, ox, oz, g, v, c)
+    case 1n+m 1n:
+      (a, +v) = r
+      +cc = C.ci(x, v, ox, oz, g)
+      C.cnt(n, 0n, a[(off + cc + 1 : U32)], i, src, off, ox, oz, g, x, cc)
+    case 1n+m _:
+      (a, v) = r
+      C.cnt(m, 2n, (a[(off + c + 1 : U32)] <- (v + 1 : U32))[(src + (i + 1) * 6 : U32)], (i + 1 : U32), src, off,
+        ox, oz, g, x, c)
+
+# the counts added up: off + c is then the first body of cell c, and cur
+# gets a copy for the sort to walk
+def C.pre(n: Nat, r: Array<U32> & U32, +i: U32, +off: U32, +cur: U32, +s: U32) -> Array<U32>:
+  match n:
+    case 0n:
+      F.fin(r)
+    case 1n+m:
+      (a, +v) = r
+      +t = (s + v : U32)
+      C.pre(m, ((a[(off + i : U32)] <- t)[(cur + i : U32)] <- t)[(off + i + 1 : U32)], (i + 1 : U32), off, cur, t)
+
+# every body into its cell's place in the other area
+def C.sc(n: Nat, ph: Nat, r: Array<U32> & U32, +i: U32, +src: U32, +dst: U32, +cur: U32, +ox: U32, +oz: U32,
+  +g: U32, +x: U32, +c: U32, +pos: U32) -> Array<U32>:
+  match n ph:
+    case 0n _:
+      F.fin(r)
+    case 1n+m 8n:
+      (a, +v) = r
+      C.sc(n, 7n, a[(src + i * 6 + 2 : U32)], i, src, dst, cur, ox, oz, g, v, c, pos)
+    case 1n+m 7n:
+      (a, +v) = r
+      +cc = C.ci(x, v, ox, oz, g)
+      C.sc(n, 6n, a[(cur + cc : U32)], i, src, dst, cur, ox, oz, g, x, cc, pos)
+    case 1n+m 6n:
+      (a, +v) = r
+      C.sc(n, 5n, (a[(cur + c : U32)] <- (v + 1 : U32))[(src + i * 6 : U32)], i, src, dst, cur, ox, oz, g, x, c, v)
+    case 1n+m 5n:
+      (a, v) = r
+      C.sc(n, 4n, (a[(dst + pos * 6 : U32)] <- v)[(src + i * 6 + 1 : U32)], i, src, dst, cur, ox, oz, g, x, c, pos)
+    case 1n+m 4n:
+      (a, v) = r
+      C.sc(n, 3n, (a[(dst + pos * 6 + 1 : U32)] <- v)[(src + i * 6 + 2 : U32)], i, src, dst, cur, ox, oz, g, x, c, pos)
+    case 1n+m 3n:
+      (a, v) = r
+      C.sc(n, 2n, (a[(dst + pos * 6 + 2 : U32)] <- v)[(src + i * 6 + 3 : U32)], i, src, dst, cur, ox, oz, g, x, c, pos)
+    case 1n+m 2n:
+      (a, v) = r
+      C.sc(n, 1n, (a[(dst + pos * 6 + 3 : U32)] <- v)[(src + i * 6 + 4 : U32)], i, src, dst, cur, ox, oz, g, x, c, pos)
+    case 1n+m 1n:
+      (a, v) = r
+      C.sc(n, 0n, (a[(dst + pos * 6 + 4 : U32)] <- v)[(src + i * 6 + 5 : U32)], i, src, dst, cur, ox, oz, g, x, c, pos)
+    case 1n+m _:
+      (a, v) = r
+      C.sc(m, 8n, (a[(dst + pos * 6 + 5 : U32)] <- v)[(src + (i + 1) * 6 : U32)], (i + 1 : U32), src, dst, cur,
+        ox, oz, g, x, c, pos)
+
+# the cells' counts back to zero before counting again
+def C.clr(n: Nat, a: Array<U32>, +i: U32, +off: U32) -> Array<U32>:
+  match n:
+    case 0n:
+      a
+    case 1n+m:
+      C.clr(m, a[(off + i : U32)] <- 0, (i + 1 : U32), off)
+
+# a chunk's bodies sorted by cell, from area src into area dst: the counts,
+# added up, then every body to its place
+def C.sort3(a: Array<U32>, +n: U32, +src: U32, +dst: U32, +cap: U32, +gg: U32, +ox: U32, +oz: U32,
+  +g: U32) -> Array<U32>:
+  C.sc(U32.to_nat(n), 8n, a[src], 0, src, dst, C.rcur(cap, gg), ox, oz, g, 0, 0, 0)
+
+def C.sort2(a: Array<U32>, +n: U32, +src: U32, +dst: U32, +cap: U32, +gg: U32, +ox: U32, +oz: U32,
+  +g: U32) -> Array<U32>:
+  C.sort3(C.pre(U32.to_nat(gg), a[(C.roff(cap) + 1 : U32)], 1, C.roff(cap), C.rcur(cap, gg), 0), n, src, dst,
+    cap, gg, ox, oz, g)
+
+def C.sort1(a: Array<U32>, +n: U32, +src: U32, +dst: U32, +cap: U32, +gg: U32, +ox: U32, +oz: U32,
+  +g: U32) -> Array<U32>:
+  C.sort2(C.cnt(U32.to_nat(n), 2n, a[src], 0, src, C.roff(cap), ox, oz, g, 0, 0), n, src, dst, cap, gg, ox, oz, g)
+
+def C.sort(+n: U32, a: Array<U32>, +src: U32, +dst: U32, +cap: U32, +gg: U32, +ox: U32, +oz: U32,
+  +g: U32) -> Array<U32>:
+  C.sort1(C.clr(U32.to_nat((gg + 1 : U32)), a, 0, C.roff(cap)), n, src, dst, cap, gg, ox, oz, g)
+
+# a chunk of the world: its cubes in one array, sorted by cell, and the
+# first cell of its grid (the chunk's cells plus two of band on each side,
+# where the cubes of the chunks around it are copied)
+type Chk is Type:
+  ChE{}
+  ChL{a: Array<U32>, n: U32, cap: U32, ox: U32, oz: U32}
+  ChN{lo: Chk, hi: Chk}
+
+# a chunk is C.side() cells across, C.g() counting the band
+def C.side() -> Nat:
+  16n
+
+def C.g() -> Nat:
+  20n
+
+def C.gg() -> Nat:
+  400n
+
+# the bodies a cube can touch, out of the sorted array: for each row of
+# cells in reach, the cells it spans are one run, so the whole row costs
+# two reads (its first and its last body) whatever its width -- no chain,
+# no hash, and the run is side by side in memory
+def C.scan(fuel: Nat, rows: Nat, ph: Nat, r: Array<U32> & U32, +i: U32, +sx: U32, +sy: U32, +sz: U32, +rad: U32,
+  +off: U32, +cb: U32, +g: U32, +w: U32, +j: U32, +hi: U32, +jx: U32, +jy: U32,
+  acc: List<&2, U32>) -> Array<U32> & List<&2, U32>:
+  match fuel rows ph:
+    case 0n _ _:
+      F.pfin(r, acc)
+    case _ 0n _:
+      F.pfin(r, acc)
+    case 1n+f 1n++v 4n:
+      (a, +lo) = r
+      C.scan(f, 1n+v, 3n, a[(off + cb + w : U32)], i, sx, sy, sz, rad, off, cb, g, w, lo, hi, jx, jy, acc)
+    case 1n+f 1n++v 3n:
+      (a, +e) = r
+      +done = U32.is_eq(j, e)
+      C.scan(f, Pick.n(done, v, 1n+v), Pick.n(done, 4n, 2n),
+        a[Pick.u(done, (off + cb + g : U32), (j * 6 : U32))], i, sx, sy, sz, rad, off,
+        Pick.u(done, (cb + g : U32), cb), g, w, j, e, jx, jy, acc)
+    case 1n+f 1n+v 2n:
+      (a, v2) = r
+      C.scan(f, 1n+v, 1n, a[(j * 6 + 1 : U32)], i, sx, sy, sz, rad, off, cb, g, w, j, hi, v2, jy, acc)
+    case 1n+f 1n+v 1n:
+      (a, v2) = r
+      C.scan(f, 1n+v, 0n, a[(j * 6 + 2 : U32)], i, sx, sy, sz, rad, off, cb, g, w, j, hi, jx, v2, acc)
+    case 1n+f 1n++v _:
+      (a, +z) = r
+      +last = U32.is_eq((j + 1 : U32), hi)
+      C.scan(f, Pick.n(last, v, 1n+v), Pick.n(last, 4n, 2n),
+        a[Pick.u(last, (off + cb + g : U32), ((j + 1) * 6 : U32))], i, sx, sy, sz, rad, off,
+        Pick.u(last, (cb + g : U32), cb), g, w, (j + 1 : U32), hi, jx, jy,
+        F.keep(Bool.and(Bool.not(U32.is_eq(j, i)),
+          Bool.and((F.d(sx, jx) < rad : U32), Bool.and((F.d(sz, z) < rad : U32), (F.d(sy, jy) < rad : U32)))), j, acc))
+
+# one cube's tick inside its chunk: the cells it reaches (from its own size
+# and the tick's reach, never a fixed number), the proven tick, and back
+def C.one2(a: Array<U32>, +i: U32, +o: Og, +k: P.K, +cap: U32, +g: U32, +ox: U32, +oz: U32, +na: U32,
+  +self: P.Body, +m: Nat, +mm: Nat) -> Array<U32>:
+  +mr = Nat.add(m, mm)
+  +sx = U32.from_nat(Nat.sub(P.Body.x(self), F.ox(o)))
+  +sz = U32.from_nat(Nat.sub(P.Body.z(self), F.oz(o)))
+  +lx = (W.lo(P.Body.x(self), mr) - W.cell_of(F.ox(o)) - ox : U32)
+  +lz = (W.lo(P.Body.z(self), mr) - W.cell_of(F.oz(o)) - oz : U32)
+  +wx = U32.from_nat(W.span(P.Body.x(self), mr))
+  +cb = (lz * g + lx : U32)
+  F.two2(C.scan(Nat.add(Nat.mul(8n, U32.to_nat(cap)), 64n), W.span(P.Body.z(self), mr), 4n,
+    a[(C.roff(cap) + cb : U32)], i, sx, U32.from_nat(P.Body.y(self)), sz,
+    U32.from_nat(Nat.add(W.size(), m)), C.roff(cap), cb, g, wx, 0, 0, 0, 0, []), self, i, o, k, na, P.In.idle())
+
+def C.one(r: Array<U32> & P.Body, +i: U32, +o: Og, +k: P.K, +cap: U32, +g: U32, +ox: U32, +oz: U32, +na: U32,
+  +mm: Nat) -> Array<U32>:
+  (a, +self) = r
+  C.one2(a, i, o, k, cap, g, ox, oz, na, self, W.creach(k, self), mm)
+
+# every cube of the chunk, in order
+def C.ticks(n: Nat, a: Array<U32>, +i: U32, +o: Og, +k: P.K, +cap: U32, +g: U32, +ox: U32, +oz: U32, +na: U32,
+  +mm: Nat) -> Array<U32>:
+  match n:
+    case 0n:
+      a
+    case 1n+m:
+      C.ticks(m, C.one(F.get(a, i, o), i, o, k, cap, g, ox, oz, na, mm), (i + 1 : U32), o, k, cap, g, ox, oz,
+        na, mm)
+
+# the sorted bodies back into the first area
+def C.cp(n: Nat, r: Array<U32> & U32, +i: U32, +cap: U32) -> Array<U32>:
+  match n:
+    case 0n:
+      F.fin(r)
+    case 1n+m:
+      (a, v) = r
+      C.cp(m, (a[i] <- v)[(C.rb(cap) + i + 1 : U32)], (i + 1 : U32), cap)
+
+def C.copy(+n: U32, a: Array<U32>, +cap: U32) -> Array<U32>:
+  C.cp(U32.to_nat((n * 6 : U32)), a[(C.rb(cap) : U32)], 0, cap)
+
+# the constants as a record of this task's own: one record shared by every
+# task is a reference count that every core bumps at every read
+def Fb.og(o: Og) -> Og:
+  Og{x, z} = o
+  Og{x, z}
+
+def Fb.kc(k: P.K) -> P.K:
+  P.K{g, mu, j, acc, size} = k
+  P.K{g, mu, j, acc, size}
+
+# every chunk's tick at the same time, each on its own array: sort by cell,
+# then every cube of the chunk in order. Nothing shared is read inside, so
+# the cores fill up (a shared list or trie would count references atomically)
+def C.run(t: Chk, +o: Og, +k: P.K, +mm: Nat) -> Chk:
+  match t:
+    case ChE{}:
+      ChE{}
+    case ChL{a, +n, +cap, +ox, +oz}:
+      ChL{C.ticks(U32.to_nat(n),
+        C.copy(n, C.sort(n, a, 0, C.rb(cap), cap, U32.from_nat(C.gg()), ox, oz, U32.from_nat(C.g())), cap),
+        0, Fb.og(o), Fb.kc(k), cap, U32.from_nat(C.g()), ox, oz, n, mm), n, cap, ox, oz}
+    case ChN{lo, hi}:
+      x y = C.run(lo, o, k, mm) C.run(hi, o, k, mm)
+      ChN{x, y}
+
 # The crowd's tick, block by block, all at once
 # --------------------------------------------
 # The cubes of a block of 4 x 4 m tick together, and blocks two apart never
@@ -1005,16 +1250,6 @@ def Fb.tree(n: Nat, r: Array<U32> & Fa, t: Fa, +i: Nat, +nbx: Nat, +cx: U32, +cz
       Fb.tree(m, Fb.mk(a, (cx + U32.from_nat(Nat.mul(2n, Nat.mod(i, nbx))) : U32),
         (cz + U32.from_nat(Nat.mul(2n, Nat.div(i, nbx))) : U32), na, cap, msk), FaN{t, leaf}, Nat.add(i, 1n),
         nbx, cx, cz, na, cap, msk)
-
-# the constants as a record of this task's own: one record shared by every
-# task is a reference count that every core bumps at every read
-def Fb.og(o: Og) -> Og:
-  Og{x, z} = o
-  Og{x, z}
-
-def Fb.kc(k: P.K) -> P.K:
-  P.K{g, mu, j, acc, size} = k
-  P.K{g, mu, j, acc, size}
 
 # every block of the round at the same time, each on its own array
 def Fb.run(t: Fa, +o: Og, +k: P.K, +mm: Nat) -> Fa:
