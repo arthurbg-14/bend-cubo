@@ -130,11 +130,11 @@ def fin2(r: W.Gr2) -> IO(Unit):
     ++ " overlaps")
 
 def start() -> IO(Unit):
-  fin2(W.C.gbodies(grid(6n, 6n, scene(12n)), oar()))
+  fin2(W.C.gbodies(grid(6n, 6n, scene(12n)), oar(), 1))
 
 # the same scene held in a balanced tree of 8 x 8 chunks, ticked through
 # the messages (the faster of the two ways to hand cubes over)
 def main() -> IO(Unit):
   do IO<Unit>:
     a : Unit <- start()
-    fin(W.C.gbodies(ticks(300n, grid(6n, 6n, scene(12n))), oar()))
+    fin(W.C.gbodies(ticks(300n, grid(6n, 6n, scene(12n))), oar(), 1))

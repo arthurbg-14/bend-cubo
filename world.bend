@@ -960,7 +960,7 @@ def C.pk0(r: Array<U32> & U32, +j: U32) -> Array<U32> & U32:
   (a, v) = r
   (a, j)
 
-def C.pk(fuel: Nat, n: Nat, ph: Nat, r: Array<U32> & U32, +i: U32, +j: U32, +cap: U32) -> Array<U32> & U32:
+def C.pk(fuel: Nat, n: Nat, ph: Nat, r: Array<U32> & U32, +i: U32, +j: U32, +cap: U32, +ov: U32) -> Array<U32> & U32:
   match fuel n ph:
     case 0n _ _:
       C.pk0(r, j)
@@ -968,31 +968,31 @@ def C.pk(fuel: Nat, n: Nat, ph: Nat, r: Array<U32> & U32, +i: U32, +j: U32, +cap
       C.pk0(r, j)
     case 1n+f 1n++m 7n:
       (a, +v) = r
-      +own = U32.is_eq(v, 1)
+      +own = Bool.not(U32.is_eq(v, 0))
       C.pk(f, Pick.n(own, n, m), Pick.n(own, 6n, 7n),
-        a[Pick.u(own, (i * 6 : U32), (C.roa(cap) + i + 1 : U32))], Pick.u(own, i, (i + 1 : U32)), j, cap)
+        a[Pick.u(own, (i * 6 : U32), (C.roa(cap) + i + 1 : U32))], Pick.u(own, i, (i + 1 : U32)), j, cap, v)
     case 1n+f 1n+m 6n:
       (a, v) = r
-      C.pk(f, n, 5n, (a[(j * 6 : U32)] <- v)[(i * 6 + 1 : U32)], i, j, cap)
+      C.pk(f, n, 5n, (a[(j * 6 : U32)] <- v)[(i * 6 + 1 : U32)], i, j, cap, ov)
     case 1n+f 1n+m 5n:
       (a, v) = r
-      C.pk(f, n, 4n, (a[(j * 6 + 1 : U32)] <- v)[(i * 6 + 2 : U32)], i, j, cap)
+      C.pk(f, n, 4n, (a[(j * 6 + 1 : U32)] <- v)[(i * 6 + 2 : U32)], i, j, cap, ov)
     case 1n+f 1n+m 4n:
       (a, v) = r
-      C.pk(f, n, 3n, (a[(j * 6 + 2 : U32)] <- v)[(i * 6 + 3 : U32)], i, j, cap)
+      C.pk(f, n, 3n, (a[(j * 6 + 2 : U32)] <- v)[(i * 6 + 3 : U32)], i, j, cap, ov)
     case 1n+f 1n+m 3n:
       (a, v) = r
-      C.pk(f, n, 2n, (a[(j * 6 + 3 : U32)] <- v)[(i * 6 + 4 : U32)], i, j, cap)
+      C.pk(f, n, 2n, (a[(j * 6 + 3 : U32)] <- v)[(i * 6 + 4 : U32)], i, j, cap, ov)
     case 1n+f 1n+m 2n:
       (a, v) = r
-      C.pk(f, n, 1n, (a[(j * 6 + 4 : U32)] <- v)[(i * 6 + 5 : U32)], i, j, cap)
+      C.pk(f, n, 1n, (a[(j * 6 + 4 : U32)] <- v)[(i * 6 + 5 : U32)], i, j, cap, ov)
     case 1n+f 1n+m _:
       (a, v) = r
-      C.pk(f, m, 7n, ((a[(j * 6 + 5 : U32)] <- v)[(C.roa(cap) + j : U32)] <- 1)[(C.roa(cap) + i + 1 : U32)],
-        (i + 1 : U32), (j + 1 : U32), cap)
+      C.pk(f, m, 7n, ((a[(j * 6 + 5 : U32)] <- v)[(C.roa(cap) + j : U32)] <- ov)[(C.roa(cap) + i + 1 : U32)],
+        (i + 1 : U32), (j + 1 : U32), cap, ov)
 
 def C.keepown(+nall: U32, a: Array<U32>, +cap: U32) -> Array<U32> & U32:
-  C.pk(Nat.add(Nat.mul(8n, U32.to_nat(nall)), 16n), U32.to_nat(nall), 7n, a[(C.roa(cap) : U32)], 0, 0, cap)
+  C.pk(Nat.add(Nat.mul(8n, U32.to_nat(nall)), 16n), U32.to_nat(nall), 7n, a[(C.roa(cap) : U32)], 0, 0, cap, 0)
 
 # every body of a fresh chunk marked as its own (or not)
 def C.mark(n: Nat, a: Array<U32>, +i: U32, +cap: U32, +v: U32) -> Array<U32>:
@@ -1009,7 +1009,7 @@ def C.nown(n: Nat, r: Array<U32> & U32, +i: U32, +cap: U32, +s: U32) -> Array<U3
       C.pk0(r, s)
     case 1n+m:
       (a, +v) = r
-      C.nown(m, a[(C.roa(cap) + i + 1 : U32)], (i + 1 : U32), cap, Pick.u(U32.is_eq(v, 1), (s + 1 : U32), s))
+      C.nown(m, a[(C.roa(cap) + i + 1 : U32)], (i + 1 : U32), cap, Pick.u(Bool.not(U32.is_eq(v, 0)), (s + 1 : U32), s))
 
 def C.ro2(a: Array<U32>, +cap: U32, +gg: U32) -> Array<U32>:
   C.pre(U32.to_nat(gg), a[(C.roff(cap) + 1 : U32)], 1, C.roff(cap), C.rcur(cap, gg), 0)
@@ -1555,7 +1555,11 @@ def C.give2(fuel: Nat, seg: Nat, ph: Nat, r: Array<U32> & U32, b: Array<U32>, +i
         fl, x, y, z, vx, v)
     case 1n+f 1n++sg _:
       (a, +v) = r
-      +take = Bool.and(U32.is_eq(fl, 1), C.atb((F.cell(x) - oxa : U32), (F.cell(z) - oza : U32), dx, dz, side))
+      # anything that is not a copy goes over the border: the chunk's own
+      # cubes and the sleepers it stands on, because the neighbour has to
+      # see both. It lands as the neighbour's own only if it is a cube of
+      # its own that moved in (the test below), never a sleeper.
+      +take = Bool.and(Bool.not(U32.is_eq(fl, 0)), C.atb((F.cell(x) - oxa : U32), (F.cell(z) - oza : U32), dx, dz, side))
       +inx = Bool.and(((F.cell(x) - oxb) >= 1 : U32), ((F.cell(x) - oxb) < side + 1 : U32))
       +inz = Bool.and(((F.cell(z) - ozb) >= 1 : U32), ((F.cell(z) - ozb) < side + 1 : U32))
       +mine = C.owns(dx, inx, inz)
@@ -1603,7 +1607,11 @@ def C.give(fuel: Nat, n: Nat, ph: Nat, r: Array<U32> & U32, b: Array<U32>, +i: U
         vx, v)
     case 1n+f 1n+m _:
       (a, +v) = r
-      +take = Bool.and(U32.is_eq(fl, 1), C.atb((F.cell(x) - oxa : U32), (F.cell(z) - oza : U32), dx, dz, side))
+      # anything that is not a copy goes over the border: the chunk's own
+      # cubes and the sleepers it stands on, because the neighbour has to
+      # see both. It lands as the neighbour's own only if it is a cube of
+      # its own that moved in (the test below), never a sleeper.
+      +take = Bool.and(Bool.not(U32.is_eq(fl, 0)), C.atb((F.cell(x) - oxa : U32), (F.cell(z) - oza : U32), dx, dz, side))
       +inx = Bool.and(((F.cell(x) - oxb) >= 1 : U32), ((F.cell(x) - oxb) < side + 1 : U32))
       +inz = Bool.and(((F.cell(z) - ozb) >= 1 : U32), ((F.cell(z) - ozb) < side + 1 : U32))
       +mine = C.owns(dx, inx, inz)
@@ -1984,20 +1992,20 @@ def C.bw(own: Bool, a: Array<U32>, +i: U32, +o: Og, acc: List<&2, P.Body>) -> Ar
     case False{}:
       (a, acc)
 
-def C.bw1(r: Array<U32> & U32, +i: U32, +o: Og, acc: List<&2, P.Body>) -> Array<U32> & List<&2, P.Body>:
+def C.bw1(r: Array<U32> & U32, +i: U32, +o: Og, acc: List<&2, P.Body>, +want: U32) -> Array<U32> & List<&2, P.Body>:
   (a, +v) = r
-  C.bw(U32.is_eq(v, 1), a, i, o, acc)
+  C.bw(U32.is_eq(v, want), a, i, o, acc)
 
-def C.bw0(a: Array<U32>, +i: U32, +cap: U32, +o: Og, acc: List<&2, P.Body>) -> Array<U32> & List<&2, P.Body>:
-  C.bw1(a[(C.roa(cap) + i : U32)], i, o, acc)
+def C.bw0(a: Array<U32>, +i: U32, +cap: U32, +o: Og, acc: List<&2, P.Body>, +want: U32) -> Array<U32> & List<&2, P.Body>:
+  C.bw1(a[(C.roa(cap) + i : U32)], i, o, acc, want)
 
-def C.bodies(n: Nat, r: Array<U32> & List<&2, P.Body>, +i: U32, +cap: U32, +o: Og) -> Array<U32> & List<&2, P.Body>:
+def C.bodies(n: Nat, r: Array<U32> & List<&2, P.Body>, +i: U32, +cap: U32, +o: Og, +want: U32) -> Array<U32> & List<&2, P.Body>:
   match n:
     case 0n:
       r
     case 1n+m:
       (a, acc) = r
-      C.bodies(m, C.bw0(a, i, cap, o, acc), (i + 1 : U32), cap, o)
+      C.bodies(m, C.bw0(a, i, cap, o, acc, want), (i + 1 : U32), cap, o, want)
 
 def C.cb2(r: Array<U32> & List<&2, P.Body>, +n: U32, +cap: U32, +ox: U32, +oz: U32) -> ChL2:
   (a, bs) = r
@@ -2008,26 +2016,26 @@ def C.cbj(x: ChL2, y: ChL2) -> ChL2:
   ChL2{tb, bb} = y
   ChL2{ChN{ta, tb}, List.append(&2, P.Body, ba, bb)}
 
-def C.cbodies(t: Chk, +o: Og) -> ChL2:
+def C.cbodies(t: Chk, +o: Og, +want: U32) -> ChL2:
   match t:
     case ChE{}:
       ChL2{ChE{}, []}
     case ChL{a, +n, +cap, +ox, +oz}:
-      C.cb2(C.bodies(U32.to_nat(n), (a, []), 0, cap, o), n, cap, ox, oz)
+      C.cb2(C.bodies(U32.to_nat(n), (a, []), 0, cap, o, want), n, cap, ox, oz)
     case ChN{lo, hi}:
-      C.cbj(C.cbodies(lo, o), C.cbodies(hi, o))
+      C.cbj(C.cbodies(lo, o, want), C.cbodies(hi, o, want))
 
 def C.rbj(x: ChL2, y: Rw2b) -> Rw2b:
   ChL2{c, ba} = x
   Rw2b{r, bb} = y
   Rw2b{RwC{c, r}, List.append(&2, P.Body, ba, bb)}
 
-def C.rbodies(r: Rw, +o: Og) -> Rw2b:
+def C.rbodies(r: Rw, +o: Og, +want: U32) -> Rw2b:
   match r:
     case RwE{}:
       Rw2b{RwE{}, []}
     case RwC{c, rest}:
-      C.rbj(C.cbodies(c, o), C.rbodies(rest, o))
+      C.rbj(C.cbodies(c, o, want), C.rbodies(rest, o, want))
 
 def C.gbj(x: Rw2b, y: Gr2) -> Gr2:
   Rw2b{r, ba} = x
@@ -2035,12 +2043,12 @@ def C.gbj(x: Rw2b, y: Gr2) -> Gr2:
   Gr2{GrC{r, g}, List.append(&2, P.Body, ba, bb)}
 
 # every cube of the grid, to count them and look for overlaps
-def C.gbodies(g: Gr, +o: Og) -> Gr2:
+def C.gbodies(g: Gr, +o: Og, +want: U32) -> Gr2:
   match g:
     case GrE{}:
       Gr2{GrE{}, []}
     case GrC{r, rest}:
-      C.gbj(C.rbodies(r, o), C.gbodies(rest, o))
+      C.gbj(C.rbodies(r, o, want), C.gbodies(rest, o, want))
 
 # a chunk tidied: only its own cubes kept, packed from the start (the
 # copies of the round before and the ones that walked out are dropped)
@@ -4336,6 +4344,274 @@ def W.tick_dense(flat: Bool, few: Bool, +k: P.K, inp: P.In, w: World) -> World:
 # the flat array holds the cubes and the sleepers of the cells of their box,
 # so it is the way when that box is not much wider than the crowd itself
 # (the cells are counted only once both sides are small, to stay in a Nat)
+# The crowd in chunks: the tick that uses more than one core
+# ----------------------------------------------------------
+# The crowd goes into a grid of chunks of 16 x 16 m, each chunk with its
+# own array, and the chunks tick at the same time -- four colour rounds (a
+# 2 x 2 chessboard), so that two chunks never push the same cube. The grid
+# is built from the list every tick, exactly as the single array is; what
+# the chunks buy is that each of them is a private array, which is what
+# Bend can hand to another core (a shared list pays an atomic count).
+#
+# The player ticks first, alone, the way he always did. The sleepers under
+# the crowd are lifted out of the trie so they tick with it (a chunk knows
+# only its own array), and whatever came to rest is put back to sleep.
+
+# the chunk levels for n cells: 2^lv chunks of 16 cells cover them
+def W.lg3(fuel: Nat, ok: Bool, +n: Nat, +c: Nat, +lv: Nat) -> Nat:
+  match fuel ok:
+    case 0n _:
+      lv
+    case _ True{}:
+      lv
+    case 1n+f False{}:
+      W.lg3(f, Nat.is_le(n, Nat.mul(2n, c)), n, Nat.mul(2n, c), Nat.add(lv, 1n))
+
+def W.lg2(+n: Nat) -> Nat:
+  W.lg3(24n, Nat.is_le(n, 16n), n, 16n, 0n)
+
+# the bodies on each side of a line of cells (along x if onx, else z)
+def C.cut1(lo: Bool, +b: P.Body, r: Two) -> Two:
+  match lo:
+    case True{}:
+      Two{a, c} = r
+      Two{b <> a, c}
+    case False{}:
+      Two{a, c} = r
+      Two{a, b <> c}
+
+def C.cut(xs: List<&2, P.Body>, +line: U32, +onx: Bool, acc: Two) -> Two:
+  match xs:
+    case []:
+      acc
+    case +e <> rest:
+      C.cut1((W.cell_of(Pick.n(onx, P.Body.x(e), P.Body.z(e))) < line : U32), e, C.cut(rest, line, onx, acc))
+
+# a chunk with this crowd and these sleepers, its 16 cells starting at
+# (ox + 1, oz + 1): the crowd is marked 1 (it ticks and it is given back),
+# the sleepers 2 (they are only there to be stood on and pushed). Room for
+# three times what it starts with, for the copies of its neighbours.
+def C.mkl2(+n1: Nat, +n2: Nat, xs: List<&2, P.Body>, ss: List<&2, P.Body>, +o: Og, +ox: U32, +oz: U32,
+  r: U32 & Nat) -> Chk:
+  (+cap, b) = r
+  ChL{C.mark(n2, C.mark(n1, F.pack(ss, F.pack(xs, Array.new(U32, Nat.add(b, 5n), 0), 0, o, False{}),
+      U32.from_nat(n1), o, True{}), 0, cap, 1), U32.from_nat(n1), cap, 2),
+    U32.from_nat(Nat.add(n1, n2)), cap, ox, oz}
+
+def C.mkl1(+n1: Nat, +n2: Nat, xs: List<&2, P.Body>, ss: List<&2, P.Body>, +o: Og, +ox: U32, +oz: U32) -> Chk:
+  C.mkl2(n1, n2, xs, ss, o, ox, oz, F.cap0(U32.from_nat(Nat.add(Nat.mul(3n, Nat.add(n1, n2)), 64n))))
+
+def C.mkl(+xs: List<&2, P.Body>, +ss: List<&2, P.Body>, +o: Og, +ox: U32, +oz: U32) -> Chk:
+  C.mkl1(List.length(&2, P.Body, xs), List.length(&2, P.Body, ss), xs, ss, o, ox, oz)
+
+# A part of the crowd waiting for its turn to be split: its bodies, its
+# sleepers, the cell its chunks start at and how many levels are left.
+type Job is Data:
+  Job{xs: List<&2, P.Body>, ss: List<&2, P.Body>, cx: U32, cz: U32, lx: Nat, lz: Nat}
+
+def C.jxs(j: Job) -> List<&2, P.Body>:
+  Job{xs, ss, cx, cz, lx, lz} = j
+  xs
+
+def C.jss(j: Job) -> List<&2, P.Body>:
+  Job{xs, ss, cx, cz, lx, lz} = j
+  ss
+
+def C.jcx(j: Job) -> U32:
+  Job{xs, ss, cx, cz, lx, lz} = j
+  cx
+
+def C.jcz(j: Job) -> U32:
+  Job{xs, ss, cx, cz, lx, lz} = j
+  cz
+
+def C.jlx(j: Job) -> Nat:
+  Job{xs, ss, cx, cz, lx, lz} = j
+  lx
+
+def C.jlz(j: Job) -> Nat:
+  Job{xs, ss, cx, cz, lx, lz} = j
+  lz
+
+def C.ta(t: Two) -> List<&2, P.Body>:
+  Two{a, b} = t
+  a
+
+def C.tb(t: Two) -> List<&2, P.Body>:
+  Two{a, b} = t
+  b
+
+# how many cells 2^m chunks span
+def C.st(+m: Nat) -> U32:
+  U32.from_nat(Nat.mul(16n, Nat.pow(2n, m)))
+
+# what to do next: split by z while there are z levels left, then by x,
+# and when there is only one chunk left, pack it
+def C.nph(+nz: Nat, +nx: Nat) -> Nat:
+  Pick.n(Nat.is_lt(0n, nz), 0n, Pick.n(Nat.is_lt(0n, nx), 3n, 4n))
+
+# The crowd into chunks, halving: cut by z, keep the near half going and
+# leave the far one on the pile, then the same by x, and pack what is
+# left. One recursion (Bend has no mutual recursion), the phase says which
+# step it is on: 0 and 5 cut by z (the crowd, then the sleepers), 1 takes
+# the halves, 3 and 6 cut by x, 2 takes those halves, 4 packs a chunk.
+def C.jobs(fuel: Nat, ph: Nat, todo: List<&2, Job>, +t: Two, +u: Two, +xs: List<&2, P.Body>,
+  +ss: List<&2, P.Body>, +nz: Nat, +nx: Nat, +cx: U32, +cz: U32, +cx0: U32, +cz0: U32, acc: Rw, +o: Og) -> Rw:
+  match fuel ph todo:
+    case 0n _ _:
+      acc
+    case 1n+f 0n _:
+      C.jobs(f, 5n, todo, C.cut(xs, (cz0 + cz + C.st(Nat.sub(nz, 1n)) : U32), False{}, Two{[], []}), u, [], ss,
+        Nat.sub(nz, 1n), nx, cx, cz, cx0, cz0, acc, o)
+    case 1n+f 5n _:
+      C.jobs(f, 1n, todo, t, C.cut(ss, (cz0 + cz + C.st(nz) : U32), False{}, Two{[], []}), [], [],
+        nz, nx, cx, cz, cx0, cz0, acc, o)
+    case 1n+f 1n _:
+      C.jobs(f, C.nph(nz, nx), Job{C.tb(t), C.tb(u), cx, (cz + C.st(nz) : U32), nx, nz} <> todo, Two{[], []},
+        Two{[], []}, C.ta(t), C.ta(u), nz, nx, cx, cz, cx0, cz0, acc, o)
+    case 1n+f 3n _:
+      C.jobs(f, 6n, todo, C.cut(xs, (cx0 + cx + C.st(Nat.sub(nx, 1n)) : U32), True{}, Two{[], []}), u, [], ss,
+        nz, Nat.sub(nx, 1n), cx, cz, cx0, cz0, acc, o)
+    case 1n+f 6n _:
+      C.jobs(f, 2n, todo, t, C.cut(ss, (cx0 + cx + C.st(nx) : U32), True{}, Two{[], []}), [], [],
+        nz, nx, cx, cz, cx0, cz0, acc, o)
+    case 1n+f 2n _:
+      C.jobs(f, C.nph(nz, nx), Job{C.tb(t), C.tb(u), (cx + C.st(nx) : U32), cz, nx, nz} <> todo, Two{[], []},
+        Two{[], []}, C.ta(t), C.ta(u), nz, nx, cx, cz, cx0, cz0, acc, o)
+    case 1n+f 4n Nil{}:
+      RwC{C.mkl(xs, ss, o, (cx - 1 : U32), (cz - 1 : U32)), acc}
+    case 1n+f 4n +j <> rest:
+      C.jobs(f, C.nph(C.jlz(j), C.jlx(j)), rest, Two{[], []}, Two{[], []}, C.jxs(j), C.jss(j), C.jlz(j),
+        C.jlx(j), C.jcx(j), C.jcz(j), cx0, cz0,
+        RwC{C.mkl(xs, ss, o, (cx - 1 : U32), (cz - 1 : U32)), acc}, o)
+    case 1n+f _ _:
+      acc
+
+def C.mkgrid(+xs: List<&2, P.Body>, +ss: List<&2, P.Body>, +lx: Nat, +lz: Nat, +cx0: U32, +cz0: U32,
+  +o: Og) -> Gr:
+  C.rows0(C.rev(C.jobs(Nat.add(Nat.mul(16n, Nat.pow(2n, Nat.add(lx, lz))), 32n), C.nph(lz, lx), [],
+    Two{[], []}, Two{[], []}, xs, ss, lz, lx, 0, 0, cx0, cz0, RwE{}, o), RwE{}),
+    Nat.pow(2n, lx), Nat.pow(2n, lz))
+
+# every chunk sorted by cell, without ticking: a chunk just built is in no
+# order at all, and the border runs the handover reads come from the order
+def C.fsort(t: Chk, +o: Og, +k: P.K, +mm: Nat) -> Chk:
+  match t:
+    case ChE{}:
+      ChE{}
+    case ChL{a, +n, +cap, +ox, +oz}:
+      C.ft3(False{}, a, n, cap, ox, oz, o, k, mm)
+    case ChN{lo, hi}:
+      a b = C.fsort(lo, o, k, mm) C.fsort(hi, o, k, mm)
+      ChN{a, b}
+
+def C.rsort(r: Rw, +o: Og, +k: P.K, +mm: Nat) -> Rw:
+  match r:
+    case RwE{}:
+      RwE{}
+    case RwC{c, rest}:
+      a b = C.fsort(c, o, k, mm) C.rsort(rest, o, k, mm)
+      RwC{a, b}
+
+def C.gsort(g: Gr, +o: Og, +k: P.K, +mm: Nat) -> Gr:
+  match g:
+    case GrE{}:
+      GrE{}
+    case GrC{r, rest}:
+      a b = C.rsort(r, o, k, mm) C.gsort(rest, o, k, mm)
+      GrC{a, b}
+
+# the borders are handed over BEFORE the first round: a round ticks and
+# then hands over, which is enough when the grid lives between ticks, but
+# this one is built fresh every tick and would start with no copies of the
+# neighbours at all -- and two cubes on opposite sides of a chunk line
+# would not see each other
+def C.tickg(g: Gr, +o: Og, +k: P.K, +mm: Nat, +lx: Nat, +lz: Nat) -> Gr:
+  C.tick3(C.gzr2(C.gxr(C.gsort(g, o, k, mm), U32.from_nat(C.side())), U32.from_nat(C.side())), o, k, mm,
+    U32.from_nat(C.side()), Nat.add(lx, lz), Nat.pow(2n, lx), Nat.pow(2n, lz))
+
+# the grid dropped: it is built again from the list every tick, and a
+# chunk's array belongs to that chunk alone
+def C.ckil(c: Chk, bs: List<&2, P.Body>) -> List<&2, P.Body>:
+  match c:
+    case ChE{}:
+      bs
+    case ChL{a, n, cap, ox, oz}:
+      bs
+    case ChN{lo, hi}:
+      C.ckil(lo, C.ckil(hi, bs))
+
+def C.rkil(r: Rw, bs: List<&2, P.Body>) -> List<&2, P.Body>:
+  match r:
+    case RwE{}:
+      bs
+    case RwC{c, rest}:
+      C.rkil(rest, C.ckil(c, bs))
+
+def C.gkil(g: Gr, bs: List<&2, P.Body>) -> List<&2, P.Body>:
+  match g:
+    case GrE{}:
+      bs
+    case GrC{r, rest}:
+      C.gkil(rest, C.rkil(r, bs))
+
+# is this the body standing exactly here? The player rides in the chunks
+# as an obstacle, so this is how he is told apart from the sleepers when
+# they come back: nothing else can be where he is (that would be an
+# overlap), and an obstacle never moves -- only what pushed it changes.
+def W.samep(+b: P.Body, +x: Nat, +y: Nat, +z: Nat) -> Bool:
+  Bool.and(Nat.is_eq(P.Body.x(b), x), Bool.and(Nat.is_eq(P.Body.y(b), y), Nat.is_eq(P.Body.z(b), z)))
+
+def W.pat(xs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, acc: Two) -> Two:
+  match xs:
+    case []:
+      acc
+    case +e <> rest:
+      C.cut1(W.samep(e, x, y, z), e, W.pat(rest, x, y, z, acc))
+
+def W.head1(xs: List<&2, P.Body>, b: P.Body) -> P.Body:
+  match xs:
+    case []:
+      b
+    case +e <> rest:
+      e
+
+# the crowd back as a list, then the obstacles: the player (with whatever
+# pushed him) and the sleepers that moved, which wake up -- exactly what
+# the single array does
+def W.cp7(r: Two, +k: P.K, +seed: U32, t: Cells, dirty: List<&2, Cell>, p: P.Body,
+  bs: List<&2, P.Body>) -> World:
+  Two{me, others} = r
+  F.f3(k, seed, t, dirty, W.head1(me, p), bs, F.woken(others))
+
+def W.cp6(r: Gr2, +k: P.K, +seed: U32, t: Cells, dirty: List<&2, Cell>, +p: P.Body,
+  bs: List<&2, P.Body>) -> World:
+  Gr2{g, sls} = r
+  W.cp7(W.pat(C.gkil(g, sls), P.Body.x(p), P.Body.y(p), P.Body.z(p), Two{[], []}), k, seed, t, dirty, p, bs)
+
+def W.cp5(r: Gr2, +k: P.K, +seed: U32, t: Cells, dirty: List<&2, Cell>, p: P.Body, +o: Og) -> World:
+  Gr2{g, bs} = r
+  W.cp6(C.gbodies(g, o, 2), k, seed, t, dirty, p, bs)
+
+def W.cp4(+k: P.K, +seed: U32, t: Cells, dirty: List<&2, Cell>, p: P.Body, awake: List<&2, P.Body>,
+  sl: List<&2, P.Body>, +mm: Nat, +o: Og, +cx0: U32, +cz0: U32, +lx: Nat, +lz: Nat) -> World:
+  W.cp5(C.gbodies(C.tickg(C.mkgrid(awake, sl, lx, lz, cx0, cz0, o), o, k, mm, lx, lz), o, 1),
+    k, seed, t, dirty, p, o)
+
+def W.cp2(+k: P.K, +seed: U32, +t: Cells, dirty: List<&2, Cell>, +p: P.Body, awake: List<&2, P.Body>,
+  +bx: Bx, +mm: Nat) -> World:
+  W.cp4(k, seed, t, dirty, p, awake,
+    p <> W.rect(Nat.mul(F.gnx(bx, mm), F.gnz(bx, mm)), t, seed, F.cx0(bx, mm), F.cz0(bx, mm), F.gnx(bx, mm)),
+    mm, F.org(bx, mm), F.cx0(bx, mm), F.cz0(bx, mm), W.lg2(F.gnx(bx, mm)), W.lg2(F.gnz(bx, mm)))
+
+def W.cp1(+k: P.K, w: World) -> World:
+  World{+seed, +t, +awake, dirty, +p} = w
+  W.cp2(k, seed, t, dirty, p, awake, O.bb(awake, O.box([p])), F.mx(k, awake, W.reach(k, p)))
+
+# the player first, alone, then the crowd in chunks, all at the same time
+def W.tick_cpar(+k: P.K, inp: P.In, w: World) -> World:
+  W.cp1(k, W.player_step(k, inp, w))
+
 def W.dense1(ok: Bool, +gx: Nat, +gz: Nat, +lim: Nat) -> Bool:
   match ok:
     case True{}:
