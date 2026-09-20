@@ -1685,16 +1685,50 @@ def C.xpair2(a: Chk, b: Chk, +dx: Nat, +dz: Nat, +side: U32) -> Ck2:
     case _ _:
       Ck2{a, b}
 
-def C.xskip(go: Bool, a: Chk, b: Chk, +dx: Nat, +dz: Nat, +side: U32) -> Ck2:
-  match go:
-    case False{}:
+# ONE way: a hands b what is near the border they share -- copies of what
+# b could touch, and the cubes of a that walked into b. Half the work of
+# handing both ways, and it is all that is needed: what a handover before
+# a round is for is the chunk that is about to tick, and two chunks side
+# by side never tick in the same round. It also means a chunk is given
+# cubes exactly once a tick, right before its own round, so it only has
+# to tidy itself then.
+def C.gv2(aa: Array<U32>, q: Array<U32> & U32, +na: U32, +capa: U32, +oxa: U32, +oza: U32, +capb: U32,
+  +oxb: U32, +ozb: U32) -> Ck2:
+  (ab, +nb2) = q
+  Ck2{ChL{aa, na, capa, oxa, oza}, ChL{ab, nb2, capb, oxb, ozb}}
+
+def C.gv1(r: Array<U32> & Array<U32> & U32, +na: U32, +capa: U32, +oxa: U32, +oza: U32, +capb: U32,
+  +oxb: U32, +ozb: U32) -> Ck2:
+  (aa, q) = r
+  C.gv2(aa, q, na, capa, oxa, oza, capb, oxb, ozb)
+
+def C.gives(a: Chk, b: Chk, +dx: Nat, +dz: Nat, +side: U32) -> Ck2:
+  match a b:
+    case ChL{aa, +na, +capa, +oxa, +oza} ChL{ab, +nb, +capb, +oxb, +ozb}:
+      C.gv1(C.give2(Nat.add(Nat.mul(10n, Nat.add(U32.to_nat(na), C.g())), 64n),
+        C.nseg(dx, U32.from_nat(C.g())), 9n,
+        aa[(C.roff(capa) + C.sa(C.nseg(dx, U32.from_nat(C.g())), dx, dz, side, U32.from_nat(C.g())) : U32)], ab,
+        0, nb, capa, capb, oxa, oza, oxb, ozb, side, U32.from_nat(C.g()), dx, dz, 0, 0, 0, 0, 0, 0, 0),
+        na, capa, oxa, oza, capb, oxb, ozb)
+    case _ _:
       Ck2{a, b}
-    case True{}:
-      C.xpair2(a, b, dx, dz, side)
+
+def C.swapck(r: Ck2) -> Ck2:
+  Ck2{x, y} = r
+  Ck2{y, x}
+
+def C.xdir(ba: Bool, bb: Bool, a: Chk, b: Chk, +dx: Nat, +dz: Nat, +side: U32) -> Ck2:
+  match ba bb:
+    case True{} _:
+      C.swapck(C.gives(b, a, C.flip(dx), C.flip(dz), side))
+    case _ True{}:
+      C.gives(a, b, dx, dz, side)
+    case _ _:
+      Ck2{a, b}
 
 def C.pg2(rb: Chk & Bool, a: Chk, +ba: Bool, +dx: Nat, +dz: Nat, +side: U32) -> Ck2:
   (b, +bb) = rb
-  C.xskip(Bool.or(ba, bb), a, b, dx, dz, side)
+  C.xdir(ba, bb, a, b, dx, dz, side)
 
 def C.pg1(ra: Chk & Bool, b: Chk, +side: U32, +cn: Nat, +dx: Nat, +dz: Nat) -> Ck2:
   (a, +ba) = ra
@@ -2238,7 +2272,7 @@ def C.ft4(sorted: Bool, a: Array<U32>, +n: U32, +cap: U32, +ox: U32, +oz: U32, +
   +mm: Nat) -> Chk:
   match sorted:
     case True{}:
-      C.tidy1(C.keepown(n, a, cap), cap, ox, oz)
+      ChL{a, n, cap, ox, oz}
     case False{}:
       C.ft3(False{}, a, n, cap, ox, oz, o, k, mm)
 
