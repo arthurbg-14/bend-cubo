@@ -150,8 +150,56 @@ def turn1(r: Array<U32> & List<&2, P.Body>) -> String:
 def turn() -> String:
   turn1(W.F.unpack(1, W.F.pack([spun()], Array.new(U32, 8n, 0), 0, og(), False{}), 0, og()))
 
+# Os quinze eixos contra a caixa reta: enquanto nada girou, o teste novo
+# tem que dar exatamente o mesmo que o de sempre -- senao a rotacao muda
+# o jogo dos cubos parados, que e quase todo o mundo.
+def d(+i: Nat) -> Nat:
+  Nat.add(700000n, Nat.mul(i, 43691n))
+
+def boxy(+ax: Nat, +ay: Nat, +az: Nat, +bx: Nat, +by: Nat, +bz: Nat) -> Bool:
+  Bool.and(P.Geo.ovl(262144n, ax, bx), Bool.and(P.Geo.ovl(262144n, az, bz), P.Geo.ovl(262144n, ay, by)))
+
+def beq(a: Bool, b: Bool) -> Bool:
+  match a b:
+    case True{} True{}:
+      True{}
+    case False{} False{}:
+      True{}
+    case _ _:
+      False{}
+
+def one(+i: Nat, +j: Nat, +k: Nat) -> Nat:
+  M.Pick.n(beq(boxy(1000000n, 1000000n, 1000000n, d(i), d(j), d(k)),
+    P.Geo.sat(262144n, 1000000n, 1000000n, 1000000n, P.Quat.one(), d(i), d(j), d(k), P.Quat.one())), 0n, 1n)
+
+def kk(+i: Nat, +j: Nat, k: Nat) -> Nat:
+  match k:
+    case 0n:
+      0n
+    case 1n++m:
+      Nat.add(one(i, j, m), kk(i, j, m))
+
+def jj(+i: Nat, j: Nat) -> Nat:
+  match j:
+    case 0n:
+      0n
+    case 1n++m:
+      Nat.add(kk(i, m, 15n), jj(i, m))
+
+def ii(i: Nat) -> Nat:
+  match i:
+    case 0n:
+      0n
+    case 1n++m:
+      Nat.add(jj(m, 15n), ii(m))
+
+def axes() -> String:
+  M.Pick.s(Nat.is_eq(ii(15n), 0n), "OK", "FAIL") ++ ": " ++ Nat.show(ii(15n))
+    ++ " diferencas em 3375 posicoes (tem que ser 0)"
+
 def main() -> IO(Unit):
   do IO<Unit>:
     a : Unit <- IO.print("veloz x parede: " ++ run(40n, 0n, wld()))
     b : Unit <- IO.print("rotacao no array: " ++ turn())
+    c : Unit <- IO.print("quinze eixos x caixa: " ++ axes())
     IO.print("quina:          " ++ tip(200n, 0n, perched()))

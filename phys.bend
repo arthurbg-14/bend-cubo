@@ -578,6 +578,115 @@ def Geo.meets(+s: Nat, +x: Nat, +y: Nat, +z: Nat, o: Body) -> Bool:
   Body{ox, oy, oz, vx, vy, vz, ground, hit, rt} = o
   Bool.and(Geo.ovl(s, x, ox), Bool.and(Geo.ovl(s, z, oz), Geo.ovl(s, y, oy)))
 
+# Turned boxes
+# ------------
+# A cube that has turned is not a box along the world's axes any more, so
+# telling two of them apart takes a direction that separates them: if the
+# shadows both cast on some direction do not overlap, they are apart. For
+# two boxes fifteen directions are enough -- the three faces of each and
+# the nine crossings of their edges -- and if none of the fifteen has them
+# apart, they touch. It is all whole numbers: the orientation comes in as
+# a matrix in 2^-12 and both sides of every test are multiplied out, so
+# nothing is ever divided away.
+#
+# A cube that has not turned gives back the plain box test, to the unit:
+# its matrix is exactly 4096, 0, 0 / 0, 4096, 0 / 0, 0, 4096.
+
+type Mat is Data:
+  Mat{xx: Z, xy: Z, xz: Z, yx: Z, yy: Z, yz: Z, zx: Z, zy: Z, zz: Z}
+
+def Z.divn(v: Z, +d: Nat) -> Z:
+  match v:
+    case Pos{+n}:
+      Pos{Nat.div(n, d)}
+    case Neg{+n}:
+      Neg{Nat.div(n, d)}
+
+# 1 - 2(p + q), in 2^-12, out of squares in 2^-30
+def Mat.diag(+p: Nat, +q: Nat) -> Z:
+  +t = Nat.mul(2n, Nat.add(p, q))
+  Z.divn(Z.diff(Nat.is_lt(1073741824n, t), 1073741824n, t), 262144n)
+
+# 2(u v - p q), the same way
+def Mat.off(+u: Z, +v: Z, +p: Z, +q: Z) -> Z:
+  Z.divn(Z.mul(Pos{2n}, Z.sub(Z.mul(u, v), Z.mul(p, q))), 262144n)
+
+# the cube's own three axes, as they lie in the world, one to a row
+def Rot.mat(+q: Quat) -> Mat:
+  Mat{Mat.diag(Z.sq(Quat.c(q)), Z.sq(Quat.d(q))),
+    Mat.off(Quat.b(q), Quat.c(q), Z.opp(Quat.a(q)), Quat.d(q)),
+    Mat.off(Quat.b(q), Quat.d(q), Quat.a(q), Quat.c(q)),
+    Mat.off(Quat.b(q), Quat.c(q), Quat.a(q), Quat.d(q)),
+    Mat.diag(Z.sq(Quat.b(q)), Z.sq(Quat.d(q))),
+    Mat.off(Quat.c(q), Quat.d(q), Z.opp(Quat.a(q)), Quat.b(q)),
+    Mat.off(Quat.b(q), Quat.d(q), Z.opp(Quat.a(q)), Quat.c(q)),
+    Mat.off(Quat.c(q), Quat.d(q), Quat.a(q), Quat.b(q)),
+    Mat.diag(Z.sq(Quat.b(q)), Z.sq(Quat.c(q)))}
+
+def V3.dot(+ax: Z, +ay: Z, +az: Z, +bx: Z, +by: Z, +bz: Z) -> Z:
+  Z.add(Z.add(Z.mul(ax, bx), Z.mul(ay, by)), Z.mul(az, bz))
+
+# apart along one of the first cube's own axes?
+def Sat.a(+t: Z, +h: Nat, +r0: Z, +r1: Z, +r2: Z) -> Bool:
+  Nat.is_le(Nat.mul(h, Nat.add(4096n, Nat.add(Nat.add(Z.mag(r0), Z.mag(r1)), Z.mag(r2)))),
+    Nat.mul(Z.mag(t), 4096n))
+
+# apart along one of the second cube's?
+def Sat.b(+t0: Z, +t1: Z, +t2: Z, +r0: Z, +r1: Z, +r2: Z, +h: Nat) -> Bool:
+  Nat.is_le(Nat.mul(h, Nat.add(4096n, Nat.add(Nat.add(Z.mag(r0), Z.mag(r1)), Z.mag(r2)))),
+    Z.mag(V3.dot(t0, t1, t2, r0, r1, r2)))
+
+# apart along the crossing of an edge of each. When the two edges are
+# parallel the crossing is nothing at all, and a direction of nothing
+# would say "apart" about every pair of cubes: the one added to each side
+# below keeps that from happening, and costs a twentieth of a millimetre
+# of room on the crossings that do mean something.
+def Sat.x(+t1: Z, +t2: Z, +a1: Z, +a2: Z, +b1: Z, +b2: Z, +h: Nat) -> Bool:
+  Nat.is_le(Nat.mul(h, Nat.add(Nat.add(Nat.add(Z.mag(a1), 1n), Nat.add(Z.mag(a2), 1n)),
+      Nat.add(Nat.add(Z.mag(b1), 1n), Nat.add(Z.mag(b2), 1n)))),
+    Z.mag(Z.sub(Z.mul(t2, a1), Z.mul(t1, a2))))
+
+def Sat.some(+p: Bool, +q: Bool, +r: Bool) -> Bool:
+  Bool.or(p, Bool.or(q, r))
+
+# the fifteen tests, with the two cubes' axes already worked out. The
+# shadows are compared multiplied out, and apart counts from the moment
+# they merely touch -- so two cubes side by side, edge against edge, are
+# as free as they have always been.
+def Geo.sat2(+h: Nat, +tx: Z, +ty: Z, +tz: Z, ma: Mat, mb: Mat) -> Bool:
+  Mat{+axx, +axy, +axz, +ayx, +ayy, +ayz, +azx, +azy, +azz} = ma
+  Mat{+bxx, +bxy, +bxz, +byx, +byy, +byz, +bzx, +bzy, +bzz} = mb
+  +t0 = Z.divn(V3.dot(tx, ty, tz, axx, axy, axz), 4096n)
+  +t1 = Z.divn(V3.dot(tx, ty, tz, ayx, ayy, ayz), 4096n)
+  +t2 = Z.divn(V3.dot(tx, ty, tz, azx, azy, azz), 4096n)
+  +r00 = Z.divn(V3.dot(axx, axy, axz, bxx, bxy, bxz), 4096n)
+  +r01 = Z.divn(V3.dot(axx, axy, axz, byx, byy, byz), 4096n)
+  +r02 = Z.divn(V3.dot(axx, axy, axz, bzx, bzy, bzz), 4096n)
+  +r10 = Z.divn(V3.dot(ayx, ayy, ayz, bxx, bxy, bxz), 4096n)
+  +r11 = Z.divn(V3.dot(ayx, ayy, ayz, byx, byy, byz), 4096n)
+  +r12 = Z.divn(V3.dot(ayx, ayy, ayz, bzx, bzy, bzz), 4096n)
+  +r20 = Z.divn(V3.dot(azx, azy, azz, bxx, bxy, bxz), 4096n)
+  +r21 = Z.divn(V3.dot(azx, azy, azz, byx, byy, byz), 4096n)
+  +r22 = Z.divn(V3.dot(azx, azy, azz, bzx, bzy, bzz), 4096n)
+  Bool.not(Bool.or(Bool.or(
+    Sat.some(Sat.a(t0, h, r00, r01, r02), Sat.a(t1, h, r10, r11, r12), Sat.a(t2, h, r20, r21, r22)),
+    Sat.some(Sat.b(t0, t1, t2, r00, r10, r20, h), Sat.b(t0, t1, t2, r01, r11, r21, h),
+      Sat.b(t0, t1, t2, r02, r12, r22, h))),
+    Bool.or(Bool.or(
+      Sat.some(Sat.x(t1, t2, r10, r20, r02, r01, h), Sat.x(t1, t2, r11, r21, r02, r00, h),
+        Sat.x(t1, t2, r12, r22, r01, r00, h)),
+      Sat.some(Sat.x(t2, t0, r20, r00, r12, r11, h), Sat.x(t2, t0, r21, r01, r12, r10, h),
+        Sat.x(t2, t0, r22, r02, r11, r10, h))),
+      Sat.some(Sat.x(t0, t1, r00, r10, r22, r21, h), Sat.x(t0, t1, r01, r11, r22, r20, h),
+        Sat.x(t0, t1, r02, r12, r21, r20, h)))))
+
+# do the cube at (ax, ay, az) turned by qa and the one at (bx, by, bz)
+# turned by qb touch?
+def Geo.sat(+s: Nat, +ax: Nat, +ay: Nat, +az: Nat, +qa: Quat, +bx: Nat, +by: Nat, +bz: Nat,
+  +qb: Quat) -> Bool:
+  Geo.sat2(Nat.div(s, 2n), Z.diff(Nat.is_lt(bx, ax), bx, ax), Z.diff(Nat.is_lt(by, ay), by, ay),
+    Z.diff(Nat.is_lt(bz, az), bz, az), Rot.mat(qa), Rot.mat(qb))
+
 # is the box at (x, y, z) clear of every obstacle?
 def Geo.free(+s: Nat, +x: Nat, +y: Nat, +z: Nat, obs: List<&2, Body>) -> Bool:
   match obs:
