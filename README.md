@@ -316,20 +316,27 @@ cubo é empurrado por dois deles: o tick roda em quatro rodadas, uma por
 cor. Os cubos da borda são copiados para o vizinho, e quem atravessa muda
 de dono.
 
+`./build.sh chunks` põe os mesmos 432 cubos do teste de colisão numa grade
+de chunks, deixa-os cair e deslizar de um chunk para o outro por 300 ticks
+e confere que **nenhum cubo entra em outro e nenhum se perde** (432 entram,
+432 saem). É o que garante que a franja e a mudança de dono estão certas.
+
 Medido com 98 304 cubos em 1024 chunks, todos se mexendo (máquina
 compartilhada com outros trabalhos, 8 núcleos):
 
-| | instruções por cubo-tick | ms por tick | núcleos ocupados |
-|---|---|---|---|
-| só o tick (ordenar, varrer, física, escrever) | 2 926 | 10,3 | 7,5 |
-| com a troca de franja entre chunks | 4 296 | 28,1 | 4,3 |
+| | instruções por cubo-tick |
+|---|---|
+| só o tick (ordenar, varrer, física, escrever) | 2 926 |
+| com a troca de franja, versão verificada | 6 515 |
 
-O tick sozinho cabe no tempo real (7,8 ms por tick) — numa máquina livre
-mediu 7,08 ms com 10 núcleos. O que falta é a troca de franja: ela custa
-+47% de instruções e derruba a ocupação, porque em Bend um array é de dono
-único e não há índice: ou se roteia por listas (que alocam em cada nível da
-árvore) ou se percorrem os vizinhos em sequência. As duas versões estão no
-código e passam no teste de conservação (98 304 cubos entram, 98 304 saem).
+O tick sozinho cabe no tempo real (7,8 ms por tick): numa máquina livre
+mediu 7,08 ms com 10 núcleos para 100 mil cubos. Com a franja, a conta dá
+~15 ms — falta um fator de dois, que está na troca: em Bend um array é de
+dono único e não há índice, então ou se roteia cópia por lista (que aloca
+em cada nível da árvore) ou se percorrem os vizinhos em sequência (barato,
+mas lista não forka: o escalonador só espalha árvore balanceada). A versão
+verificada percorre os vizinhos em sequência e varre só as faixas de
+células da borda, que a ordenação por célula deixa contíguas.
 
 **Sobre as threads.** Medido nesta máquina (8 núcleos, 16 threads), com ela
 livre:
