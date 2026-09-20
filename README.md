@@ -389,21 +389,28 @@ vistos e empurrados, não ticam e não voltam como multidão.
 Medido nesta máquina livre, com `./build.sh cem` (102 400 cubos, todos em
 movimento durante a medida inteira, 64 ticks):
 
-| threads | ms por tick |
-|---|---|
-| 1 | 41,8 |
-| 12 | **20,2** (1,87× medido lado a lado) |
+`./build.sh cem` monta **100 489 cubos (317 × 317), todos em movimento do
+começo ao fim**, roda 64 ticks e cronometra. Medido nesta máquina, com ela a
+76 °C: **15,42 ms por tick — 64,9 ticks por segundo**. Repetindo a corrida o
+notebook passa de 90 °C e estrangula para 16,7 a 17,6 ms (57 a 60 por
+segundo), então o número bom é o da primeira corrida depois de esfriar.
 
-E o quanto cabe em tempo real (o tick é 7,81 ms), medido: **25 600 cubos em
-movimento, 7,13 ms por tick** — e essa medida saiu com o processador a 92 °C,
-ou seja estrangulado. Antes desta rodada de otimização eram 20 736 cubos a
-7,55 ms, e antes dos chunks eram cerca de 10 mil.
+| cubos em movimento | ms por tick | ticks por segundo |
+|---|---|---|
+| 90 000 | 14,02 | 71 |
+| 96 100 | 14,63 | 68 |
+| **100 489** | **15,42** | **64,9** |
+| 102 400 | 15,69 | 63,7 |
+
+Numa thread só, os mesmos 102 400 levam 39,4 ms — o ganho medido lado a lado
+é 2,5×. Antes dos chunks o jogo segurava cerca de 10 mil cubos.
 
 O caminho até aqui, cada passo medido A/B intercalado (o notebook varia
 demais para número isolado valer):
 
 | o que mudou | ganho |
 |---|---|
+| a grade da multidão viver 64 ticks antes de virar lista de novo (era 32) | −22 % |
 | ordenar os chunks só na primeira rodada da grade, não em todas | −20 % |
 | tirar o fork por par de chunks da troca de franja (centenas de milhares de tarefas minúsculas por tick) | −24 % |
 | a franja anda na própria árvore, sem virar linhas e voltar quatro vezes por tick | −25 % |

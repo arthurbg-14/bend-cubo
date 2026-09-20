@@ -1,4 +1,4 @@
-# Cubo -- 100 mil cubos de verdade, medidos: a multidao numa grade de
+# Cubo -- 100 mil cubos (317 x 317 = 100 489) de verdade, medidos: a multidao numa grade de
 # chunks que fica viva entre os ticks, todos os chunks ticando ao mesmo
 # tempo. Nada de conta: o programa monta os cubos, roda os ticks e diz
 # quanto levou.
@@ -69,4 +69,4 @@ def run(+n: Nat, +ticks: Nat) -> IO(Unit):
 def main() -> IO(Unit):
   do IO<Unit>:
     a : Unit <- IO.print("montando a multidao...")
-    run(320n, 64n)
+    run(317n, 64n)
