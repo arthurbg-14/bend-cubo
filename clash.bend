@@ -53,7 +53,7 @@ def body(+i: Nat, +j: Nat, +l: Nat) -> P.Body:
   +z = Nat.add(Nat.sub(o, 1572864n), Nat.mul(j, 275251n))
   +y = Nat.add(Nat.mul(Nat.add(l, 1n), 340000n), Nat.mul(Nat.mod(Nat.add(i, j), 3n), 26000n))
   +v = M.Pick.n(Nat.is_eq(l, 2n), Nat.mul(Nat.mod(i, 3n), 2048n), 0n)
-  P.Body{x, y, z, sgn(Nat.is_eq(Nat.mod(j, 2n), 0n), v), P.Pos{0n}, P.Pos{0n}, False{}, False{}}
+  P.Body{x, y, z, sgn(Nat.is_eq(Nat.mod(j, 2n), 0n), v), P.Pos{0n}, P.Pos{0n}, False{}, False{}, P.Rot.rest()}
 
 def col(+i: Nat, +j: Nat, l: Nat) -> List<&2, P.Body>:
   match l:

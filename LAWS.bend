@@ -198,10 +198,11 @@ law rest_stays:
   for +y: Nat
   for +z: Nat
   for h: Bool
+  for +rt: P.Rot
   for on: {Bool.or(Nat.is_eq(y, 0n), P.Geo.rests(P.K.size(k), x, y, z, obs)) == True{} : Bool}
   for clear: {P.Geo.free(P.K.size(k), x, y, z, obs) == True{} : Bool}
-  {P.Body.tick(k, obs, P.In.idle(), P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h})
-    == (P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, False{}}, obs) : P.Body & List<&2, P.Body>}
+  {P.Body.tick(k, obs, P.In.idle(), P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, rt})
+    == (P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, False{}, rt}, obs) : P.Body & List<&2, P.Body>}
 
 # Collisions and energy
 # ---------------------
@@ -258,10 +259,9 @@ law no_clip:
 law free_spin_is_exact:
   for +r: P.Rot
   s1 = P.Rot.free(r)
-  {P.Rot.wx(s1) == P.Rot.wx(r) : P.Z}
-  & {P.Rot.wy(s1) == P.Rot.wy(r) : P.Z}
-  & {P.Rot.wz(s1) == P.Rot.wz(r) : P.Z}
-  & {P.Rot.ang(s1) == (P.Rot.ang(r) + U32.from_nat(P.Rot.rate(r)) : U32) : U32}
+  {P.Rot.w(s1) == P.Rot.w(r) : P.Z}
+  & {P.Rot.ax(s1) == P.Rot.ax(r) : Nat}
+  & {P.Rot.ang(s1) == P.Rot.step(P.Rot.ang(r), P.Rot.w(r)) : U32}
 
 # LAW: a hit dead centre does not turn anything. What turns a body is the
 # arm -- how far from its middle it was hit -- crossed with the impulse,

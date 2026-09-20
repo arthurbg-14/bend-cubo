@@ -71,7 +71,7 @@ def Gen.count(+seed: U32, +cx: U32, +cz: U32) -> U32:
 
 # a cube at rest at (x, y, z)
 def W.cube(+x: Nat, +y: Nat, +z: Nat) -> P.Body:
-  P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, False{}}
+  P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, False{}, P.Rot.rest()}
 
 def Gen.stack(+n: Nat, +x: Nat, +z: Nat) -> List<&2, P.Body>:
   match n:
@@ -198,7 +198,7 @@ def Cells.set(t: Cells, +cx: U32, +cz: U32, cubes: List<&2, P.Body>) -> Cells:
 # quarter of a metre to spare (the player: a jump, a push of the motor).
 def W.reach(+k: P.K, b: P.Body) -> Nat:
   P.K{+g, mu, jump, +acc, size} = k
-  P.Body{x, y, z, vx, vy, vz, gr, h} = b
+  P.Body{x, y, z, vx, vy, vz, gr, h, rt} = b
   Nat.add(Nat.mul(2n, Nat.add(Nat.add(P.Z.mag(vx), P.Z.mag(vy)), P.Z.mag(vz))),
     Nat.add(Nat.mul(2n, Nat.add(acc, g)), 65536n))
 
@@ -228,7 +228,7 @@ def W.creachz(+k: P.K, +vx: P.Z, +vy: P.Z, +vz: P.Z) -> Nat:
     Nat.add(Nat.mul(2n, Nat.add(P.K.g(k), P.K.acc(k))), 16n))
 
 def W.creach(+k: P.K, b: P.Body) -> Nat:
-  P.Body{x, y, z, +vx, +vy, +vz, gr, h} = b
+  P.Body{x, y, z, +vx, +vy, +vz, gr, h, rt} = b
   W.creachz(k, vx, vy, vz)
 
 # the cells whose cubes a body at x (m its reach) can touch: a cube homed
@@ -271,8 +271,8 @@ def W.nof(+r: Nat, +x: Nat, +y: Nat, +z: Nat, xs: List<&2, P.Body>) -> List<&2, 
   match xs:
     case []:
       []
-    case P.Body{+ox, +oy, +oz, vx, vy, vz, g, h} <> rest:
-      W.take_if(W.closep(r, x, y, z, ox, oy, oz), P.Body{ox, oy, oz, vx, vy, vz, g, h}, W.nof(r, x, y, z, rest))
+    case P.Body{+ox, +oy, +oz, vx, vy, vz, g, h, rt} <> rest:
+      W.take_if(W.closep(r, x, y, z, ox, oy, oz), P.Body{ox, oy, oz, vx, vy, vz, g, h, rt}, W.nof(r, x, y, z, rest))
 
 def W.near_of(xs: List<&2, P.Body>, +m: Nat, +b: P.Body) -> List<&2, P.Body>:
   W.nof(Nat.add(W.size(), m), P.Body.x(b), P.Body.y(b), P.Body.z(b), xs)
@@ -285,7 +285,7 @@ def W.around(+k: P.K, +t: Cells, +seed: U32, +b: P.Body) -> List<&2, P.Body>:
   W.around3(t, seed, W.reach(k, b), P.Body.x(b), P.Body.y(b), P.Body.z(b))
 
 def W.moving(b: P.Body) -> Bool:
-  P.Body{x, y, z, vx, vy, vz, g, h} = b
+  P.Body{x, y, z, vx, vy, vz, g, h, rt} = b
   Bool.or(Nat.is_lt(0n, P.Z.mag(vx)), Bool.or(Nat.is_lt(0n, P.Z.mag(vy)), Nat.is_lt(0n, P.Z.mag(vz))))
 
 def W.same(+a: P.Body, +b: P.Body) -> Bool:
@@ -362,8 +362,8 @@ def W.pn(+r: Nat, +x: Nat, +y: Nat, +z: Nat, xs: List<&2, P.Body>) -> Two:
   match xs:
     case []:
       Two{[], []}
-    case P.Body{+ox, +oy, +oz, vx, vy, vz, g, h} <> rest:
-      W.near1(W.closep(r, x, y, z, ox, oy, oz), P.Body{ox, oy, oz, vx, vy, vz, g, h}, W.pn(r, x, y, z, rest))
+    case P.Body{+ox, +oy, +oz, vx, vy, vz, g, h, rt} <> rest:
+      W.near1(W.closep(r, x, y, z, ox, oy, oz), P.Body{ox, oy, oz, vx, vy, vz, g, h, rt}, W.pn(r, x, y, z, rest))
 
 # the same, counting the near ones
 type Pc is Data:
@@ -382,8 +382,8 @@ def W.pnc(+r: Nat, +x: Nat, +y: Nat, +z: Nat, xs: List<&2, P.Body>) -> Pc:
   match xs:
     case []:
       Pc{[], 0n, []}
-    case P.Body{+ox, +oy, +oz, vx, vy, vz, g, h} <> rest:
-      W.tn1(W.closep(r, x, y, z, ox, oy, oz), P.Body{ox, oy, oz, vx, vy, vz, g, h}, W.pnc(r, x, y, z, rest))
+    case P.Body{+ox, +oy, +oz, vx, vy, vz, g, h, rt} <> rest:
+      W.tn1(W.closep(r, x, y, z, ox, oy, oz), P.Body{ox, oy, oz, vx, vy, vz, g, h, rt}, W.pnc(r, x, y, z, rest))
 
 def W.part_near(+m: Nat, +b: P.Body, xs: List<&2, P.Body>) -> Two:
   W.pn(Nat.add(W.size(), m), P.Body.x(b), P.Body.y(b), P.Body.z(b), xs)
@@ -541,11 +541,11 @@ def F.sleeper(+w: U32) -> Bool:
 
 def F.body(+o: Og, +x: U32, +y: U32, +z: U32, +vx: U32, +vy: U32, +vz: U32) -> P.Body:
   P.Body{Nat.add(F.ox(o), U32.to_nat(x)), U32.to_nat(y), Nat.add(F.oz(o), U32.to_nat(z)), F.zof(vx), F.zof(vy), F.vzof(vz),
-    F.ground(vz), F.hit(vz)}
+    F.ground(vz), F.hit(vz), P.Rot.rest()}
 
 # body i into the array (its flags kept as they are, but for a sleeper)
 def F.put(a: Array<U32>, +i: U32, +o: Og, +sl: Bool, b: P.Body) -> Array<U32>:
-  P.Body{+x, +y, +z, +vx, +vy, +vz, +g, +h} = b
+  P.Body{+x, +y, +z, +vx, +vy, +vz, +g, +h, rt} = b
   a[(i * 6 : U32)] <- U32.from_nat(Nat.sub(x, F.ox(o)))
   a[(i * 6 + 1 : U32)] <- U32.from_nat(y)
   a[(i * 6 + 2 : U32)] <- U32.from_nat(Nat.sub(z, F.oz(o)))
@@ -732,7 +732,7 @@ def F.load0(idxs: List<&2, U32>, a: Array<U32>, +o: Og) -> Array<U32> & List<&2,
 def F.wb(idxs: List<&2, U32>, obs: List<&2, P.Body>, a: Array<U32>, +o: Og, +na: U32) -> Array<U32>:
   match idxs obs:
     case +j <> ir b <> br:
-      P.Body{x, y, z, vx, vy, +vz, +g, +h} = b
+      P.Body{x, y, z, vx, vy, +vz, +g, +h, rt} = b
       F.wb(ir, br, F.putw(F.putw(F.putw(a, (j * 6 + 3 : U32), F.wof(vx)), (j * 6 + 4 : U32), F.wof(vy)),
         (j * 6 + 5 : U32), F.vzw(vz, g, h, (j >= na : U32))), o, na)
     case _ _:
@@ -2915,8 +2915,8 @@ def W.fl1(+k: P.K, inp: P.In, +seed: U32, +t: Cells, dirty: List<&2, Cell>, +p: 
 # NOT how far each cube has to look, which is what used to make the whole
 # tick crawl (and drop out of the dense path) the moment he ran.
 def W.pbox(+k: P.K, p: P.Body) -> Bx:
-  P.Body{+x, +y, +z, +vx, +vy, +vz, +gr, +h} = p
-  +r = W.reach(k, P.Body{x, y, z, vx, vy, vz, gr, h})
+  P.Body{+x, +y, +z, +vx, +vy, +vz, +gr, +h, rt} = p
+  +r = W.reach(k, P.Body{x, y, z, vx, vy, vz, gr, h, rt})
   Bx{Nat.sub(x, r), Nat.sub(y, r), Nat.sub(z, r), Nat.add(x, r), Nat.add(y, r), Nat.add(z, r)}
 
 def O.bb(xs: List<&2, P.Body>, b: Bx) -> Bx:
@@ -3720,10 +3720,10 @@ def Q.cgo(+k: P.K, +seed: U32, +src: Src, done: List<&2, P.Body>, todo: List<&2,
   match todo:
     case []:
       Lc{done, [], pool, ev, chg}
-    case P.Body{+x, +y, +z, +vx, +vy, +vz, g, h} <> rest:
+    case P.Body{+x, +y, +z, +vx, +vy, +vz, g, h, rt} <> rest:
       +m = W.creachz(k, vx, vy, vz)
       +r = Nat.add(W.size(), m)
-      Q.ca(k, src, seed, m, x, y, z, P.Body{x, y, z, vx, vy, vz, g, h}, W.pnc(r, x, y, z, pool), W.pnc(r, x, y, z, done),
+      Q.ca(k, src, seed, m, x, y, z, P.Body{x, y, z, vx, vy, vz, g, h, rt}, W.pnc(r, x, y, z, pool), W.pnc(r, x, y, z, done),
         W.pnc(r, x, y, z, rest), ev, chg)
 
 def Q.csteps(n: Nat, +k: P.K, +seed: U32, +src: Src, z: Lc) -> Lc:
@@ -3987,10 +3987,10 @@ def T.win(xs: List<&2, P.Body>, +x0: Nat, +z0: Nat, +x1: Nat, +z1: Nat, +d: Nat)
   match xs:
     case []:
       []
-    case P.Body{+ex, ey, +ez, vx, vy, vz, g, h} <> rest:
+    case P.Body{+ex, ey, +ez, vx, vy, vz, g, h, rt} <> rest:
       W.take_if(Bool.and(Bool.and(Nat.is_lt(x0, Nat.add(ex, d)), Nat.is_lt(ex, Nat.add(x1, d))),
           Bool.and(Nat.is_lt(z0, Nat.add(ez, d)), Nat.is_lt(ez, Nat.add(z1, d)))),
-        P.Body{ex, ey, ez, vx, vy, vz, g, h}, T.win(rest, x0, z0, x1, z1, d))
+        P.Body{ex, ey, ez, vx, vy, vz, g, h, rt}, T.win(rest, x0, z0, x1, z1, d))
 
 def T.within(xs: List<&2, P.Body>, +b: Bx, +r: Nat) -> List<&2, P.Body>:
   Bx{+x0, +y0, +z0, +x1, +y1, +z1} = b
@@ -4134,8 +4134,8 @@ def T.part(xs: List<&2, P.Body>, +l: Nat) -> Two:
   match xs:
     case []:
       Two{[], []}
-    case P.Body{+x, y, +z, vx, vy, vz, g, h} <> rest:
-      W.near1(Bool.not(T.side(l, T.key(x), T.key(z))), P.Body{x, y, z, vx, vy, vz, g, h}, T.part(rest, l))
+    case P.Body{+x, y, +z, vx, vy, vz, g, h, rt} <> rest:
+      W.near1(Bool.not(T.side(l, T.key(x), T.key(z))), P.Body{x, y, z, vx, vy, vz, g, h, rt}, T.part(rest, l))
 
 # the bucket coordinates of the upper half at level l: x's bit l/2 - 1 set
 # at an even level, z's bit (l + 1)/2 - 1 at an odd one

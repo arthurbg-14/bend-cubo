@@ -659,8 +659,8 @@ def Play.mid() -> Nat:
 # on the line, with no sideways speed of its own; what it carries along the
 # lane (and in the air) is kept
 def Align.body(b: P.Body) -> P.Body:
-  P.Body{x, y, z, vx, vy, vz, ground, hit} = b
-  P.Body{Play.mid(), y, z, P.Pos{0n}, vy, vz, ground, hit}
+  P.Body{x, y, z, vx, vy, vz, ground, hit, rt} = b
+  P.Body{Play.mid(), y, z, P.Pos{0n}, vy, vz, ground, hit, P.Rot.rest()}
 
 # the camera to the nearer end of the lane: a turn is 1024 steps, so 0 looks
 # down +z and 512 down -z. Only these two walk EXACTLY straight (sin is 0),

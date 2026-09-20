@@ -178,49 +178,165 @@ def K.fric(k: K) -> Nat:
   K{+g, +mu, jump, acc, size} = k
   Nat.div(Nat.mul(mu, g), 256n)
 
+# Rotation
+# --------
+# A cube resists turning the same about every axis: its inertia is
+# I = m s^2 / 6 times the identity. Two things follow, and the whole model
+# here rests on them.
+#
+# One: a cube in flight does not wobble. The term that makes a brick
+# tumble oddly, w x I w, is zero when I is a multiple of the identity, so
+# the angular velocity of a cube in flight never changes and the angle it
+# has turned grows by exactly the same amount every tick. That is exact in
+# integers, the way the parabola of a fall already is.
+#
+# Two: a hit out of the middle turns the body by the arm crossed with the
+# impulse, over that same I -- no tensor to carry around.
+#
+# What is kept is the angular velocity as a vector (exact) and the angle
+# turned about it, as a whole word: a full turn is the whole of it, so the
+# angle comes back around by itself and adding to it never rounds.
+
+type Rot is Data:
+  Rot{ax: Nat, ang: U32, w: Z}
+
+def Rot.rest() -> Rot:
+  Rot{0n, 0, Pos{0n}}
+
+def Rot.ax(r: Rot) -> Nat:
+  Rot{ax, ang, w} = r
+  ax
+
+def Rot.w(r: Rot) -> Z:
+  Rot{ax, ang, w} = r
+  w
+
+def Rot.ang(r: Rot) -> U32:
+  Rot{ax, ang, w} = r
+  ang
+
+# the angle a tick later: a whole turn is a whole word, so this comes back
+# around by itself and never rounds
+def Rot.step(+a: U32, w: Z) -> U32:
+  match w:
+    case Pos{+p}:
+      (a + U32.from_nat(p) : U32)
+    case Neg{+q}:
+      (a - U32.from_nat(q) : U32)
+
+# a tick of a body that touches nothing: same rate, same axis, and the
+# angle moved on by exactly that rate
+def Rot.free(r: Rot) -> Rot:
+  Rot{+ax, +ang, +w} = r
+  Rot{ax, Rot.step(ang, w), w}
+
+def Z.opp(v: Z) -> Z:
+  match v:
+    case Pos{n}:
+      Neg{n}
+    case Neg{n}:
+      Pos{n}
+
+def Z.sub(a: Z, b: Z) -> Z:
+  Z.add(a, Z.opp(b))
+
+# u v, the sign kept
+def Z.mul(u: Z, v: Z) -> Z:
+  match u v:
+    case Pos{+a} Pos{+b}:
+      Pos{Nat.mul(a, b)}
+    case Neg{+a} Neg{+b}:
+      Pos{Nat.mul(a, b)}
+    case Pos{+a} Neg{+b}:
+      Neg{Nat.mul(a, b)}
+    case Neg{+a} Pos{+b}:
+      Neg{Nat.mul(a, b)}
+
+# v / 8: what is left, in the units kept here, of dividing by a cube's
+# resistance to turning. The arm is in 2^-18 m and the impulse in 2^-10
+# m/s; their product over I = m s^2 / 6, turned into a share of a whole
+# turn a tick (a turn being a whole word), comes to a division by eight.
+# Landing on a corner at 5 m/s comes off turning two and a half times a
+# second, which is what a cube of a metre really does.
+def Z.shr3(v: Z) -> Z:
+  match v:
+    case Pos{+n}:
+      Pos{Nat.div(n, 8n)}
+    case Neg{+n}:
+      Neg{Nat.div(n, 8n)}
+
+# the arm crossed with the impulse, one part for each axis. Nothing comes
+# of an arm of zero (hit dead centre), and nothing about an axis from a
+# push along it.
+def Rot.crx(+ry: Z, +rz: Z, +jy: Z, +jz: Z) -> Z:
+  Z.sub(Z.mul(ry, jz), Z.mul(rz, jy))
+
+def Rot.cry(+rz: Z, +rx: Z, +jz: Z, +jx: Z) -> Z:
+  Z.sub(Z.mul(rz, jx), Z.mul(rx, jz))
+
+def Rot.crz(+rx: Z, +ry: Z, +jx: Z, +jy: Z) -> Z:
+  Z.sub(Z.mul(rx, jy), Z.mul(ry, jx))
+
+# the part of a turning that lies along one axis
+def Rot.pick(ax: Nat, tx: Z, ty: Z, tz: Z) -> Z:
+  match ax:
+    case 0n:
+      tx
+    case 1n:
+      ty
+    case _:
+      tz
+
+# the body after a hit of impulse j at the point the arm r points to: the
+# turning it gives, about the axis this body turns on
+def Rot.hit(r: Rot, +rx: Z, +ry: Z, +rz: Z, +jx: Z, +jy: Z, +jz: Z) -> Rot:
+  Rot{+ax, ang, w} = r
+  Rot{ax, ang, Z.add(w, Z.shr3(Rot.pick(ax, Rot.crx(ry, rz, jy, jz), Rot.cry(rz, rx, jz, jx),
+    Rot.crz(rx, ry, jx, jy))))}
+
 # Bodies
 # ------
 # A body: where its lowest corner is, its velocity, whether it stands on
 # something (ground), whether its last tick touched anything (hit).
 
 type Body is Data:
-  Body{x: Nat, y: Nat, z: Nat, vx: Z, vy: Z, vz: Z, ground: Bool, hit: Bool}
+  Body{x: Nat, y: Nat, z: Nat, vx: Z, vy: Z, vz: Z, ground: Bool, hit: Bool, rot: Rot}
 
 def Body.hit(b: Body) -> Bool:
-  Body{x, y, z, vx, vy, vz, ground, hit} = b
+  Body{x, y, z, vx, vy, vz, ground, hit, rt} = b
   hit
 
 def Body.ground(b: Body) -> Bool:
-  Body{x, y, z, vx, vy, vz, ground, hit} = b
+  Body{x, y, z, vx, vy, vz, ground, hit, rt} = b
   ground
 
 def Body.x(b: Body) -> Nat:
-  Body{x, y, z, vx, vy, vz, ground, hit} = b
+  Body{x, y, z, vx, vy, vz, ground, hit, rt} = b
   x
 
 def Body.y(b: Body) -> Nat:
-  Body{x, y, z, vx, vy, vz, ground, hit} = b
+  Body{x, y, z, vx, vy, vz, ground, hit, rt} = b
   y
 
 def Body.z(b: Body) -> Nat:
-  Body{x, y, z, vx, vy, vz, ground, hit} = b
+  Body{x, y, z, vx, vy, vz, ground, hit, rt} = b
   z
 
 def Body.vx(b: Body) -> Z:
-  Body{x, y, z, vx, vy, vz, ground, hit} = b
+  Body{x, y, z, vx, vy, vz, ground, hit, rt} = b
   vx
 
 def Body.vy(b: Body) -> Z:
-  Body{x, y, z, vx, vy, vz, ground, hit} = b
+  Body{x, y, z, vx, vy, vz, ground, hit, rt} = b
   vy
 
 def Body.vz(b: Body) -> Z:
-  Body{x, y, z, vx, vy, vz, ground, hit} = b
+  Body{x, y, z, vx, vy, vz, ground, hit, rt} = b
   vz
 
 # the mechanical energy, kinetic plus potential: vx^2 + vy^2 + vz^2 + g y
 def Body.energy(+g: Nat, b: Body) -> Nat:
-  Body{x, y, z, vx, vy, vz, ground, hit} = b
+  Body{x, y, z, vx, vy, vz, ground, hit, rt} = b
   Nat.add(Nat.add(Nat.add(Z.sq(vx), Z.sq(vy)), Z.sq(vz)), Nat.mul(g, y))
 
 def Body.energies(+g: Nat, bs: List<&2, Body>) -> Nat:
@@ -240,7 +356,7 @@ def Geo.ovl(+s: Nat, +a: Nat, +b: Nat) -> Bool:
 
 # does the box at (x, y, z) overlap o's?
 def Geo.meets(+s: Nat, +x: Nat, +y: Nat, +z: Nat, o: Body) -> Bool:
-  Body{ox, oy, oz, vx, vy, vz, ground, hit} = o
+  Body{ox, oy, oz, vx, vy, vz, ground, hit, rt} = o
   Bool.and(Geo.ovl(s, x, ox), Bool.and(Geo.ovl(s, z, oz), Geo.ovl(s, y, oy)))
 
 # is the box at (x, y, z) clear of every obstacle?
@@ -261,7 +377,7 @@ def Geo.head(+s: Nat, +x: Nat, +y: Nat, +z: Nat, obs: List<&2, Body>) -> Bool:
 
 # the top of o, if it is under the column (x, z) at most at height y
 def Geo.floor1(+s: Nat, +x: Nat, +y: Nat, +z: Nat, o: Body, +best: Nat) -> Nat:
-  Body{+ox, +oy, +oz, vx, vy, vz, ground, hit} = o
+  Body{+ox, +oy, +oz, vx, vy, vz, ground, hit, rt} = o
   +top = Nat.add(oy, s)
   Pick.n(Bool.and(Bool.and(Geo.ovl(s, x, ox), Geo.ovl(s, z, oz)), Bool.and(Nat.is_le(top, y), Nat.is_lt(best, top))), top, best)
 
@@ -280,7 +396,7 @@ def Geo.rests(+s: Nat, +x: Nat, +y: Nat, +z: Nat, obs: List<&2, Body>) -> Bool:
     case []:
       False{}
     case o <> rest:
-      Body{+ox, +oy, +oz, vx, vy, vz, ground, hit} = o
+      Body{+ox, +oy, +oz, vx, vy, vz, ground, hit, rt} = o
       Bool.or(Bool.and(Bool.and(Geo.ovl(s, x, ox), Geo.ovl(s, z, oz)), Nat.is_eq(Nat.add(oy, s), y)),
         Geo.rests(s, x, y, z, rest))
 
@@ -358,36 +474,36 @@ def Motor.go(+acc: Nat, walk: Maybe<&2, Wish>, +vx: Z, +vz: Z) -> Z & Z:
 # no motor, no friction (gravity comes with the vertical move, Move.y). The
 # tick starts untouched (hit off).
 
-def Drive.leap(jump: Bool, +k: K, +x: Nat, +y: Nat, +z: Nat, v: Z & Z) -> Body:
+def Drive.leap(jump: Bool, +k: K, +x: Nat, +y: Nat, +z: Nat, v: Z & Z, +rt: Rot) -> Body:
   match jump:
     case True{}:
       K{g, mu, j, acc, size} = k
       (vx, vz) = v
-      Body{x, y, z, vx, Pos{j}, vz, False{}, False{}}
+      Body{x, y, z, vx, Pos{j}, vz, False{}, False{}, rt}
     case False{}:
       (vx, vz) = v
-      Body{x, y, z, vx, Pos{0n}, vz, True{}, False{}}
+      Body{x, y, z, vx, Pos{0n}, vz, True{}, False{}, rt}
 
-def Drive.ground(+k: K, walk: Maybe<&2, Wish>, jump: Bool, +x: Nat, +y: Nat, +z: Nat, v: Z & Z) -> Body:
+def Drive.ground(+k: K, walk: Maybe<&2, Wish>, jump: Bool, +x: Nat, +y: Nat, +z: Nat, v: Z & Z, +rt: Rot) -> Body:
   K{g, mu, j, +acc, size} = k
   (vx, vz) = v
-  Drive.leap(jump, k, x, y, z, Motor.go(acc, walk, vx, vz))
+  Drive.leap(jump, k, x, y, z, Motor.go(acc, walk, vx, vz), rt)
 
-def Drive.air(+x: Nat, +y: Nat, +z: Nat, +vx: Z, +vy: Z, +vz: Z) -> Body:
-  Body{x, y, z, vx, vy, vz, False{}, False{}}
+def Drive.air(+x: Nat, +y: Nat, +z: Nat, +vx: Z, +vy: Z, +vz: Z, +rt: Rot) -> Body:
+  Body{x, y, z, vx, vy, vz, False{}, False{}, rt}
 
 def Drive.go(gr: Bool, +k: K, walk: Maybe<&2, Wish>, jump: Bool, +x: Nat, +y: Nat, +z: Nat,
-  +vx: Z, +vy: Z, +vz: Z) -> Body:
+  +vx: Z, +vy: Z, +vz: Z, +rt: Rot) -> Body:
   match gr:
     case True{}:
-      Drive.ground(k, walk, jump, x, y, z, Fric.apply(K.fric(k), vx, vz))
+      Drive.ground(k, walk, jump, x, y, z, Fric.apply(K.fric(k), vx, vz), rt)
     case False{}:
-      Drive.air(x, y, z, vx, vy, vz)
+      Drive.air(x, y, z, vx, vy, vz, rt)
 
 def Body.drive(+k: K, inp: In, b: Body) -> Body:
   In{walk, jump} = inp
-  Body{x, y, z, vx, vy, vz, gr, hit} = b
-  Drive.go(gr, k, walk, jump, x, y, z, vx, vy, vz)
+  Body{x, y, z, vx, vy, vz, gr, hit, rt} = b
+  Drive.go(gr, k, walk, jump, x, y, z, vx, vy, vz, rt)
 
 # Sharing
 # -------
@@ -503,13 +619,13 @@ def Push.cons(+o: Body, r: Pushed) -> Pushed:
   Pushed{v, o <> obs, at}
 
 def Push.xput(vw: Z & Z, +at: Nat, +ox: Nat, +oy: Nat, +oz: Nat, +ovy: Z, +ovz: Z, +og: Bool, +oh: Bool,
-  rest: List<&2, Body>) -> Pushed:
+  rest: List<&2, Body>, +rt: Rot) -> Pushed:
   (v2, w2) = vw
-  Pushed{v2, Body{ox, oy, oz, w2, ovy, ovz, og, oh} <> rest, Some{at}}
+  Pushed{v2, Body{ox, oy, oz, w2, ovy, ovz, og, oh, rt} <> rest, Some{at}}
 
 def Push.xone(+s: Nat, +d: Z, +v: Z, o: Body, rest: List<&2, Body>) -> Pushed:
-  Body{+ox, +oy, +oz, +ovx, +ovy, +ovz, +og, +oh} = o
-  Push.xput(Push.share(Push.closing(d, v, ovx), v, ovx), Push.stop(s, d, ox), ox, oy, oz, ovy, ovz, og, oh, rest)
+  Body{+ox, +oy, +oz, +ovx, +ovy, +ovz, +og, +oh, rt} = o
+  Push.xput(Push.share(Push.closing(d, v, ovx), v, ovx), Push.stop(s, d, ox), ox, oy, oz, ovy, ovz, og, oh, rest, rt)
 
 def Push.x(+s: Nat, obs: List<&2, Body>, +d: Z, +cx: Nat, +y: Nat, +z: Nat, +v: Z, here: Bool) -> Pushed:
   match obs here:
@@ -521,13 +637,13 @@ def Push.x(+s: Nat, obs: List<&2, Body>, +d: Z, +cx: Nat, +y: Nat, +z: Nat, +v: 
       Push.cons(o, Push.x(s, rest, d, cx, y, z, v, Geo.head(s, cx, y, z, rest)))
 
 def Push.zput(vw: Z & Z, +at: Nat, +ox: Nat, +oy: Nat, +oz: Nat, +ovx: Z, +ovy: Z, +og: Bool, +oh: Bool,
-  rest: List<&2, Body>) -> Pushed:
+  rest: List<&2, Body>, +rt: Rot) -> Pushed:
   (v2, w2) = vw
-  Pushed{v2, Body{ox, oy, oz, ovx, ovy, w2, og, oh} <> rest, Some{at}}
+  Pushed{v2, Body{ox, oy, oz, ovx, ovy, w2, og, oh, rt} <> rest, Some{at}}
 
 def Push.zone(+s: Nat, +d: Z, +v: Z, o: Body, rest: List<&2, Body>) -> Pushed:
-  Body{+ox, +oy, +oz, +ovx, +ovy, +ovz, +og, +oh} = o
-  Push.zput(Push.share(Push.closing(d, v, ovz), v, ovz), Push.stop(s, d, oz), ox, oy, oz, ovx, ovy, og, oh, rest)
+  Body{+ox, +oy, +oz, +ovx, +ovy, +ovz, +og, +oh, rt} = o
+  Push.zput(Push.share(Push.closing(d, v, ovz), v, ovz), Push.stop(s, d, oz), ox, oy, oz, ovx, ovy, og, oh, rest, rt)
 
 def Push.z(+s: Nat, obs: List<&2, Body>, +d: Z, +x: Nat, +y: Nat, +cz: Nat, +v: Z, here: Bool) -> Pushed:
   match obs here:
@@ -543,74 +659,74 @@ def Push.z(+s: Nat, obs: List<&2, Body>, +d: Z, +x: Nat, +y: Nat, +cz: Nat, +v: 
 # Each move is gated: the box goes to its new place only if it is free
 # there; blocked, it stops against what it met (if free there) or stays.
 
-def Move.xput(ok: Bool, +obs: List<&2, Body>, +cx: Nat, +x: Nat, +y: Nat, +z: Nat, +v: Z, +vy: Z, +vz: Z, +gr: Bool)
+def Move.xput(ok: Bool, +obs: List<&2, Body>, +cx: Nat, +x: Nat, +y: Nat, +z: Nat, +v: Z, +vy: Z, +vz: Z, +gr: Bool, +rt: Rot)
   -> Body & List<&2, Body>:
   match ok:
     case True{}:
-      (Body{cx, y, z, v, vy, vz, gr, True{}}, obs)
+      (Body{cx, y, z, v, vy, vz, gr, True{}, rt}, obs)
     case False{}:
-      (Body{x, y, z, v, vy, vz, gr, True{}}, obs)
+      (Body{x, y, z, v, vy, vz, gr, True{}, rt}, obs)
 
-def Move.xat(+s: Nat, at: Maybe<&2, Nat>, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +v: Z, +vy: Z, +vz: Z, +gr: Bool)
+def Move.xat(+s: Nat, at: Maybe<&2, Nat>, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +v: Z, +vy: Z, +vz: Z, +gr: Bool, +rt: Rot)
   -> Body & List<&2, Body>:
   match at:
     case None{}:
-      (Body{x, y, z, v, vy, vz, gr, True{}}, obs)
+      (Body{x, y, z, v, vy, vz, gr, True{}, rt}, obs)
     case Some{+cx}:
-      Move.xput(Geo.free(s, cx, y, z, obs), obs, cx, x, y, z, v, vy, vz, gr)
+      Move.xput(Geo.free(s, cx, y, z, obs), obs, cx, x, y, z, v, vy, vz, gr, rt)
 
-def Move.xhit(+s: Nat, r: Pushed, +x: Nat, +y: Nat, +z: Nat, +vy: Z, +vz: Z, +gr: Bool) -> Body & List<&2, Body>:
+def Move.xhit(+s: Nat, r: Pushed, +x: Nat, +y: Nat, +z: Nat, +vy: Z, +vz: Z, +gr: Bool, +rt: Rot) -> Body & List<&2, Body>:
   Pushed{v, obs, at} = r
-  Move.xat(s, at, obs, x, y, z, v, vy, vz, gr)
+  Move.xat(s, at, obs, x, y, z, v, vy, vz, gr, rt)
 
 def Move.xgo(+s: Nat, ok: Bool, +obs: List<&2, Body>, +d: Z, +cx: Nat, +x: Nat, +y: Nat, +z: Nat, +vx: Z, +vy: Z, +vz: Z,
-  +gr: Bool, +hit: Bool) -> Body & List<&2, Body>:
+  +gr: Bool, +hit: Bool, +rt: Rot) -> Body & List<&2, Body>:
   match ok:
     case True{}:
-      (Body{cx, y, z, vx, vy, vz, gr, hit}, obs)
+      (Body{cx, y, z, vx, vy, vz, gr, hit, rt}, obs)
     case False{}:
-      Move.xhit(s, Push.x(s, obs, d, cx, y, z, vx, Geo.head(s, cx, y, z, obs)), x, y, z, vy, vz, gr)
+      Move.xhit(s, Push.x(s, obs, d, cx, y, z, vx, Geo.head(s, cx, y, z, obs)), x, y, z, vy, vz, gr, rt)
 
 # the move along x, by the start and end velocities added
 def Move.x(+s: Nat, +obs: List<&2, Body>, +v0: Z, b: Body) -> Body & List<&2, Body>:
-  Body{+x, +y, +z, +vx, +vy, +vz, +gr, +hit} = b
+  Body{+x, +y, +z, +vx, +vy, +vz, +gr, +hit, rt} = b
   +d = Z.add(v0, vx)
   +cx = Z.shift(x, d)
-  Move.xgo(s, Bool.and(Z.fits(x, d), Geo.free(s, cx, y, z, obs)), obs, d, cx, x, y, z, vx, vy, vz, gr, hit)
+  Move.xgo(s, Bool.and(Z.fits(x, d), Geo.free(s, cx, y, z, obs)), obs, d, cx, x, y, z, vx, vy, vz, gr, hit, rt)
 
-def Move.zput(ok: Bool, +obs: List<&2, Body>, +cz: Nat, +x: Nat, +y: Nat, +z: Nat, +vx: Z, +vy: Z, +v: Z, +gr: Bool)
+def Move.zput(ok: Bool, +obs: List<&2, Body>, +cz: Nat, +x: Nat, +y: Nat, +z: Nat, +vx: Z, +vy: Z, +v: Z, +gr: Bool, +rt: Rot)
   -> Body & List<&2, Body>:
   match ok:
     case True{}:
-      (Body{x, y, cz, vx, vy, v, gr, True{}}, obs)
+      (Body{x, y, cz, vx, vy, v, gr, True{}, rt}, obs)
     case False{}:
-      (Body{x, y, z, vx, vy, v, gr, True{}}, obs)
+      (Body{x, y, z, vx, vy, v, gr, True{}, rt}, obs)
 
-def Move.zat(+s: Nat, at: Maybe<&2, Nat>, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +vx: Z, +vy: Z, +v: Z, +gr: Bool)
+def Move.zat(+s: Nat, at: Maybe<&2, Nat>, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +vx: Z, +vy: Z, +v: Z, +gr: Bool, +rt: Rot)
   -> Body & List<&2, Body>:
   match at:
     case None{}:
-      (Body{x, y, z, vx, vy, v, gr, True{}}, obs)
+      (Body{x, y, z, vx, vy, v, gr, True{}, rt}, obs)
     case Some{+cz}:
-      Move.zput(Geo.free(s, x, y, cz, obs), obs, cz, x, y, z, vx, vy, v, gr)
+      Move.zput(Geo.free(s, x, y, cz, obs), obs, cz, x, y, z, vx, vy, v, gr, rt)
 
-def Move.zhit(+s: Nat, r: Pushed, +x: Nat, +y: Nat, +z: Nat, +vx: Z, +vy: Z, +gr: Bool) -> Body & List<&2, Body>:
+def Move.zhit(+s: Nat, r: Pushed, +x: Nat, +y: Nat, +z: Nat, +vx: Z, +vy: Z, +gr: Bool, +rt: Rot) -> Body & List<&2, Body>:
   Pushed{v, obs, at} = r
-  Move.zat(s, at, obs, x, y, z, vx, vy, v, gr)
+  Move.zat(s, at, obs, x, y, z, vx, vy, v, gr, rt)
 
 def Move.zgo(+s: Nat, ok: Bool, +obs: List<&2, Body>, +d: Z, +cz: Nat, +x: Nat, +y: Nat, +z: Nat, +vx: Z, +vy: Z, +vz: Z,
-  +gr: Bool, +hit: Bool) -> Body & List<&2, Body>:
+  +gr: Bool, +hit: Bool, +rt: Rot) -> Body & List<&2, Body>:
   match ok:
     case True{}:
-      (Body{x, y, cz, vx, vy, vz, gr, hit}, obs)
+      (Body{x, y, cz, vx, vy, vz, gr, hit, rt}, obs)
     case False{}:
-      Move.zhit(s, Push.z(s, obs, d, x, y, cz, vz, Geo.head(s, x, y, cz, obs)), x, y, z, vx, vy, gr)
+      Move.zhit(s, Push.z(s, obs, d, x, y, cz, vz, Geo.head(s, x, y, cz, obs)), x, y, z, vx, vy, gr, rt)
 
 def Move.z(+s: Nat, +obs: List<&2, Body>, +v0: Z, b: Body) -> Body & List<&2, Body>:
-  Body{+x, +y, +z, +vx, +vy, +vz, +gr, +hit} = b
+  Body{+x, +y, +z, +vx, +vy, +vz, +gr, +hit, rt} = b
   +d = Z.add(v0, vz)
   +cz = Z.shift(z, d)
-  Move.zgo(s, Bool.and(Z.fits(z, d), Geo.free(s, x, y, cz, obs)), obs, d, cz, x, y, z, vx, vy, vz, gr, hit)
+  Move.zgo(s, Bool.and(Z.fits(z, d), Geo.free(s, x, y, cz, obs)), obs, d, cz, x, y, z, vx, vy, vz, gr, hit, rt)
 
 # Gravity: a tick takes g from the vertical velocity; the move is the
 # start and end velocities added, (v', v + v'). Rising at s < g, the body
@@ -629,52 +745,52 @@ def Fly.step(+g: Nat, v: Z) -> Z & Z:
     case Neg{+s}:
       (Neg{Nat.add(s, g)}, Neg{Nat.add(Nat.add(s, s), g)})
 
-def Move.rise(ok: Bool, +x: Nat, +y: Nat, +z: Nat, +p: Nat, +vx: Z, +v: Z, +vz: Z, +hit: Bool) -> Body:
+def Move.rise(ok: Bool, +x: Nat, +y: Nat, +z: Nat, +p: Nat, +vx: Z, +v: Z, +vz: Z, +hit: Bool, +rt: Rot) -> Body:
   match ok:
     case True{}:
-      Body{x, Nat.add(y, p), z, vx, v, vz, False{}, hit}
+      Body{x, Nat.add(y, p), z, vx, v, vz, False{}, hit, rt}
     case False{}:
-      Body{x, y, z, vx, Pos{0n}, vz, False{}, True{}}
+      Body{x, y, z, vx, Pos{0n}, vz, False{}, True{}, rt}
 
-def Move.land(ok: Bool, +x: Nat, +y: Nat, +z: Nat, +fl: Nat, +vx: Z, +vz: Z) -> Body:
+def Move.land(ok: Bool, +x: Nat, +y: Nat, +z: Nat, +fl: Nat, +vx: Z, +vz: Z, +rt: Rot) -> Body:
   match ok:
     case True{}:
-      Body{x, fl, z, vx, Pos{0n}, vz, True{}, True{}}
+      Body{x, fl, z, vx, Pos{0n}, vz, True{}, True{}, rt}
     case False{}:
-      Body{x, y, z, vx, Pos{0n}, vz, False{}, True{}}
+      Body{x, y, z, vx, Pos{0n}, vz, False{}, True{}, rt}
 
 def Move.fall(+s: Nat, ok: Bool, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +q: Nat, +fl: Nat, +vx: Z, +v: Z, +vz: Z,
-  +hit: Bool) -> Body:
+  +hit: Bool, +rt: Rot) -> Body:
   match ok:
     case True{}:
-      Body{x, Nat.sub(y, q), z, vx, v, vz, False{}, hit}
+      Body{x, Nat.sub(y, q), z, vx, v, vz, False{}, hit, rt}
     case False{}:
-      Move.land(Bool.and(Nat.is_le(fl, y), Geo.free(s, x, fl, z, obs)), x, y, z, fl, vx, vz)
+      Move.land(Bool.and(Nat.is_le(fl, y), Geo.free(s, x, fl, z, obs)), x, y, z, fl, vx, vz, rt)
 
-def Move.fly(+s: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +vx: Z, +vz: Z, +hit: Bool, st: Z & Z) -> Body:
+def Move.fly(+s: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +vx: Z, +vz: Z, +hit: Bool, st: Z & Z, +rt: Rot) -> Body:
   (v, d) = st
   match d:
     case Pos{+p}:
-      Move.rise(Geo.free(s, x, Nat.add(y, p), z, obs), x, y, z, p, vx, v, vz, hit)
+      Move.rise(Geo.free(s, x, Nat.add(y, p), z, obs), x, y, z, p, vx, v, vz, hit, rt)
     case Neg{+q}:
       +fl = Geo.floor(s, x, y, z, obs, 0n)
       Move.fall(s, Bool.and(Nat.is_le(Nat.add(fl, q), y), Geo.free(s, x, Nat.sub(y, q), z, obs)), obs, x, y, z, q, fl,
-        vx, v, vz, hit)
+        vx, v, vz, hit, rt)
 
 def Move.ygo(+s: Nat, gr: Bool, +g: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +vx: Z, +vy: Z, +vz: Z,
-  +hit: Bool) -> Body:
+  +hit: Bool, +rt: Rot) -> Body:
   match gr:
     case True{}:
-      Body{x, y, z, vx, vy, vz, Bool.or(Nat.is_eq(y, 0n), Geo.rests(s, x, y, z, obs)), hit}
+      Body{x, y, z, vx, vy, vz, Bool.or(Nat.is_eq(y, 0n), Geo.rests(s, x, y, z, obs)), hit, rt}
     case False{}:
-      Move.fly(s, obs, x, y, z, vx, vz, hit, Fly.step(g, vy))
+      Move.fly(s, obs, x, y, z, vx, vz, hit, Fly.step(g, vy), rt)
 
 # the vertical move: standing, whether still on something; else a tick of
 # gravity, a free fall or rise, or a landing (on the highest top under the
 # body, the ground at 0) or a bump
 def Move.y(+s: Nat, +g: Nat, +obs: List<&2, Body>, b: Body) -> Body:
-  Body{+x, +y, +z, +vx, +vy, +vz, gr, +hit} = b
-  Move.ygo(s, gr, g, obs, x, y, z, vx, vy, vz, hit)
+  Body{+x, +y, +z, +vx, +vy, +vz, gr, +hit, rt} = b
+  Move.ygo(s, gr, g, obs, x, y, z, vx, vy, vz, hit, rt)
 
 # The tick
 # --------
@@ -690,8 +806,8 @@ def Tick.z(+s: Nat, +g: Nat, +vz0: Z, r: Body & List<&2, Body>) -> Body & List<&
   Tick.y(s, g, Move.z(s, obs, vz0, b))
 
 def Body.tick(+k: K, +obs: List<&2, Body>, inp: In, b: Body) -> Body & List<&2, Body>:
-  Body{+x, +y, +z, +vx, +vy, +vz, +gr, +hit} = b
-  Tick.z(K.size(k), K.g(k), vz, Move.x(K.size(k), obs, vx, Body.drive(k, inp, Body{x, y, z, vx, vy, vz, gr, hit})))
+  Body{+x, +y, +z, +vx, +vy, +vz, +gr, +hit, rt} = b
+  Tick.z(K.size(k), K.g(k), vz, Move.x(K.size(k), obs, vx, Body.drive(k, inp, Body{x, y, z, vx, vy, vz, gr, hit, rt})))
 
 def Tick.body(r: Body & List<&2, Body>) -> Body:
   (b, obs) = r
@@ -730,108 +846,3 @@ def Flight.clear(+k: K, obss: List<&2, List<&2, Body>>, +b: Body) -> Bool:
       +b2 = Tick.body(Body.tick(k, obs, In.idle(), b))
       Bool.and(Bool.and(Bool.not(Body.ground(b)), Bool.not(Body.hit(b2))), Flight.clear(k, rest, b2))
 
-# Rotation
-# --------
-# A cube resists turning the same about every axis: its inertia is
-# I = m s^2 / 6 times the identity. Two things follow, and the whole model
-# here rests on them.
-#
-# One: a cube in flight does not wobble. The term that makes a brick
-# tumble oddly, w x I w, is zero when I is a multiple of the identity, so
-# the angular velocity of a cube in flight never changes and the angle it
-# has turned grows by exactly the same amount every tick. That is exact in
-# integers, the way the parabola of a fall already is.
-#
-# Two: a hit out of the middle turns the body by the arm crossed with the
-# impulse, over that same I -- no tensor to carry around.
-#
-# What is kept is the angular velocity as a vector (exact) and the angle
-# turned about it, as a whole word: a full turn is the whole of it, so the
-# angle comes back around by itself and adding to it never rounds.
-
-type Rot is Data:
-  Rot{wx: Z, wy: Z, wz: Z, ang: U32}
-
-def Rot.rest() -> Rot:
-  Rot{Pos{0n}, Pos{0n}, Pos{0n}, 0}
-
-def Rot.wx(r: Rot) -> Z:
-  Rot{wx, wy, wz, ang} = r
-  wx
-
-def Rot.wy(r: Rot) -> Z:
-  Rot{wx, wy, wz, ang} = r
-  wy
-
-def Rot.wz(r: Rot) -> Z:
-  Rot{wx, wy, wz, ang} = r
-  wz
-
-def Rot.ang(r: Rot) -> U32:
-  Rot{wx, wy, wz, ang} = r
-  ang
-
-# how fast it turns: the size of the angular velocity, which is how much
-# of a turn it gets through in a tick
-def Rot.rate(r: Rot) -> Nat:
-  Rot{+wx, +wy, +wz, ang} = r
-  Fric.speed(Fric.speed(Z.mag(wx), Z.mag(wy)), Z.mag(wz))
-
-# a tick of a body that touches nothing: same angular velocity, and the
-# angle moved on by exactly that much
-def Rot.free(r: Rot) -> Rot:
-  Rot{+wx, +wy, +wz, +ang} = r
-  Rot{wx, wy, wz, (ang + U32.from_nat(Rot.rate(Rot{wx, wy, wz, ang})) : U32)}
-
-def Z.opp(v: Z) -> Z:
-  match v:
-    case Pos{n}:
-      Neg{n}
-    case Neg{n}:
-      Pos{n}
-
-def Z.sub(a: Z, b: Z) -> Z:
-  Z.add(a, Z.opp(b))
-
-# u v, the sign kept
-def Z.mul(u: Z, v: Z) -> Z:
-  match u v:
-    case Pos{+a} Pos{+b}:
-      Pos{Nat.mul(a, b)}
-    case Neg{+a} Neg{+b}:
-      Pos{Nat.mul(a, b)}
-    case Pos{+a} Neg{+b}:
-      Neg{Nat.mul(a, b)}
-    case Neg{+a} Pos{+b}:
-      Neg{Nat.mul(a, b)}
-
-# v / 8: what is left, in the units kept here, of dividing by a cube's
-# resistance to turning. The arm is in 2^-18 m and the impulse in 2^-10
-# m/s; their product over I = m s^2 / 6, turned into a share of a whole
-# turn a tick (a turn being a whole word), comes to a division by eight.
-# Landing on a corner at 5 m/s comes off turning two and a half times a
-# second, which is what a cube of a metre really does.
-def Z.shr3(v: Z) -> Z:
-  match v:
-    case Pos{+n}:
-      Pos{Nat.div(n, 8n)}
-    case Neg{+n}:
-      Neg{Nat.div(n, 8n)}
-
-# the arm crossed with the impulse, one part for each axis. Nothing comes
-# of an arm of zero (hit dead centre), and nothing about an axis from a
-# push along it.
-def Rot.crx(+ry: Z, +rz: Z, +jy: Z, +jz: Z) -> Z:
-  Z.sub(Z.mul(ry, jz), Z.mul(rz, jy))
-
-def Rot.cry(+rz: Z, +rx: Z, +jz: Z, +jx: Z) -> Z:
-  Z.sub(Z.mul(rz, jx), Z.mul(rx, jz))
-
-def Rot.crz(+rx: Z, +ry: Z, +jx: Z, +jy: Z) -> Z:
-  Z.sub(Z.mul(rx, jy), Z.mul(ry, jx))
-
-# the body after a hit of impulse j at the point the arm r points to
-def Rot.hit(r: Rot, +rx: Z, +ry: Z, +rz: Z, +jx: Z, +jy: Z, +jz: Z) -> Rot:
-  Rot{wx, wy, wz, ang} = r
-  Rot{Z.add(wx, Z.shr3(Rot.crx(ry, rz, jy, jz))), Z.add(wy, Z.shr3(Rot.cry(rz, rx, jz, jx))),
-    Z.add(wz, Z.shr3(Rot.crz(rx, ry, jx, jy))), ang}

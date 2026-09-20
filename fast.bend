@@ -42,7 +42,7 @@ def wall(+n: Nat) -> List<&2, P.Body>:
 # o veloz: 100 m/s para +x, na altura do meio da parede
 def fast() -> P.Body:
   +o = W.W.base(W.W.origin())
-  P.Body{o, 262144n, Nat.add(o, 786432n), P.Pos{102400n}, P.Pos{0n}, P.Pos{0n}, False{}, False{}}
+  P.Body{o, 262144n, Nat.add(o, 786432n), P.Pos{102400n}, P.Pos{0n}, P.Pos{0n}, False{}, False{}, P.Rot.rest()}
 
 def wld() -> W.World:
   W.World{12345, W.CLeaf{[]}, fast() <> wall(5n), [], W.W.cube(Nat.sub(W.W.base(W.W.origin()), 5242880n), 0n,
