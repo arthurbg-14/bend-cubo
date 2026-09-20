@@ -246,3 +246,34 @@ law no_clip:
   for clear: {P.Geo.free(P.K.size(k), P.Body.x(b), P.Body.y(b), P.Body.z(b), obs) == True{} : Bool}
   r = P.Body.tick(k, obs, inp, b)
   {P.Geo.free(P.K.size(k), P.Body.x(P.Tick.body(r)), P.Body.y(P.Tick.body(r)), P.Body.z(P.Tick.body(r)), P.Tick.obs(r)) == True{} : Bool}
+
+# Spin
+# ----
+
+# LAW: a spin left alone never changes. A body that touches nothing keeps
+# turning at exactly the same rate -- there is no friction in the air
+# here -- and its angle a tick later is the angle it had plus that rate,
+# exactly, whatever the rate and whatever the angle.
+law spin_is_steady:
+  for +sp: P.Spin
+  s1 = P.Spin.free(sp)
+  {P.Spin.wx(s1) == P.Spin.wx(sp) : U32}
+  & {P.Spin.wy(s1) == P.Spin.wy(sp) : U32}
+  & {P.Spin.wz(s1) == P.Spin.wz(sp) : U32}
+  & {P.Spin.ax(s1) == P.Spin.step(P.Spin.ax(sp), P.Spin.wx(sp)) : U32}
+  & {P.Spin.ay(s1) == P.Spin.step(P.Spin.ay(sp), P.Spin.wy(sp)) : U32}
+  & {P.Spin.az(s1) == P.Spin.step(P.Spin.az(sp), P.Spin.wz(sp)) : U32}
+
+
+# LAW: a hit dead centre does not turn anything. What turns a body is the
+# lever arm -- how far from its middle it was touched -- crossed with the
+# velocity the hit took away. An arm of zero gives nothing to cross with,
+# so the body does not turn at all, however hard the hit.
+law no_spin_from_the_middle:
+  for +dx: P.Z
+  for +dy: P.Z
+  for +dz: P.Z
+  {P.Z.mag(P.Spin.crx(P.Pos{0n}, P.Pos{0n}, dy, dz)) == 0n : Nat}
+  & {P.Z.mag(P.Spin.cry(P.Pos{0n}, P.Pos{0n}, dz, dx)) == 0n : Nat}
+  & {P.Z.mag(P.Spin.crz(P.Pos{0n}, P.Pos{0n}, dx, dy)) == 0n : Nat}
+

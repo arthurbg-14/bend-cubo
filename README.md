@@ -118,6 +118,8 @@ movimento. O tick marca isso no próprio corpo (`hit`).
 | `push_energy` | uma colisão nunca cria energia cinética |
 | `energy_never_grows` | sem entrada, nenhum tick aumenta a energia do corpo mais a dos obstáculos que ele toca; só o motor e o pulo põem energia |
 | `no_clip` | um corpo livre dos obstáculos continua livre depois do tick, com qualquer entrada: nada anda, cai ou é empurrado para dentro de outro cubo |
+| `spin_is_steady` | um giro solto nunca muda: o corpo continua girando na mesma taxa para sempre, e o ângulo um tick depois é o ângulo mais essa taxa, exatamente |
+| `no_spin_from_the_middle` | batida em cheio no meio não gira nada: o que gira é o braço de alavanca, e braço zero não cruza com nada |
 
 Não há `@unsafe`, `?TODO` nem axiomas. A verificação leva cerca de 10 s.
 

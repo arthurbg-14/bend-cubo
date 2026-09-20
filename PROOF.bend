@@ -2362,3 +2362,50 @@ def Laws.no_clip(k, obs, inp, b, clear):
   match k b:
     case P.K{+g, +mu, +j, +acc, +s} P.Body{+x, +y, +z, +vx, +vy, +vz, +gr, +hit}:
       nclip(g, mu, j, acc, s, obs, inp, x, y, z, vx, vy, vz, gr, hit, clear)
+
+# Spin
+# ----
+# A spin left alone: Spin.free copies the three rates and steps the three
+# angles, so each half of the law is what the code says, word for word.
+
+def Laws.spin_is_steady(sp):
+  match sp:
+    case P.Spin{+wx, +wy, +wz, +ax, +ay, +az}:
+      ({==}, {==}, {==}, {==}, {==}, {==})
+
+
+# Nat.mul counts down its first number, so a zero there falls out at once
+# but a zero on the other side does not: this is the induction that says
+# anything times nothing is nothing.
+def mul_zero(a: Nat) -> {Nat.mul(a, 0n) == 0n : Nat}:
+  match a:
+    case 0n:
+      {==}
+    case 1n+p:
+      mul_zero(p)
+
+# A hit dead centre: the arm is zero, so both products of every crossing
+# are zero times something, and zero minus zero is zero.
+
+def Laws.no_spin_from_the_middle(dx, dy, dz):
+  match dx dy dz:
+    case P.Pos{+a} P.Pos{+b} P.Pos{+c}:
+      ({==}, {==}, {==})
+    case P.Pos{+a} P.Pos{+b} P.Neg{+c}:
+      ({==}, {==}, {==})
+    case P.Pos{+a} P.Neg{+b} P.Pos{+c}:
+      ({==}, {==}, {==})
+    case P.Pos{+a} P.Neg{+b} P.Neg{+c}:
+      ({==}, {==}, {==})
+    case P.Neg{+a} P.Pos{+b} P.Pos{+c}:
+      ({==}, {==}, {==})
+    case P.Neg{+a} P.Pos{+b} P.Neg{+c}:
+      ({==}, {==}, {==})
+    case P.Neg{+a} P.Neg{+b} P.Pos{+c}:
+      ({==}, {==}, {==})
+    case P.Neg{+a} P.Neg{+b} P.Neg{+c}:
+      ({==}, {==}, {==})
+
+# A push along an axis with the arm along the same axis: each crossing it
+# could enter has a zero in both of its products.
+
