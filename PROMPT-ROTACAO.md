@@ -1,5 +1,30 @@
 # Tarefa: rotação e queda de corpo rígido no Cubo Azul, com as leis provadas
 
+## Estado (20/09/2026)
+
+Executado até aqui; o que segue neste arquivo é o plano, que continua valendo
+para o que falta. O estado abaixo é o do `master` a partir de `386b75e`; a
+dinâmica de contato está no ramo `giro-dinamica`.
+
+| passo da ordem de trabalho | estado |
+|---|---|
+| 1. apagar o escorregão e suas leis | **feito** (`006b552`) |
+| 2. corpo rígido no `phys.bend`: giro, orientação, inércia isotrópica, integração livre + lei 1 | **feito** — giro como vetor **exato** (`Wv`), orientação como quatérnio em 2⁻¹⁵ (`Quat`), seno/cosseno próprios (`Trig`, erro 1,2·10⁻⁵, exatos nos quartos de volta). O corpo guarda o **canto**, não o centro de massa: o centro é canto + s/2, e as contas de braço já usam o centro. |
+| 3. empacotamento novo em `world.bend` | **feito** — 16 palavras por corpo (6 + 4 do quatérnio + 3 do giro + folga); cubo parado não escreve, lê nem copia as sete (bandeira no bit 27). Teste novo em `./chunks` soma os giros antes/depois. **Falta** o cabeçalho/shader desenhando orientado. |
+| 4. colisão OBB (SAT) no lugar da alinhada, com `no_clip` provado de novo | **feito** — `Geo.sat`, quinze eixos, igual ao teste de caixa enquanto nada girou (`./fast`, 3375 posições); `no_clip` reprovado e **mais forte**: cobra o corpo livre *virado do jeito que terminou*. |
+| 5. impulsos com braço e atrito de contato (leis 2, 3, 5) | **leis 2 e 3 provadas**; o impulso de contato está só no ramo `giro-dinamica` |
+| 6. contatos múltiplos, repouso e dormir (leis 6, 7, teste da pilha) | **não** |
+| 7. energia com rotação (lei 4) | **não** |
+| 8. voltar aos 100 mil a 64 ticks/s | **não** — caiu para 23,7 ms/tick (42/s); diagnóstico e conserto no README |
+
+**O que trava o passo 5 em diante.** No ramo `giro-dinamica` o aperto do apoio
+fora do meio vira torque, e o cubo empoleirado **tomba e cai** (o teste `quina`
+passa). Mas ele fura o `no_clip` na multidão: `Geo.floor`, `Geo.rests`, o
+dormir, as células e o alcance dos chunks assumem caixa reta, e um cubo virado
+sobe e desce além da sua caixa (`Geo.top`/`Geo.sag` já estão escritos para
+isso). Concluir a rotação é refazer essa camada com o topo e o fundo reais —
+não é mais um pedaço de física, é a camada do mundo.
+
 ## Contexto
 
 Repositório: `~/src/bend-cubo` (branch `master`, remoto `git@github.com:arthurbg-14/bend-cubo.git`).
@@ -10,7 +35,7 @@ Física em inteiros exatos: 1 m = 2^18, tick = 1/128 s, velocidade em 1/1024 m/s
 `./build.sh cem` mede 100 489 cubos por 64 ticks.
 Nada entra sem `bend PROOF.bend` imprimindo "All terms check." e sem os testes verdes.
 
-## O que está errado hoje (apagar)
+## O que estava errado (apagado; ver o Estado acima)
 
 Hoje **não existe rotação**. Um cubo é uma caixa alinhada aos eixos e é
 "segurado" por qualquer sobreposição, então ele fica pendurado na quina de
