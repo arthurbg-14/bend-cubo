@@ -49,7 +49,7 @@ def Pick.s(c: Bool, a: String, b: String) -> String:
 # The size of a cube is fixed: a metre.
 
 def Knob.count() -> Nat:
-  5n
+  4n
 
 def Knob.defaults() -> P.K:
   P.K{78n, 205n, 5541n, 160n, 262144n}
@@ -461,7 +461,7 @@ def Frame.more(p: Patches, +put: List<&2, Put>) -> Patches:
 
 type Play is Data:
   Play{w: W.World, k: P.K, inp: Inp, t0: Nat, ticks: Nat, rep: Nat, prev: P.Body, yaw: U32, pitch: U32, dist: U32,
-    sel: Nat, help: Bool, gpu: U32, fus: U32, hud: Bool, spin: P.Spin, mass: Nat}
+    sel: Nat, help: Bool, gpu: U32, fus: U32, hud: Bool}
 
 # up to 180 of the changed cells (ok: this one fits): their patches, how
 # many, and the ones left for the next frame
@@ -532,20 +532,12 @@ def Play.in2(over: Bool, +keys: U32, +yaw: U32) -> P.In:
 def Play.input(+keys: U32, +yaw: U32, +b: P.Body) -> P.In:
   Play.in2(Nat.is_lt(Play.top(), Play.speed(b)), keys, yaw)
 
-def Knob.line5(+k: P.K, +ms: Nat, i: Nat) -> String:
-  match i:
-    case 4n:
-      "Peso do azul    " ++ Fmt.dec2(ms, 8n) ++ " cubos (gira menos quanto mais pesado)"
-    case _:
-      Knob.line(k, i)
-
-def Play.knobs(+k: P.K, +ms: Nat, +sel: Nat, +i: Nat) -> List<&2, String>:
+def Play.knobs(+k: P.K, +sel: Nat, +i: Nat) -> List<&2, String>:
   match i:
     case 0n:
       []
     case 1n+j:
-      List.append(&2, String, Play.knobs(k, ms, sel, j),
-        [Pick.s(Nat.is_eq(j, sel), "» ", "  ") ++ Knob.line5(k, ms, j)])
+      List.append(&2, String, Play.knobs(k, sel, j), [Pick.s(Nat.is_eq(j, sel), "» ", "  ") ++ Knob.line(k, j)])
 
 def Play.helps(help: Bool) -> List<&2, String>:
   match help:
@@ -556,7 +548,7 @@ def Play.helps(help: Bool) -> List<&2, String>:
         "mouse gira a câmera · roda aproxima e afasta",
         "Enter volta ao início · N mundo novo · Esc sai",
         "empurre os cubos verdes · suba neles pulando",
-        "17 leis provadas (LAWS.bend): o voo é a parábola da física",
+        "15 leis provadas (LAWS.bend): o voo é a parábola da física",
         "real, energia, Coulomb, trabalho do atrito, momento, sem atravessar"]
     case False{}:
       []
@@ -572,7 +564,7 @@ def List.cat(a: List<&2, String>, b: List<&2, String>) -> List<&2, String>:
 # the HUD's first two lines: the frame rate and the GPU's time, the
 # player's height, speed and energy (they change every frame)
 def Play.hud_top(+s: Play) -> List<&2, String>:
-  Play{+w, +k, inp, t0, ticks, rep, prev, yaw, pitch, dist, sel, help, +gpu, +fus, hv, spin, mass} = s
+  Play{+w, +k, inp, t0, ticks, rep, prev, yaw, pitch, dist, sel, help, +gpu, +fus, hv} = s
   +p = Play.pl(w)
   ["CUBO AZUL  ·  " ++ Nat.show(Nat.div(1000000n, Nat.max(U32.to_nat(fus), 1n))) ++ " fps  ·  GPU "
      ++ Fmt.dec2(U32.to_nat(gpu), 1000n) ++ " ms",
@@ -583,8 +575,8 @@ def Play.hud_top(+s: Play) -> List<&2, String>:
 
 # the rest (the constants, the keys): they change with the actions
 def Play.hud_rest(+s: Play) -> List<&2, String>:
-  Play{w, +k, inp, t0, ticks, rep, prev, yaw, pitch, dist, +sel, help, gpu, fus, hv, spin, mass} = s
-  "" <> List.append(&2, String, Play.knobs(k, mass, sel, Knob.count()),
+  Play{w, +k, inp, t0, ticks, rep, prev, yaw, pitch, dist, +sel, help, gpu, fus, hv} = s
+  "" <> List.append(&2, String, Play.knobs(k, sel, Knob.count()),
     List.cat(["Tab/setas escolhem e mudam · R volta ao padrão · H ajuda"], Play.helps(help)))
 
 def Play.hud(+s: Play) -> List<&2, String>:
@@ -603,7 +595,7 @@ def Play.hud_count(+s: Play) -> U32:
 
 # the frame's header: written into hdr; the world's dirty cells taken
 def Play.head(+s: Play, +now: Nat, +pts: Patches, hdr: Array<U32>) -> Array<U32>:
-  Play{+w, k, inp, +t0, ticks, rep, +prev, +yaw, +pitch, +dist, +sel, help, gpu, fus, +hv, +spin, mass} = s
+  Play{+w, k, inp, +t0, ticks, rep, +prev, +yaw, +pitch, +dist, +sel, help, gpu, fus, +hv} = s
   W.World{+seed, t, +awake, dirty, +p} = w
   Patches{+puts, +n, rest} = pts
   +sub = Nat.mod(Nat.mul(Nat.sub(now, t0), 128n), 1000n)
@@ -615,21 +607,20 @@ def Play.head(+s: Play, +now: Nat, +pts: Patches, hdr: Array<U32>) -> Array<U32>
      Put{5, Frame.rel(P.Body.z(eye), ocz)}, Put{6, yaw}, Put{7, pitch}, Put{8, dist}, Put{9, U32.from_nat(now)},
      Put{10, U32.from_nat(Nat.min(Nat.add(List.length(&2, P.Body, awake), 1n), 250n))},
      Put{11, Play.hud_count(s)}, Put{12, U32.from_nat(Nat.add(sel, 3n))}, Put{13, 1},
-     Put{14, P.Spin.ax(spin)}, Put{15, P.Spin.ay(spin)}, Put{16, P.Spin.az(spin)},
      Put{2048, n}],
     List.append(&2, Put, Frame.dyn(250n, eye <> awake, 0, ocx, ocz), List.append(&2, Put, Play.hud_puts(hv, s), puts))), hdr)
 
 def Play.untake(s: Play, rest: List<&2, W.Cell>) -> Play:
-  Play{w, k, inp, t0, ticks, rep, prev, yaw, pitch, dist, sel, help, gpu, fus, hv, spin, mass} = s
+  Play{w, k, inp, t0, ticks, rep, prev, yaw, pitch, dist, sel, help, gpu, fus, hv} = s
   W.World{seed, t, awake, dirty, p} = w
-  Play{W.World{seed, t, awake, rest, p}, k, inp, t0, ticks, rep, prev, yaw, pitch, dist, sel, help, gpu, fus, False{}, spin, mass}
+  Play{W.World{seed, t, awake, rest, p}, k, inp, t0, ticks, rep, prev, yaw, pitch, dist, sel, help, gpu, fus, False{}}
 
 def Play.view2(+s: Play, +now: Nat, +pts: Patches, hdr: Array<U32>) -> Play & Array<U32>:
   Patches{puts, n, +rest} = pts
   (Play.untake(s, rest), Play.head(s, now, pts, hdr))
 
 def Play.view(+s: Play, +now: Nat, hdr: Array<U32>) -> Play & Array<U32>:
-  Play{+w, k, inp, t0, ticks, rep, prev, yaw, pitch, dist, sel, help, gpu, fus, hv, spin, mass} = s
+  Play{+w, k, inp, t0, ticks, rep, prev, yaw, pitch, dist, sel, help, gpu, fus, hv} = s
   W.World{+seed, +t, awake, +dirty, p} = w
   Play.view2(s, now, Frame.patches(dirty, t, seed, 0, True{}), hdr)
 
@@ -637,36 +628,26 @@ def Play.view(+s: Play, +now: Nat, hdr: Array<U32>) -> Play & Array<U32>:
 # --------
 
 def Play.sel(up: Bool, s: Play) -> Play:
-  Play{w, k, inp, t0, ticks, rep, prev, yaw, pitch, dist, +sel, help, gpu, fus, hv, spin, mass} = s
-  Play{w, k, inp, t0, ticks, rep, prev, yaw, pitch, dist, Nat.mod(Nat.add(sel, Pick.n(up, 5n, 1n)), Knob.count()), help, gpu, fus, True{}, spin, mass}
-
-# the weight goes up and down by an eighth of a cube at a time, and never
-# reaches nothing
-def Knob.mass(+ms: Nat, +sel: Nat, up: Bool) -> Nat:
-  match up:
-    case True{}:
-      Pick.n(Nat.is_eq(sel, 4n), Nat.add(ms, 1n), ms)
-    case False{}:
-      Pick.n(Nat.is_eq(sel, 4n), Nat.max(Nat.sub(ms, 1n), 1n), ms)
+  Play{w, k, inp, t0, ticks, rep, prev, yaw, pitch, dist, +sel, help, gpu, fus, hv} = s
+  Play{w, k, inp, t0, ticks, rep, prev, yaw, pitch, dist, Nat.mod(Nat.add(sel, Pick.n(up, 5n, 1n)), Knob.count()), help, gpu, fus, True{}}
 
 def Play.adj(+up: Bool, +now: Nat, s: Play) -> Play:
-  Play{w, +k, inp, t0, ticks, rep, prev, yaw, pitch, dist, +sel, help, gpu, fus, hv, spin, +mass} = s
-  Play{w, Knob.turn(k, sel, up), inp, t0, ticks, Nat.add(now, 300n), prev, yaw, pitch, dist, sel, help, gpu, fus,
-    True{}, spin, Knob.mass(mass, sel, up)}
+  Play{w, +k, inp, t0, ticks, rep, prev, yaw, pitch, dist, +sel, help, gpu, fus, hv} = s
+  Play{w, Knob.turn(k, sel, up), inp, t0, ticks, Nat.add(now, 300n), prev, yaw, pitch, dist, sel, help, gpu, fus, True{}}
 
 def Play.reset(s: Play) -> Play:
-  Play{w, k, inp, t0, ticks, rep, prev, yaw, pitch, dist, sel, help, gpu, fus, hv, spin, mass} = s
-  Play{w, Knob.defaults(), inp, t0, ticks, rep, prev, yaw, pitch, dist, sel, help, gpu, fus, True{}, spin, 8n}
+  Play{w, k, inp, t0, ticks, rep, prev, yaw, pitch, dist, sel, help, gpu, fus, hv} = s
+  Play{w, Knob.defaults(), inp, t0, ticks, rep, prev, yaw, pitch, dist, sel, help, gpu, fus, True{}}
 
 def Play.help(s: Play) -> Play:
-  Play{w, k, inp, t0, ticks, rep, prev, yaw, pitch, dist, sel, help, gpu, fus, hv, spin, mass} = s
-  Play{w, k, inp, t0, ticks, rep, prev, yaw, pitch, dist, sel, Bool.not(help), gpu, fus, True{}, spin, mass}
+  Play{w, k, inp, t0, ticks, rep, prev, yaw, pitch, dist, sel, help, gpu, fus, hv} = s
+  Play{w, k, inp, t0, ticks, rep, prev, yaw, pitch, dist, sel, Bool.not(help), gpu, fus, True{}}
 
 def Play.home(s: Play) -> Play:
-  Play{w, k, inp, t0, ticks, rep, prev, yaw, pitch, dist, sel, help, gpu, fus, hv, spin, mass} = s
+  Play{w, k, inp, t0, ticks, rep, prev, yaw, pitch, dist, sel, help, gpu, fus, hv} = s
   W.World{+seed, t, awake, dirty, p} = w
   Play{W.World{seed, t, awake, dirty, Play.pl(W.W.new(seed))}, k, inp, t0, ticks, rep,
-    Play.pl(W.W.new(seed)), yaw, pitch, dist, sel, help, gpu, fus, hv, spin, mass}
+    Play.pl(W.W.new(seed)), yaw, pitch, dist, sel, help, gpu, fus, hv}
 
 # The runway's middle line, in x: the player is born there (half a metre
 # into the cell of the origin), and the lane the generator leaves empty is
@@ -688,29 +669,29 @@ def Align.yaw(+yaw: U32) -> U32:
   Pick.u((yaw < 256 : U32), 0, Pick.u((yaw < 768 : U32), 512, 0))
 
 def Play.align(s: Play) -> Play:
-  Play{w, k, inp, t0, ticks, rep, prev, +yaw, pitch, dist, sel, help, gpu, fus, hv, spin, mass} = s
+  Play{w, k, inp, t0, ticks, rep, prev, +yaw, pitch, dist, sel, help, gpu, fus, hv} = s
   W.World{seed, t, awake, dirty, +p} = w
   Play{W.World{seed, t, awake, dirty, Align.body(p)}, k, inp, t0, ticks, rep,
-    Align.body(p), Align.yaw(yaw), pitch, dist, sel, help, gpu, fus, hv, spin, mass}
+    Align.body(p), Align.yaw(yaw), pitch, dist, sel, help, gpu, fus, hv}
 
 def Play.fresh(+now: Nat, s: Play) -> Play:
-  Play{w, k, inp, t0, ticks, rep, prev, yaw, pitch, dist, sel, help, gpu, fus, hv, spin, mass} = s
+  Play{w, k, inp, t0, ticks, rep, prev, yaw, pitch, dist, sel, help, gpu, fus, hv} = s
   W.World{+seed, t, awake, dirty, p} = w
   +seed2 = W.Hash.mix((seed + U32.from_nat(now) + 1 : U32))
-  Play{W.W.new(seed2), k, inp, t0, ticks, rep, Play.pl(W.W.new(seed2)), yaw, pitch, dist, sel, help, gpu, fus, hv, spin, mass}
+  Play{W.W.new(seed2), k, inp, t0, ticks, rep, Play.pl(W.W.new(seed2)), yaw, pitch, dist, sel, help, gpu, fus, hv}
 
 def Play.zoom(out: Bool, s: Play) -> Play:
-  Play{w, k, inp, t0, ticks, rep, prev, yaw, pitch, +dist, sel, help, gpu, fus, hv, spin, mass} = s
+  Play{w, k, inp, t0, ticks, rep, prev, yaw, pitch, +dist, sel, help, gpu, fus, hv} = s
   Play{w, k, inp, t0, ticks, rep, prev, yaw, pitch,
-    U32.min(U32.max(Pick.u(out, (dist + 196608 : U32), (dist - 196608 : U32)), 393216), 6553600), sel, help, gpu, fus, hv, spin, mass}
+    U32.min(U32.max(Pick.u(out, (dist + 196608 : U32), (dist - 196608 : U32)), 393216), 6553600), sel, help, gpu, fus, hv}
 
 def Play.stats(+g2: U32, +all: U32, s: Play) -> Play:
-  Play{w, k, inp, t0, ticks, rep, prev, yaw, pitch, dist, sel, help, gpu, fus, hv, spin, mass} = s
-  Play{w, k, inp, t0, ticks, rep, prev, yaw, pitch, dist, sel, help, g2, all, hv, spin, mass}
+  Play{w, k, inp, t0, ticks, rep, prev, yaw, pitch, dist, sel, help, gpu, fus, hv} = s
+  Play{w, k, inp, t0, ticks, rep, prev, yaw, pitch, dist, sel, help, g2, all, hv}
 
 def Play.choose(+i: U32, s: Play) -> Play:
-  Play{w, k, inp, t0, ticks, rep, prev, yaw, pitch, dist, sel, help, gpu, fus, hv, spin, mass} = s
-  Play{w, k, inp, t0, ticks, rep, prev, yaw, pitch, dist, Nat.min(U32.to_nat(i), 4n), help, gpu, fus, True{}, spin, mass}
+  Play{w, k, inp, t0, ticks, rep, prev, yaw, pitch, dist, sel, help, gpu, fus, hv} = s
+  Play{w, k, inp, t0, ticks, rep, prev, yaw, pitch, dist, Nat.min(U32.to_nat(i), 5n), help, gpu, fus, True{}}
 
 def Play.act(a: Act, +now: Nat, s: Play) -> Play:
   match a:
@@ -746,14 +727,13 @@ def Play.acts(xs: List<&2, Act>, +now: Nat, s: Play) -> Play:
 def Play.repeat(on: Bool, +right: Bool, +now: Nat, s: Play) -> Play:
   match on:
     case True{}:
-      Play{w, +k, inp, t0, ticks, rep, prev, yaw, pitch, dist, +sel, help, gpu, fus, hv, spin, +mass} = s
-      Play{w, Knob.turn(k, sel, right), inp, t0, ticks, Nat.add(now, 60n), prev, yaw, pitch, dist, sel, help, gpu, fus,
-        True{}, spin, Knob.mass(mass, sel, right)}
+      Play{w, +k, inp, t0, ticks, rep, prev, yaw, pitch, dist, +sel, help, gpu, fus, hv} = s
+      Play{w, Knob.turn(k, sel, right), inp, t0, ticks, Nat.add(now, 60n), prev, yaw, pitch, dist, sel, help, gpu, fus, True{}}
     case False{}:
       s
 
 def Play.held(+keys: U32, +now: Nat, +s: Play) -> Play:
-  Play{w, k, inp, t0, ticks, +rep, prev, yaw, pitch, dist, sel, help, gpu, fus, hv, spin, mass} = s
+  Play{w, k, inp, t0, ticks, +rep, prev, yaw, pitch, dist, sel, help, gpu, fus, hv} = s
   +lr = (keys .&. 96 : U32)
   Play.repeat(Bool.and(Bool.and(Bool.not(U32.is_eq(lr, 0)), Bool.not(U32.is_eq(lr, 96))),
     Bool.and(Nat.is_lt(0n, rep), Nat.is_le(rep, now))), U32.is_eq(lr, 64), now, s)
@@ -761,61 +741,26 @@ def Play.held(+keys: U32, +now: Nat, +s: Play) -> Play:
 # the mouse's motion turns the camera: a step a pixel; the pitch kept
 # between a little up and nearly straight down
 def Play.look(+dx: U32, +dy: U32, s: Play) -> Play:
-  Play{w, k, inp, t0, ticks, rep, prev, +yaw, +pitch, dist, sel, help, gpu, fus, hv, spin, mass} = s
+  Play{w, k, inp, t0, ticks, rep, prev, +yaw, +pitch, dist, sel, help, gpu, fus, hv} = s
   Play{w, k, inp, t0, ticks, rep, prev, ((yaw - dx) .&. 1023 : U32),
-    (U32.min(U32.max((pitch + 4096 + dy : U32), 4292), 4582) - 4096 : U32), dist, sel, help, gpu, fus, hv, spin, mass}
-
-# The turning a landing or a bump gives. The arm is where the player's
-# middle sits over the cube he touched -- dead centre, nothing; the
-# corner, half a cube -- and what pushes is the speed the hit took off
-# him. Hit a corner coming down and you come off it spinning; land flat
-# in the middle and you do not turn at all.
-def Play.arm(+x: Nat, +s: Nat) -> P.Z:
-  P.Z.diff(Nat.is_lt(Nat.mod(x, s), Nat.div(s, 2n)), Nat.mod(x, s), Nat.div(s, 2n))
-
-# the weight comes in here: it is what a body's turning has to fight, so
-# the same corner at the same speed spins a heavy cube less. Eight is one
-# green cube's worth.
-# only a real knock turns him: he has to have been in the air. Standing
-# on the ground the friction changes his speed every tick, and taking
-# that as a knock would leave him spinning for ever -- on the ground the
-# spin is rubbed away instead.
-def Play.spun2(down: Bool, sp: P.Spin) -> P.Spin:
-  match down:
-    case True{}:
-      P.Spin.free(P.Spin.slow(sp))
-    case False{}:
-      P.Spin.free(sp)
-
-def Play.spun(hit: Bool, +s: Nat, sp: P.Spin, +a: P.Body, +b: P.Body, +ms: Nat) -> P.Spin:
-  match hit:
-    case False{}:
-      Play.spun2(P.Body.ground(b), sp)
-    case True{}:
-      P.Spin.free(P.Spin.hit(sp, Play.arm(P.Body.x(b), s), P.Neg{Nat.div(s, 2n)}, Play.arm(P.Body.z(b), s),
-        P.Z.q12(Nat.div(32768n, Nat.max(ms, 1n)), P.Z.sub(P.Body.vx(a), P.Body.vx(b))),
-        P.Z.q12(Nat.div(32768n, Nat.max(ms, 1n)), P.Z.sub(P.Body.vy(a), P.Body.vy(b))),
-        P.Z.q12(Nat.div(32768n, Nat.max(ms, 1n)), P.Z.sub(P.Body.vz(a), P.Body.vz(b)))))
+    (U32.min(U32.max((pitch + 4096 + dy : U32), 4292), 4582) - 4096 : U32), dist, sel, help, gpu, fus, hv}
 
 def Play.ran(r: W.World & P.Body, +k: P.K, inp: Inp, +t0: Nat, +ticks: Nat, +rep: Nat, +yaw: U32, +pitch: U32, +dist: U32,
-  +sel: Nat, help: Bool, +gpu: U32, +fus: U32, hud: Bool, sp: P.Spin, +ms: Nat) -> Play:
-  (+w, +prev) = r
-  Play{w, k, inp, t0, ticks, rep, prev, yaw, pitch, dist, sel, help, gpu, fus, hud,
-    Play.spun(Bool.and(P.Body.hit(Play.pl(w)), Bool.not(P.Body.ground(prev))), P.K.size(k), sp, prev,
-      Play.pl(w), ms), ms}
+  +sel: Nat, help: Bool, +gpu: U32, +fus: U32, hud: Bool) -> Play:
+  (w, prev) = r
+  Play{w, k, inp, t0, ticks, rep, prev, yaw, pitch, dist, sel, help, gpu, fus, hud}
 
 # the physics' ticks due by now (128 a second), at most 8 a frame
 def Play.physics(+keys: U32, +now: Nat, s: Play) -> Play:
-  Play{+w, +k, inp, +t0, +ticks, rep, +prev, +yaw, pitch, dist, sel, help, gpu, fus, hv, spin, mass} = s
+  Play{+w, +k, inp, +t0, +ticks, rep, +prev, +yaw, pitch, dist, sel, help, gpu, fus, hv} = s
   +due = Nat.div(Nat.mul(Nat.sub(now, t0), 128n), 1000n)
   +behind = Nat.sub(due, ticks)
   Play.ran(Play.walks(Nat.min(behind, 8n), k, Play.input(keys, yaw, Play.pl(w)), prev, w), k, inp, t0,
-    Pick.n(Nat.is_lt(8n, behind), due, Nat.add(ticks, Nat.min(behind, 8n))), rep, yaw, pitch, dist, sel, help, gpu, fus, hv,
-    spin, mass)
+    Pick.n(Nat.is_lt(8n, behind), due, Nat.add(ticks, Nat.min(behind, 8n))), rep, yaw, pitch, dist, sel, help, gpu, fus, hv)
 
 def Play.with_inp(s: Play, inp: Inp) -> Play:
-  Play{w, k, old, t0, ticks, rep, prev, yaw, pitch, dist, sel, help, gpu, fus, hv, spin, mass} = s
-  Play{w, k, inp, t0, ticks, rep, prev, yaw, pitch, dist, sel, help, gpu, fus, hv, spin, mass}
+  Play{w, k, old, t0, ticks, rep, prev, yaw, pitch, dist, sel, help, gpu, fus, hv} = s
+  Play{w, k, inp, t0, ticks, rep, prev, yaw, pitch, dist, sel, help, gpu, fus, hv}
 
 def Play.go(+now: Nat, m: Maybe<&2, Inp>, s: Play) -> Maybe<&2, Play>:
   match m:
@@ -827,7 +772,7 @@ def Play.go(+now: Nat, m: Maybe<&2, Inp>, s: Play) -> Maybe<&2, Play>:
         Play.look(dx, dy, Play.with_inp(s, Inp{keys, mx, my, seen, 0, 0, []})))))}
 
 def Play.inp(s: Play) -> Inp:
-  Play{w, k, inp, t0, ticks, rep, prev, yaw, pitch, dist, sel, help, gpu, fus, hv, spin, mass} = s
+  Play{w, k, inp, t0, ticks, rep, prev, yaw, pitch, dist, sel, help, gpu, fus, hv} = s
   inp
 
 # the demo's input (./cubo demo): W held, a jump every 1.5 s, the camera
@@ -842,7 +787,7 @@ def Play.demo(demo: Bool, +now: Nat, +t0: Nat, events: List<Event>) -> List<Even
       events
 
 def Play.t0(s: Play) -> Nat:
-  Play{w, k, inp, t0, ticks, rep, prev, yaw, pitch, dist, sel, help, gpu, fus, hv, spin, mass} = s
+  Play{w, k, inp, t0, ticks, rep, prev, yaw, pitch, dist, sel, help, gpu, fus, hv} = s
   t0
 
 def Play.tock(+now: Nat, events: List<Event>, +s: Play, demo: Bool) -> Maybe<&2, Play>:
@@ -856,7 +801,7 @@ def Play.tick(events: List<Event>, +s: Play, demo: Bool) -> IO(Maybe<&2, Play>):
 def Play.start_at(+now: Nat, +seed: U32) -> Play:
   +w = W.W.new(seed)
   Play{w, Knob.defaults(), Inp{0, 0, 0, False{}, 0, 0, []}, now, 0n, 0n, Play.pl(w), 0, 330, 1572864, 0n,
-    True{}, 0, 16666, True{}, P.Spin.rest(), 8n}
+    True{}, 0, 16666, True{}}
 
 # The loop
 # --------

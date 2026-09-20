@@ -29,7 +29,7 @@ A GPU desenha (Vulkan); o Bend simula.
 | Espaço | pular (segurado, pula de novo ao tocar o chão) |
 | mouse | girar a câmera |
 | roda | aproximar / afastar a câmera |
-| Tab, ↑ ↓, 1 … 5 | escolher uma constante |
+| Tab, ↑ ↓, 1 … 4 | escolher uma constante |
 | ← → | mudar a constante escolhida (segurar repete) |
 | R | constantes de volta ao padrão |
 | C | alinhar no meio da pista, reto |
@@ -88,7 +88,6 @@ valor que elas alcancem.
 | Atrito do chão | µ 0,80 | 0,05 | Coulomb: o chão freia µ·g (a força normal é m·g); 0,80 é borracha em asfalto seco |
 | Pulo | 5,41 m/s | 0,25 | a velocidade de saída; o painel mostra a altura que a energia dá, J²/2g |
 | Força no chão | 20 m/s² | 1 | o empurrão do "motor" ao andar; no ar o motor não faz nada |
-| Peso do azul | 1,00 cubo | 1/8 | o quanto o cubo azul resiste a girar: bater na quina de um cubo pesado gira menos |
 
 O painel mostra também, a cada frame, a altura, a velocidade e a **energia
 mecânica** do cubo azul em J/kg. Num pulo ela fica parada enquanto ele voa.
@@ -119,8 +118,6 @@ movimento. O tick marca isso no próprio corpo (`hit`).
 | `push_energy` | uma colisão nunca cria energia cinética |
 | `energy_never_grows` | sem entrada, nenhum tick aumenta a energia do corpo mais a dos obstáculos que ele toca; só o motor e o pulo põem energia |
 | `no_clip` | um corpo livre dos obstáculos continua livre depois do tick, com qualquer entrada: nada anda, cai ou é empurrado para dentro de outro cubo |
-| `spin_is_steady` | um giro solto nunca muda: o corpo continua girando na mesma taxa para sempre, e o ângulo um tick depois é o ângulo mais essa taxa, exatamente |
-| `no_spin_from_the_middle` | batida em cheio no meio não gira nada: o que gira é o braço de alavanca, e braço zero não cruza com nada |
 
 Não há `@unsafe`, `?TODO` nem axiomas. A verificação leva cerca de 10 s.
 
