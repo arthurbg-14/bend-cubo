@@ -212,11 +212,9 @@ def W.rect(+i: Nat, +t: Cells, +seed: U32, +x0: U32, +z0: U32, +nx: Nat) -> List
       List.append(&2, P.Body, Cells.at(t, seed, (x0 + U32.from_nat(Nat.mod(k, nx)) : U32), (z0 + U32.from_nat(Nat.div(k, nx)) : U32)),
         W.rect(k, t, seed, x0, z0, nx))
 
-# the slip off an edge is a step too, and the neighbourhood has to cover
-# it: a body the grid does not reach is a body the others cannot see
 def W.reachz(+k: P.K, +vx: P.Z, +vy: P.Z, +vz: P.Z) -> Nat:
-  P.K{+g, mu, jump, +acc, +size} = k
-  Nat.add(Nat.add(Nat.mul(2n, Nat.add(Nat.add(P.Z.mag(vx), P.Z.mag(vy)), P.Z.mag(vz))), Nat.div(size, 16n)),
+  P.K{+g, mu, jump, +acc, size} = k
+  Nat.add(Nat.mul(2n, Nat.add(Nat.add(P.Z.mag(vx), P.Z.mag(vy)), P.Z.mag(vz))),
     Nat.add(Nat.mul(2n, Nat.add(acc, g)), 65536n))
 
 # How far a cube (no input) can reach in a tick: it moves by v + v' on each
@@ -226,8 +224,7 @@ def W.reachz(+k: P.K, +vx: P.Z, +vy: P.Z, +vz: P.Z) -> Nat:
 # handed exactly the bodies it may touch, not every one within a quarter
 # of a metre more.
 def W.creachz(+k: P.K, +vx: P.Z, +vy: P.Z, +vz: P.Z) -> Nat:
-  Nat.add(Nat.add(Nat.mul(2n, Nat.add(Nat.add(P.Z.mag(vx), P.Z.mag(vy)), P.Z.mag(vz))),
-      Nat.div(P.K.size(k), 16n)),
+  Nat.add(Nat.mul(2n, Nat.add(Nat.add(P.Z.mag(vx), P.Z.mag(vy)), P.Z.mag(vz))),
     Nat.add(Nat.mul(2n, Nat.add(P.K.g(k), P.K.acc(k))), 16n))
 
 def W.creach(+k: P.K, b: P.Body) -> Nat:
@@ -769,15 +766,6 @@ def F.g0(r: Array<U32> & U32, +i: U32, +o: Og) -> Array<U32> & P.Body:
 def F.get(a: Array<U32>, +i: U32, +o: Og) -> Array<U32> & P.Body:
   F.g0(a[(i * 6 : U32)], i, o)
 
-# After a body ticks: if it came to rest perched on an edge -- nothing
-# under its middle -- it slips off, a step at a time, until it falls. The
-# step takes neither speed nor height, so it makes no energy (proven:
-# slip_makes_no_energy), and a body standing squarely never moves
-# (no_slip_when_held). Every cube, the player included.
-def W.slipped(+k: P.K, r: P.Body & List<&2, P.Body>) -> P.Body & List<&2, P.Body>:
-  (b, +os) = r
-  (P.Slip.go(P.K.size(k), os, b), os)
-
 def F.four(a: Array<U32>, +i: U32, +o: Og, +na: U32, idxs: List<&2, U32>, r: P.Body & List<&2, P.Body>) -> Array<U32>:
   (b, obs) = r
   F.wb(idxs, obs, F.put(a, i, o, False{}, b), o, na)
@@ -785,7 +773,7 @@ def F.four(a: Array<U32>, +i: U32, +o: Og, +na: U32, idxs: List<&2, U32>, r: P.B
 def F.three(rl: Array<U32> & List<&2, P.Body>, self: P.Body, +i: U32, +o: Og, +k: P.K, +na: U32,
   idxs: List<&2, U32>) -> Array<U32>:
   (a, obs) = rl
-  F.four(a, i, o, na, idxs, W.slipped(k, P.Body.tick(k, obs, P.In.idle(), self)))
+  F.four(a, i, o, na, idxs, P.Body.tick(k, obs, P.In.idle(), self))
 
 def F.two(rs: Array<U32> & List<&2, U32>, self: P.Body, +i: U32, +o: Og, +k: P.K, +na: U32) -> Array<U32>:
   (a, +idxs) = rs
@@ -794,7 +782,7 @@ def F.two(rs: Array<U32> & List<&2, U32>, self: P.Body, +i: U32, +o: Og, +k: P.K
 def F.three2(rl: Array<U32> & List<&2, P.Body>, self: P.Body, +i: U32, +o: Og, +k: P.K, +na: U32, idxs: List<&2, U32>,
   inp: P.In) -> Array<U32>:
   (a, obs) = rl
-  F.four(a, i, o, na, idxs, W.slipped(k, P.Body.tick(k, obs, inp, self)))
+  F.four(a, i, o, na, idxs, P.Body.tick(k, obs, inp, self))
 
 def F.two2(rs: Array<U32> & List<&2, U32>, self: P.Body, +i: U32, +o: Og, +k: P.K, +na: U32, inp: P.In) -> Array<U32>:
   (a, +idxs) = rs
@@ -2991,7 +2979,7 @@ def W.p1(+seed: U32, +n: Nat, r: P.Body & List<&2, P.Body>, t: Cells, dirty: Lis
 def W.p0(+k: P.K, inp: P.In, +seed: U32, pa: Two, +t: Cells, dirty: List<&2, Cell>, +p: P.Body) -> World:
   Two{+near, far} = pa
   W.p1(seed, List.length(&2, P.Body, near),
-    W.slipped(k, P.Body.tick(k, List.append(&2, P.Body, near, W.around(k, t, seed, p)), inp, p)), t, dirty, far)
+    P.Body.tick(k, List.append(&2, P.Body, near, W.around(k, t, seed, p)), inp, p), t, dirty, far)
 
 # the player's tick among the awake cubes within reach and the sleepers
 # around
@@ -3037,8 +3025,8 @@ def W.cg0(+k: P.K, +seed: U32, +c: P.Body, pp: Two, dd: Two, rr: Two, +t: Cells,
   Two{+dn, df} = dd
   Two{+rn, rf} = rr
   W.ca(seed, List.length(&2, P.Body, pn), List.length(&2, P.Body, dn), List.length(&2, P.Body, rn),
-    W.slipped(k, P.Body.tick(k, List.append(&2, P.Body, pn, List.append(&2, P.Body, dn, List.append(&2, P.Body, rn,
-      W.around(k, t, seed, c)))), P.In.idle(), c)), t, dirty, Far{pf, df, rf})
+    P.Body.tick(k, List.append(&2, P.Body, pn, List.append(&2, P.Body, dn, List.append(&2, P.Body, rn,
+      W.around(k, t, seed, c)))), P.In.idle(), c), t, dirty, Far{pf, df, rf})
 
 # the next awake cube's tick, among the bodies within reach (the player,
 # the ones done, the ones to do) and the sleepers around
@@ -3541,7 +3529,7 @@ def Q.q5(+nn: Nat, r: P.Body & List<&2, P.Body>, bk: Bk, +ev: List<&2, P.Body>) 
 def Q.q4(+k: P.K, +seed: U32, +src: Src, +c: P.Body, g: Gath, +ev: List<&2, P.Body>) -> Sq:
   Gath{+near, bk} = g
   Q.q5(List.length(&2, P.Body, near),
-    W.slipped(k, P.Body.tick(k, List.append(&2, P.Body, near, Q.shadow(Q.around(k, src, seed, c), ev)), P.In.idle(), c)), bk, ev)
+    P.Body.tick(k, List.append(&2, P.Body, near, Q.shadow(Q.around(k, src, seed, c), ev)), P.In.idle(), c), bk, ev)
 
 def Q.q3(+k: P.K, +seed: U32, +src: Src, f: Maybe<&2, P.Body>, bk: Bk, +ev: List<&2, P.Body>) -> Sq:
   match f:
@@ -3638,8 +3626,8 @@ def Q.la(+k: P.K, +src: Src, +seed: U32, +c: P.Body, pp: Two, dd: Two, rr: Two, 
   Two{+dn, df} = dd
   Two{+rn, rf} = rr
   Q.lb(List.length(&2, P.Body, pn), List.length(&2, P.Body, dn), List.length(&2, P.Body, rn),
-    W.slipped(k, P.Body.tick(k, List.append(&2, P.Body, pn, List.append(&2, P.Body, dn, List.append(&2, P.Body, rn,
-      Q.shadow(Q.around(k, src, seed, c), ev)))), P.In.idle(), c)), Far{pf, df, rf}, ev)
+    P.Body.tick(k, List.append(&2, P.Body, pn, List.append(&2, P.Body, dn, List.append(&2, P.Body, rn,
+      Q.shadow(Q.around(k, src, seed, c), ev)))), P.In.idle(), c), Far{pf, df, rf}, ev)
 
 def Q.lgo(+k: P.K, +seed: U32, +src: Src, done: List<&2, P.Body>, todo: List<&2, P.Body>, pool: List<&2, P.Body>,
   ev: List<&2, P.Body>) -> Lz:
@@ -3724,8 +3712,8 @@ def Q.ca(+k: P.K, +src: Src, +seed: U32, +m: Nat, +x: Nat, +y: Nat, +z: Nat, c: 
   Pc{dn, nd, df} = dd
   Pc{rn, nr, rf} = rr
   Q.cb(np, nd, nr, pn,
-    W.slipped(k, P.Body.tick(k, List.append(&2, P.Body, pn, List.append(&2, P.Body, dn, List.append(&2, P.Body, rn,
-      Q.shadow(Q.around3(src, seed, m, x, y, z), ev)))), P.In.idle(), c)), Far{pf, df, rf}, ev, chg)
+    P.Body.tick(k, List.append(&2, P.Body, pn, List.append(&2, P.Body, dn, List.append(&2, P.Body, rn,
+      Q.shadow(Q.around3(src, seed, m, x, y, z), ev)))), P.In.idle(), c), Far{pf, df, rf}, ev, chg)
 
 def Q.cgo(+k: P.K, +seed: U32, +src: Src, done: List<&2, P.Body>, todo: List<&2, P.Body>, pool: List<&2, P.Body>,
   ev: List<&2, P.Body>, chg: List<&2, P.Body>) -> Lc:
@@ -4447,7 +4435,7 @@ def T.player(+k: P.K, inp: P.In, +seed: U32, +bt: Bt, +t: Cells, dirty: List<&2,
     W.reach(k, p), p)
   +near = T.cat(ns)
   T.ps1(seed, ns, List.length(&2, P.Body, near), bt,
-    W.slipped(k, P.Body.tick(k, List.append(&2, P.Body, near, W.around(k, t, seed, p)), inp, p)), t, dirty)
+    P.Body.tick(k, List.append(&2, P.Body, near, W.around(k, t, seed, p)), inp, p), t, dirty)
 
 # which cubes of a bucket rest (a), and the others (b)
 def T.rests(xs: List<&2, P.Body>, +k: P.K, +t: Cells, +seed: U32) -> Two:

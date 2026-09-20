@@ -71,11 +71,13 @@ def run(n: Nat, +bad: Nat, +w: W.World) -> String:
 # Um cubo equilibrado na quina de outro: o meio dele fica para fora do
 # apoio, entao ele tem que escorregar da beirada e cair no chao. Antes
 # ficava pendurado para sempre, porque qualquer encostada segurava.
+# na pista, que o gerador deixa vazia, para nada mais entrar na conta:
+# um cubo no chao e outro em cima dele com o meio para fora do apoio
 def perched() -> W.World:
   +o = W.W.base(W.W.origin())
-  W.World{12345, W.CLeaf{[]},
-    [W.W.cube(Nat.add(o, 786432n), 0n, Nat.add(o, 786432n)),
-     W.W.cube(Nat.add(o, 991232n), 262144n, Nat.add(o, 786432n))],
+  W.World{12345, W.CGen{},
+    [W.W.cube(Nat.add(o, 262144n), 0n, Nat.add(o, 2621440n)),
+     W.W.cube(Nat.add(o, 466944n), 262144n, Nat.add(o, 2621440n))],
     [], W.W.cube(Nat.sub(o, 5242880n), 0n, o)}
 
 def high(xs: List<&2, P.Body>, +m: Nat) -> Nat:
@@ -85,14 +87,21 @@ def high(xs: List<&2, P.Body>, +m: Nat) -> Nat:
     case +b <> rest:
       high(rest, Nat.max(m, P.Body.y(b)))
 
+# todos os cubos da regiao, acordados ou dormindo nas celulas
+def todos(w: W.World) -> List<&2, P.Body>:
+  W.World{+seed, +t, awake, dirty, p} = w
+  List.append(&2, P.Body, awake,
+    W.W.rect(48n, t, seed, (W.W.origin() - 2 : U32), (W.W.origin() + 8 : U32), 6n))
+
 def tip(n: Nat, +bad: Nat, +w: W.World) -> String:
   match n:
     case 0n:
-      M.Pick.s(Bool.and(Nat.is_eq(bad, 0n), Nat.is_eq(high(awake(w), 0n), 0n)), "OK", "FAIL")
+      M.Pick.s(Bool.and(Nat.is_eq(bad, 0n), Nat.is_eq(high(todos(w), 0n), 0n)), "OK", "FAIL")
         ++ ": " ++ Nat.show(bad) ++ " overlaps, o mais alto a "
-        ++ M.Fmt.dec2(high(awake(w), 0n), 262144n) ++ " m (tem que acabar em 0,00)"
+        ++ M.Fmt.dec2(high(todos(w), 0n), 262144n) ++ " m (tem que acabar em 0,00: o cubo"
+        ++ " empoleirado tem que tombar e cair)"
     case 1n+m:
-      tip(m, Nat.add(bad, clash(awake(w))), W.W.tick_flat(M.Knob.defaults(), P.In.idle(), w))
+      tip(m, Nat.add(bad, clash(todos(w))), W.W.tick_flat(M.Knob.defaults(), P.In.idle(), w))
 
 def main() -> IO(Unit):
   do IO<Unit>:

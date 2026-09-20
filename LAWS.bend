@@ -247,27 +247,3 @@ law no_clip:
   r = P.Body.tick(k, obs, inp, b)
   {P.Geo.free(P.K.size(k), P.Body.x(P.Tick.body(r)), P.Body.y(P.Tick.body(r)), P.Body.z(P.Tick.body(r)), P.Tick.obs(r)) == True{} : Bool}
 
-# Slipping off an edge
-# -------------------
-
-# LAW: what holds a body up is what lies under its MIDDLE. A body standing
-# squarely -- something under its middle, or the ground itself -- is left
-# exactly where it is, and so is one in the air: only a body perched on an
-# edge slips.
-law no_slip_when_held:
-  for +k: P.K
-  for +obs: List<&2, P.Body>
-  for +b: P.Body
-  for held: {Bool.or(Bool.not(P.Body.ground(b)),
-    Bool.or(Nat.is_eq(P.Body.y(b), 0n), P.Geo.holds(P.K.size(k), P.Body.x(b), P.Body.y(b), P.Body.z(b), obs)))
-    == True{} : Bool}
-  {P.Slip.go(P.K.size(k), obs, b) == b : P.Body}
-
-# LAW: slipping off an edge makes no energy. The step takes the body
-# sideways and nothing else: same speed, same height, so exactly the same
-# mechanical energy it had. A cube tipping off a ledge is not a push.
-law slip_makes_no_energy:
-  for +k: P.K
-  for +obs: List<&2, P.Body>
-  for +b: P.Body
-  {P.Body.energy(P.K.g(k), P.Slip.go(P.K.size(k), obs, b)) == P.Body.energy(P.K.g(k), b) : Nat}
