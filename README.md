@@ -66,6 +66,8 @@ embutido em `effs/screen.c`.
 ### As constantes
 
 Todas mudam durante o jogo; o painel mostra o valor em unidades físicas.
+Nenhuma tem teto: sobem o quanto você quiser, e as leis valem para qualquer
+valor que elas alcancem.
 
 | constante | padrão | passo | o que é |
 |---|---|---|---|

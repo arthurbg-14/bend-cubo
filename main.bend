@@ -78,7 +78,7 @@ def Knob.set(k: P.K, i: Nat, +v: Nat) -> P.K:
     case _:
       P.K{g, mu, jump, v, size}
 
-# a step of knob i, and its top
+# a step of knob i
 def Knob.step(i: Nat) -> Nat:
   match i:
     case 0n:
@@ -90,21 +90,11 @@ def Knob.step(i: Nat) -> Nat:
     case _:
       8n
 
-def Knob.most(i: Nat) -> Nat:
-  match i:
-    case 0n:
-      400n
-    case 1n:
-      512n
-    case 2n:
-      U32.to_nat(20480)
-    case _:
-      U32.to_nat(1600)
-
-# knob i one step up (up) or down, within 0 .. most
+# knob i one step up (up) or down. No ceiling: a constant goes as far as
+# the player wants, and every law holds for whatever value it reaches.
 def Knob.turn(+k: P.K, +i: Nat, up: Bool) -> P.K:
   +v = Knob.get(k, i)
-  Knob.set(k, i, Pick.n(up, Nat.min(Nat.add(v, Knob.step(i)), Knob.most(i)), Nat.sub(v, Knob.step(i))))
+  Knob.set(k, i, Pick.n(up, Nat.add(v, Knob.step(i)), Nat.sub(v, Knob.step(i))))
 
 # Text
 # ----
