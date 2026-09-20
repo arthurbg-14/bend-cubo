@@ -29,7 +29,7 @@ A GPU desenha (Vulkan); o Bend simula.
 | Espaço | pular (segurado, pula de novo ao tocar o chão) |
 | mouse | girar a câmera |
 | roda | aproximar / afastar a câmera |
-| Tab, ↑ ↓, 1 … 4 | escolher uma constante |
+| Tab, ↑ ↓, 1 … 5 | escolher uma constante |
 | ← → | mudar a constante escolhida (segurar repete) |
 | R | constantes de volta ao padrão |
 | C | alinhar no meio da pista, reto |
@@ -88,6 +88,7 @@ valor que elas alcancem.
 | Atrito do chão | µ 0,80 | 0,05 | Coulomb: o chão freia µ·g (a força normal é m·g); 0,80 é borracha em asfalto seco |
 | Pulo | 5,41 m/s | 0,25 | a velocidade de saída; o painel mostra a altura que a energia dá, J²/2g |
 | Força no chão | 20 m/s² | 1 | o empurrão do "motor" ao andar; no ar o motor não faz nada |
+| Peso do azul | 1,00 cubo | 1/8 | o quanto o cubo azul resiste a girar: bater na quina de um cubo pesado gira menos |
 
 O painel mostra também, a cada frame, a altura, a velocidade e a **energia
 mecânica** do cubo azul em J/kg. Num pulo ela fica parada enquanto ele voa.
