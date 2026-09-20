@@ -1358,7 +1358,7 @@ def C.l2(mine: Bool, a: Array<U32>, +nall: U32, +cap: U32, +ox: U32, +oz: U32, +
     case True{}:
       C.l4(a, nall, cap, ox, oz, o, k, mm, nbx, nbz, side, nc)
     case False{}:
-      C.l4y(C.nown(U32.to_nat(nall), a[(C.roa(cap) : U32)], 0, cap, 0), nall, cap, ox, oz, o, nbx, nbz, side, nc)
+      Cr{ChL{a, nall, cap, ox, oz}, []}
 
 def C.l3(r: Array<U32> & U32, +cap: U32, +ox: U32, +oz: U32, +o: Og, +k: P.K, +mm: Nat, +nbx: U32, +nbz: U32,
   +side: U32, +nc: Nat, +mine: Bool) -> Cr:
@@ -1375,15 +1375,13 @@ def C.l0(r: Array<U32> & U32, +ms: List<&2, Msg>, +cap: U32, +ox: U32, +oz: U32,
   (a, n) = r
   C.l1(C.take(ms, a, cap, True{}, n), ms, cap, ox, oz, o, k, mm, nbx, nbz, side, nc, mine)
 
-# a chunk's round: only its own cubes kept (the copies of last round and
-# the ones that walked out go), then what came in (the cubes that moved in
-# first, then the copies), then its tick if this is its colour
-# a chunk's round: what came in is written from its own cubes on (so the
-# copies of the round before are overwritten), then its tick if this is
-# its colour
-def C.leaf(a: Array<U32>, +n: U32, +cap: U32, +ox: U32, +oz: U32, +ms: List<&2, Msg>, +o: Og, +k: P.K,
+# a chunk's round: what came in is added to what it already holds, then
+# its tick if this is its colour. A chunk clears the copies when it ticks
+# and gathers them again from the other colours before its next tick, so
+# only the chunks that just ticked have to send -- a quarter of them
+def C.leaf(a: Array<U32>, +nall: U32, +cap: U32, +ox: U32, +oz: U32, +ms: List<&2, Msg>, +o: Og, +k: P.K,
   +mm: Nat, +nbx: U32, +nbz: U32, +side: U32, +nc: Nat, +mine: Bool) -> Cr:
-  C.l0((a, n), ms, cap, ox, oz, o, k, mm, nbx, nbz, side, nc, mine)
+  C.l0((a, nall), ms, cap, ox, oz, o, k, mm, nbx, nbz, side, nc, mine)
 
 def C.join(ra: Cr, rb: Cr) -> Cr:
   Cr{ta, ma} = ra
