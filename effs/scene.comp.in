@@ -203,11 +203,7 @@ void cell(ivec2 c, vec3 ro, vec3 inv, bool noplayer, inout Hit h) {
         continue;
       }
       vec3 p = dyn_at(i);
-      if (kind == 5u) {
-        boxhit_spun(ro, 1.0 / inv, p + 0.5, kind, spin(), h);
-      } else {
-        boxhit(ro, inv, p, p + 1.0, kind, h);
-      }
+      boxhit(ro, inv, p, p + 1.0, kind, h);
     } else {
       vec3 p = cube_at(r >> 3, r & 7u);
       boxhit(ro, inv, p, p + 1.0, 3u, h);
