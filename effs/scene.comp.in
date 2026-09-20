@@ -65,7 +65,8 @@ uint gcount(uint seed, uint cx, uint cz) {
   uint h    = hcell(seed + 1u, cx, cz);
   uint hh   = (h >> 8) & 255u;
   bool near = (cx - ORIGIN + 3u) < 6u && (cz - ORIGIN + 3u) < 6u;
-  if (near || (h & 255u) >= dens) {
+  bool lane = (cx - ORIGIN + 3u) < 7u;   // the runway, down the z axis
+  if (near || lane || (h & 255u) >= dens) {
     return 0u;
   }
   return hh < 150u ? 1u : hh < 225u ? 2u : 3u;

@@ -63,7 +63,11 @@ def Gen.count(+seed: U32, +cx: U32, +cz: U32) -> U32:
   +h = Hash.cell((seed + 1 : U32), cx, cz)
   +hh = ((h >> 8n) .&. 255 : U32)
   +near = Bool.and(((cx - W.origin() + 3 : U32) < 6 : U32), ((cz - W.origin() + 3 : U32) < 6 : U32))
-  Pick.u(Bool.or(near, ((h .&. 255 : U32) >= dens : U32)), 0, Pick.u((hh < 150 : U32), 1, Pick.u((hh < 225 : U32), 2, 3)))
+  # the runway: a straight lane 7 m wide down the z axis, through the start
+  # and with no end, where nothing is generated -- room to get up to speed
+  # (the player starts facing down it, and the motor has no top speed)
+  +lane = ((cx - W.origin() + 3 : U32) < 7 : U32)
+  Pick.u(Bool.or(Bool.or(near, lane), ((h .&. 255 : U32) >= dens : U32)), 0, Pick.u((hh < 150 : U32), 1, Pick.u((hh < 225 : U32), 2, 3)))
 
 # a cube at rest at (x, y, z)
 def W.cube(+x: Nat, +y: Nat, +z: Nat) -> P.Body:

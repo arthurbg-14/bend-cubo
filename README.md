@@ -41,7 +41,10 @@ Andar acelera 20 m/s² enquanto a tecla estiver segurada, e o atrito tira
 7,8 m/s²: sobram 12,2 m/s² que não param de somar — **não há velocidade
 máxima**, e a aceleração é a mesma em qualquer velocidade (`motor_is_steady`).
 Num trecho limpo dá 12 m/s em 1 s e 122 m/s em 10 s; no mundo de verdade os
-cubos que você encontra pelo caminho seguram você por volta de 6 m/s. No ar
+cubos que você encontra pelo caminho seguram você por volta de 6 m/s. Por isso
+o ponto de partida fica numa **pista reta**: 7 m de largura pelo eixo z (para
+onde a câmera olha ao começar), sem fim e sem nenhum cubo verde, que é onde dá
+para acelerar até onde você quiser. No ar
 o motor não faz nada: saiu do chão, o que manda é a parábola
 (`no_air_control`).
 
