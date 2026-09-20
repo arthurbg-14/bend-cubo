@@ -102,14 +102,32 @@ def Knob.turn(+k: P.K, +i: Nat, up: Bool) -> P.K:
 def Fmt.pad2(+n: Nat) -> String:
   Pick.s(Nat.is_lt(n, 10n), "0" ++ Nat.show(n), Nat.show(n))
 
-# num / den with two decimals (rounded), a comma between
+# num / den with two decimals (rounded), a comma between. The whole part
+# and the decimals are taken apart BEFORE multiplying: a Nat in Bend holds
+# up to 2^48-1, and num * 100 blew past it (the energy did, a bit over
+# 5000 m/s, and took the game down). Only the remainder is multiplied, and
+# that is always smaller than den.
+def Fmt.dec2b(carry: Bool, +q: Nat, +f: Nat) -> String:
+  match carry:
+    case True{}:
+      Nat.show(Nat.add(q, 1n)) ++ ",00"
+    case False{}:
+      Nat.show(q) ++ "," ++ Fmt.pad2(f)
+
 def Fmt.dec2(+num: Nat, +den: Nat) -> String:
-  +q = Nat.div(Nat.add(Nat.mul(num, 100n), Nat.div(den, 2n)), den)
-  Nat.show(Nat.div(q, 100n)) ++ "," ++ Fmt.pad2(Nat.mod(q, 100n))
+  +f = Nat.div(Nat.add(Nat.mul(Nat.mod(num, den), 100n), Nat.div(den, 2n)), den)
+  Fmt.dec2b(Nat.is_le(100n, f), Nat.div(num, den), f)
+
+def Fmt.dec1b(carry: Bool, +q: Nat, +f: Nat) -> String:
+  match carry:
+    case True{}:
+      Nat.show(Nat.add(q, 1n)) ++ ",0"
+    case False{}:
+      Nat.show(q) ++ "," ++ Nat.show(f)
 
 def Fmt.dec1(+num: Nat, +den: Nat) -> String:
-  +q = Nat.div(Nat.add(Nat.mul(num, 10n), Nat.div(den, 2n)), den)
-  Nat.show(Nat.div(q, 10n)) ++ "," ++ Nat.show(Nat.mod(q, 10n))
+  +f = Nat.div(Nat.add(Nat.mul(Nat.mod(num, den), 10n), Nat.div(den, 2n)), den)
+  Fmt.dec1b(Nat.is_le(10n, f), Nat.div(num, den), f)
 
 # how high a jump rises: jump^2 / g units, the energy's balance
 def Fmt.rise(+k: P.K) -> String:
@@ -465,10 +483,6 @@ def Frame.patches(cells: List<&2, W.Cell>, +t: W.Cells, +seed: U32, +i: U32, ok:
 # 1024ths of a turn, distance in units), the knob picked, the help shown,
 # the timings effs/screen.c reports.
 
-# the player's input for a tick: the walk the keys ask for, the jump held
-def Play.input(+keys: U32, +yaw: U32) -> P.In:
-  P.In{Walk.wish(keys, yaw), U32.is_eq((keys .&. 16 : U32), 16)}
-
 def Play.pl(w: W.World) -> P.Body:
   W.World{seed, t, awake, dirty, p} = w
   p
@@ -497,6 +511,27 @@ def Play.speed(+b: P.Body) -> Nat:
   +z = P.Z.mag(P.Body.vz(b))
   P.Fric.floor(Nat.add(Nat.add(Nat.mul(x, x), Nat.mul(y, y)), Nat.mul(z, z)), Nat.add(Nat.add(x, y), z))
 
+# Where the numbers end: a Nat in Bend holds up to 2^48-1, and the speed's
+# square (the energy, and the root the friction takes) has to fit in it,
+# which stops at 16384 m/s. 15000 m/s, in 1024ths, leaves a sixth of room.
+def Play.top() -> Nat:
+  15360000n
+
+# the player's input for a tick: the walk the keys ask for, the jump held.
+# Above the top the motor lets go -- exactly as if the key had been
+# released, which is why no law had to change: the physics still has no
+# maximum speed (motor_is_steady is proven for any speed), the game just
+# stops pushing where it could no longer count.
+def Play.in2(over: Bool, +keys: U32, +yaw: U32) -> P.In:
+  match over:
+    case True{}:
+      P.In{None{}, U32.is_eq((keys .&. 16 : U32), 16)}
+    case False{}:
+      P.In{Walk.wish(keys, yaw), U32.is_eq((keys .&. 16 : U32), 16)}
+
+def Play.input(+keys: U32, +yaw: U32, +b: P.Body) -> P.In:
+  Play.in2(Nat.is_lt(Play.top(), Play.speed(b)), keys, yaw)
+
 def Play.knobs(+k: P.K, +sel: Nat, +i: Nat) -> List<&2, String>:
   match i:
     case 0n:
@@ -509,6 +544,7 @@ def Play.helps(help: Bool) -> List<&2, String>:
     case True{}:
       ["", "W A S D anda (para onde a câmera olha) · Espaço pula",
         "C alinha você no meio da pista, reto: aí é só segurar W",
+        "o motor solta em 15000 m/s: é onde o número (2^48) acaba",
         "mouse gira a câmera · roda aproxima e afasta",
         "Enter volta ao início · N mundo novo · Esc sai",
         "empurre os cubos verdes · suba neles pulando",
@@ -532,7 +568,8 @@ def Play.hud_top(+s: Play) -> List<&2, String>:
   +p = Play.pl(w)
   ["CUBO AZUL  ·  " ++ Nat.show(Nat.div(1000000n, Nat.max(U32.to_nat(fus), 1n))) ++ " fps  ·  GPU "
      ++ Fmt.dec2(U32.to_nat(gpu), 1000n) ++ " ms",
-   "altura " ++ Fmt.dec2(P.Body.y(p), 262144n) ++ " m   vel " ++ Fmt.dec2(Play.speed(p), 1024n) ++ " m/s   energia "
+   "altura " ++ Fmt.dec2(P.Body.y(p), 262144n) ++ " m   vel " ++ Fmt.dec2(Play.speed(p), 1024n)
+     ++ " m/s" ++ Pick.s(Nat.is_lt(Play.top(), Play.speed(p)), " (teto)", "") ++ "   energia "
      ++ Fmt.dec1(P.Body.energy(P.K.g(k), p), U32.to_nat(2097152)) ++ " J/kg   cubos em movimento "
      ++ Nat.show(List.length(&2, P.Body, Play.awake_of(w)))]
 
@@ -715,10 +752,10 @@ def Play.ran(r: W.World & P.Body, +k: P.K, inp: Inp, +t0: Nat, +ticks: Nat, +rep
 
 # the physics' ticks due by now (128 a second), at most 8 a frame
 def Play.physics(+keys: U32, +now: Nat, s: Play) -> Play:
-  Play{w, +k, inp, +t0, +ticks, rep, +prev, +yaw, pitch, dist, sel, help, gpu, fus, hv} = s
+  Play{+w, +k, inp, +t0, +ticks, rep, +prev, +yaw, pitch, dist, sel, help, gpu, fus, hv} = s
   +due = Nat.div(Nat.mul(Nat.sub(now, t0), 128n), 1000n)
   +behind = Nat.sub(due, ticks)
-  Play.ran(Play.walks(Nat.min(behind, 8n), k, Play.input(keys, yaw), prev, w), k, inp, t0,
+  Play.ran(Play.walks(Nat.min(behind, 8n), k, Play.input(keys, yaw, Play.pl(w)), prev, w), k, inp, t0,
     Pick.n(Nat.is_lt(8n, behind), due, Nat.add(ticks, Nat.min(behind, 8n))), rep, yaw, pitch, dist, sel, help, gpu, fus, hv)
 
 def Play.with_inp(s: Play, inp: Inp) -> Play:

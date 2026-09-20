@@ -41,6 +41,11 @@ A GPU desenha (Vulkan); o Bend simula.
 Andar acelera 20 m/s² enquanto a tecla estiver segurada, e o atrito tira
 7,8 m/s²: sobram 12,2 m/s² que não param de somar — **não há velocidade
 máxima**, e a aceleração é a mesma em qualquer velocidade (`motor_is_steady`).
+O motor solta a 15000 m/s, e isso não é física: é onde o número acaba. Um
+`Nat` em Bend vai até 2^48−1, e o quadrado da velocidade (a energia, e a raiz
+que o atrito tira) tem que caber nele, o que termina em 16384 m/s. Passar
+disso derrubava o jogo; agora o jogo só para de empurrar, como se a tecla
+tivesse sido solta, e o HUD escreve `(teto)`. Nenhuma lei mudou.
 Num trecho limpo dá 12 m/s em 1 s e 122 m/s em 10 s; no mundo de verdade os
 cubos que você encontra pelo caminho seguram você por volta de 6 m/s. Por isso
 o ponto de partida fica numa **pista reta**: 8 m de largura pelo eixo z (para
