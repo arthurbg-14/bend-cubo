@@ -842,11 +842,19 @@ def F.cap0(+n: U32) -> U32 & Nat:
 def C.rb(+cap: U32) -> U32:
   (cap * 6 : U32)
 
-def C.roff(+cap: U32) -> U32:
+# which bodies are the chunk's own (one word each, beside each body area):
+# the tick rewrites a body's words, so the mark cannot live inside it
+def C.roa(+cap: U32) -> U32:
   (cap * 12 : U32)
 
+def C.rob(+cap: U32) -> U32:
+  (cap * 13 : U32)
+
+def C.roff(+cap: U32) -> U32:
+  (cap * 14 : U32)
+
 def C.rcur(+cap: U32, +gg: U32) -> U32:
-  (cap * 12 + gg + 1 : U32)
+  (cap * 14 + gg + 1 : U32)
 
 # a body that left the chunk's grid (before the tick that moves it out has
 # been carried over) falls into the last cell instead of a place of its own
@@ -887,41 +895,52 @@ def C.pre(n: Nat, r: Array<U32> & U32, +i: U32, +off: U32, +cur: U32, +s: U32) -
       +t = (s + v : U32)
       C.pre(m, ((a[(off + i : U32)] <- t)[(cur + i : U32)] <- t)[(off + i + 1 : U32)], (i + 1 : U32), off, cur, t)
 
-# every body into its cell's place in the other area
-def C.sc(n: Nat, ph: Nat, r: Array<U32> & U32, +i: U32, +src: U32, +dst: U32, +cur: U32, +ox: U32, +oz: U32,
-  +g: U32, +x: U32, +c: U32, +pos: U32) -> Array<U32>:
+# every body into its cell's place in the other area, carrying the mark
+# that says whether the chunk owns it
+def C.sc(n: Nat, ph: Nat, r: Array<U32> & U32, +i: U32, +src: U32, +dst: U32, +cur: U32, +sown: U32,
+  +down: U32, +ox: U32, +oz: U32, +g: U32, +x: U32, +c: U32, +pos: U32) -> Array<U32>:
   match n ph:
     case 0n _:
       F.fin(r)
+    case 1n+m 9n:
+      (a, +v) = r
+      C.sc(n, 8n, a[(src + i * 6 + 2 : U32)], i, src, dst, cur, sown, down, ox, oz, g, v, c, pos)
     case 1n+m 8n:
       (a, +v) = r
-      C.sc(n, 7n, a[(src + i * 6 + 2 : U32)], i, src, dst, cur, ox, oz, g, v, c, pos)
+      +cc = C.ci(x, v, ox, oz, g)
+      C.sc(n, 7n, a[(cur + cc : U32)], i, src, dst, cur, sown, down, ox, oz, g, x, cc, pos)
     case 1n+m 7n:
       (a, +v) = r
-      +cc = C.ci(x, v, ox, oz, g)
-      C.sc(n, 6n, a[(cur + cc : U32)], i, src, dst, cur, ox, oz, g, x, cc, pos)
+      C.sc(n, 6n, (a[(cur + c : U32)] <- (v + 1 : U32))[(sown + i : U32)], i, src, dst, cur, sown, down, ox, oz,
+        g, x, c, v)
     case 1n+m 6n:
-      (a, +v) = r
-      C.sc(n, 5n, (a[(cur + c : U32)] <- (v + 1 : U32))[(src + i * 6 : U32)], i, src, dst, cur, ox, oz, g, x, c, v)
+      (a, v) = r
+      C.sc(n, 5n, (a[(down + pos : U32)] <- v)[(src + i * 6 : U32)], i, src, dst, cur, sown, down, ox, oz, g, x,
+        c, pos)
     case 1n+m 5n:
       (a, v) = r
-      C.sc(n, 4n, (a[(dst + pos * 6 : U32)] <- v)[(src + i * 6 + 1 : U32)], i, src, dst, cur, ox, oz, g, x, c, pos)
+      C.sc(n, 4n, (a[(dst + pos * 6 : U32)] <- v)[(src + i * 6 + 1 : U32)], i, src, dst, cur, sown, down, ox, oz,
+        g, x, c, pos)
     case 1n+m 4n:
       (a, v) = r
-      C.sc(n, 3n, (a[(dst + pos * 6 + 1 : U32)] <- v)[(src + i * 6 + 2 : U32)], i, src, dst, cur, ox, oz, g, x, c, pos)
+      C.sc(n, 3n, (a[(dst + pos * 6 + 1 : U32)] <- v)[(src + i * 6 + 2 : U32)], i, src, dst, cur, sown, down, ox,
+        oz, g, x, c, pos)
     case 1n+m 3n:
       (a, v) = r
-      C.sc(n, 2n, (a[(dst + pos * 6 + 2 : U32)] <- v)[(src + i * 6 + 3 : U32)], i, src, dst, cur, ox, oz, g, x, c, pos)
+      C.sc(n, 2n, (a[(dst + pos * 6 + 2 : U32)] <- v)[(src + i * 6 + 3 : U32)], i, src, dst, cur, sown, down, ox,
+        oz, g, x, c, pos)
     case 1n+m 2n:
       (a, v) = r
-      C.sc(n, 1n, (a[(dst + pos * 6 + 3 : U32)] <- v)[(src + i * 6 + 4 : U32)], i, src, dst, cur, ox, oz, g, x, c, pos)
+      C.sc(n, 1n, (a[(dst + pos * 6 + 3 : U32)] <- v)[(src + i * 6 + 4 : U32)], i, src, dst, cur, sown, down, ox,
+        oz, g, x, c, pos)
     case 1n+m 1n:
       (a, v) = r
-      C.sc(n, 0n, (a[(dst + pos * 6 + 4 : U32)] <- v)[(src + i * 6 + 5 : U32)], i, src, dst, cur, ox, oz, g, x, c, pos)
+      C.sc(n, 0n, (a[(dst + pos * 6 + 4 : U32)] <- v)[(src + i * 6 + 5 : U32)], i, src, dst, cur, sown, down, ox,
+        oz, g, x, c, pos)
     case 1n+m _:
       (a, v) = r
-      C.sc(m, 8n, (a[(dst + pos * 6 + 5 : U32)] <- v)[(src + (i + 1) * 6 : U32)], (i + 1 : U32), src, dst, cur,
-        ox, oz, g, x, c, pos)
+      C.sc(m, 9n, (a[(dst + pos * 6 + 5 : U32)] <- v)[(src + (i + 1) * 6 : U32)], (i + 1 : U32), src, dst, cur,
+        sown, down, ox, oz, g, x, c, pos)
 
 # the cells' counts back to zero before counting again
 def C.clr(n: Nat, a: Array<U32>, +i: U32, +off: U32) -> Array<U32>:
@@ -931,11 +950,68 @@ def C.clr(n: Nat, a: Array<U32>, +i: U32, +off: U32) -> Array<U32>:
     case 1n+m:
       C.clr(m, a[(off + i : U32)] <- 0, (i + 1 : U32), off)
 
+# only the chunk's own cubes kept, packed from the start: the copies it
+# was given last round and the cubes that walked out of it are dropped
+def C.pk0(r: Array<U32> & U32, +j: U32) -> Array<U32> & U32:
+  (a, v) = r
+  (a, j)
+
+def C.pk(fuel: Nat, n: Nat, ph: Nat, r: Array<U32> & U32, +i: U32, +j: U32, +cap: U32) -> Array<U32> & U32:
+  match fuel n ph:
+    case 0n _ _:
+      C.pk0(r, j)
+    case _ 0n _:
+      C.pk0(r, j)
+    case 1n+f 1n++m 7n:
+      (a, +v) = r
+      +own = U32.is_eq(v, 1)
+      C.pk(f, Pick.n(own, n, m), Pick.n(own, 6n, 7n),
+        a[Pick.u(own, (i * 6 : U32), (C.roa(cap) + i + 1 : U32))], Pick.u(own, i, (i + 1 : U32)), j, cap)
+    case 1n+f 1n+m 6n:
+      (a, v) = r
+      C.pk(f, n, 5n, (a[(j * 6 : U32)] <- v)[(i * 6 + 1 : U32)], i, j, cap)
+    case 1n+f 1n+m 5n:
+      (a, v) = r
+      C.pk(f, n, 4n, (a[(j * 6 + 1 : U32)] <- v)[(i * 6 + 2 : U32)], i, j, cap)
+    case 1n+f 1n+m 4n:
+      (a, v) = r
+      C.pk(f, n, 3n, (a[(j * 6 + 2 : U32)] <- v)[(i * 6 + 3 : U32)], i, j, cap)
+    case 1n+f 1n+m 3n:
+      (a, v) = r
+      C.pk(f, n, 2n, (a[(j * 6 + 3 : U32)] <- v)[(i * 6 + 4 : U32)], i, j, cap)
+    case 1n+f 1n+m 2n:
+      (a, v) = r
+      C.pk(f, n, 1n, (a[(j * 6 + 4 : U32)] <- v)[(i * 6 + 5 : U32)], i, j, cap)
+    case 1n+f 1n+m _:
+      (a, v) = r
+      C.pk(f, m, 7n, ((a[(j * 6 + 5 : U32)] <- v)[(C.roa(cap) + j : U32)] <- 1)[(C.roa(cap) + i + 1 : U32)],
+        (i + 1 : U32), (j + 1 : U32), cap)
+
+def C.keepown(+nall: U32, a: Array<U32>, +cap: U32) -> Array<U32> & U32:
+  C.pk(Nat.add(Nat.mul(8n, U32.to_nat(nall)), 16n), U32.to_nat(nall), 7n, a[(C.roa(cap) : U32)], 0, 0, cap)
+
+# every body of a fresh chunk marked as its own (or not)
+def C.mark(n: Nat, a: Array<U32>, +i: U32, +cap: U32, +v: U32) -> Array<U32>:
+  match n:
+    case 0n:
+      a
+    case 1n+m:
+      C.mark(m, a[(C.roa(cap) + i : U32)] <- v, (i + 1 : U32), cap, v)
+
+# how many of the chunk's bodies are its own (the rest are copies)
+def C.nown(n: Nat, r: Array<U32> & U32, +i: U32, +cap: U32, +s: U32) -> Array<U32> & U32:
+  match n:
+    case 0n:
+      C.pk0(r, s)
+    case 1n+m:
+      (a, +v) = r
+      C.nown(m, a[(C.roa(cap) + i + 1 : U32)], (i + 1 : U32), cap, Pick.u(U32.is_eq(v, 1), (s + 1 : U32), s))
+
 # a chunk's bodies sorted by cell, from area src into area dst: the counts,
 # added up, then every body to its place
 def C.sort3(a: Array<U32>, +n: U32, +src: U32, +dst: U32, +cap: U32, +gg: U32, +ox: U32, +oz: U32,
   +g: U32) -> Array<U32>:
-  C.sc(U32.to_nat(n), 8n, a[src], 0, src, dst, C.rcur(cap, gg), ox, oz, g, 0, 0, 0)
+  C.sc(U32.to_nat(n), 9n, a[src], 0, src, dst, C.rcur(cap, gg), C.roa(cap), C.rob(cap), ox, oz, g, 0, 0, 0)
 
 def C.sort2(a: Array<U32>, +n: U32, +src: U32, +dst: U32, +cap: U32, +gg: U32, +ox: U32, +oz: U32,
   +g: U32) -> Array<U32>:
@@ -1004,6 +1080,10 @@ def C.scan(fuel: Nat, rows: Nat, ph: Nat, r: Array<U32> & U32, +i: U32, +sx: U32
         F.keep(Bool.and(Bool.not(U32.is_eq(j, i)),
           Bool.and((F.d(sx, jx) < rad : U32), Bool.and((F.d(sz, z) < rad : U32), (F.d(sy, jy) < rad : U32)))), j, acc))
 
+# a run of cells that does not leave the chunk's grid
+def C.fit(+w: U32, +l: U32, +g: U32) -> U32:
+  Pick.u((l + w <= g : U32), w, (g - l : U32))
+
 # one cube's tick inside its chunk: the cells it reaches (from its own size
 # and the tick's reach, never a fixed number), the proven tick, and back
 def C.one2(a: Array<U32>, +i: U32, +o: Og, +k: P.K, +cap: U32, +g: U32, +ox: U32, +oz: U32, +na: U32,
@@ -1011,11 +1091,14 @@ def C.one2(a: Array<U32>, +i: U32, +o: Og, +k: P.K, +cap: U32, +g: U32, +ox: U32
   +mr = Nat.add(m, mm)
   +sx = U32.from_nat(Nat.sub(P.Body.x(self), F.ox(o)))
   +sz = U32.from_nat(Nat.sub(P.Body.z(self), F.oz(o)))
-  +lx = (W.lo(P.Body.x(self), mr) - W.cell_of(F.ox(o)) - ox : U32)
-  +lz = (W.lo(P.Body.z(self), mr) - W.cell_of(F.oz(o)) - oz : U32)
-  +wx = U32.from_nat(W.span(P.Body.x(self), mr))
+  +lx0 = (W.lo(P.Body.x(self), mr) - W.cell_of(F.ox(o)) - ox : U32)
+  +lz0 = (W.lo(P.Body.z(self), mr) - W.cell_of(F.oz(o)) - oz : U32)
+  +lx = Pick.u((lx0 < g : U32), lx0, 0)
+  +lz = Pick.u((lz0 < g : U32), lz0, 0)
+  +wx = C.fit(U32.from_nat(W.span(P.Body.x(self), mr)), lx, g)
   +cb = (lz * g + lx : U32)
-  F.two2(C.scan(Nat.add(Nat.mul(8n, U32.to_nat(cap)), 64n), W.span(P.Body.z(self), mr), 4n,
+  F.two2(C.scan(Nat.add(Nat.mul(8n, U32.to_nat(cap)), 64n),
+    U32.to_nat(C.fit(U32.from_nat(W.span(P.Body.z(self), mr)), lz, g)), 4n,
     a[(C.roff(cap) + cb : U32)], i, sx, U32.from_nat(P.Body.y(self)), sz,
     U32.from_nat(Nat.add(W.size(), m)), C.roff(cap), cb, g, wx, 0, 0, 0, 0, []), self, i, o, k, na, P.In.idle())
 
@@ -1024,27 +1107,40 @@ def C.one(r: Array<U32> & P.Body, +i: U32, +o: Og, +k: P.K, +cap: U32, +g: U32, 
   (a, +self) = r
   C.one2(a, i, o, k, cap, g, ox, oz, na, self, W.creach(k, self), mm)
 
-# every cube of the chunk, in order
-def C.ticks(n: Nat, a: Array<U32>, +i: U32, +o: Og, +k: P.K, +cap: U32, +g: U32, +ox: U32, +oz: U32, +na: U32,
-  +mm: Nat) -> Array<U32>:
+def C.step(own: Bool, a: Array<U32>, +i: U32, +o: Og, +k: P.K, +cap: U32, +g: U32, +ox: U32, +oz: U32,
+  +na: U32, +mm: Nat) -> Array<U32>:
+  match own:
+    case True{}:
+      C.one(F.get(a, i, o), i, o, k, cap, g, ox, oz, na, mm)
+    case False{}:
+      a
+
+# every cube of the chunk that belongs to it, in order: the sort mixes the
+# chunk's own cubes with the copies of the ones around, so each body says
+# which it is (the flag in its last word)
+def C.ticks(n: Nat, r: Array<U32> & U32, +i: U32, +o: Og, +k: P.K, +cap: U32, +g: U32, +ox: U32, +oz: U32,
+  +na: U32, +mm: Nat) -> Array<U32>:
   match n:
     case 0n:
-      a
+      F.fin(r)
     case 1n+m:
-      C.ticks(m, C.one(F.get(a, i, o), i, o, k, cap, g, ox, oz, na, mm), (i + 1 : U32), o, k, cap, g, ox, oz,
-        na, mm)
+      (a, +v) = r
+      C.ticks(m, C.step(U32.is_eq(v, 1), a, i, o, k, cap, g, ox, oz, na, mm)[(C.roa(cap) + i + 1 : U32)],
+        (i + 1 : U32), o, k, cap, g, ox, oz, na, mm)
 
 # the sorted bodies back into the first area
-def C.cp(n: Nat, r: Array<U32> & U32, +i: U32, +cap: U32) -> Array<U32>:
+def C.cp(n: Nat, r: Array<U32> & U32, +i: U32, +from: U32, +to: U32) -> Array<U32>:
   match n:
     case 0n:
       F.fin(r)
     case 1n+m:
       (a, v) = r
-      C.cp(m, (a[i] <- v)[(C.rb(cap) + i + 1 : U32)], (i + 1 : U32), cap)
+      C.cp(m, (a[(to + i : U32)] <- v)[(from + i + 1 : U32)], (i + 1 : U32), from, to)
 
+# the sorted bodies, and their marks, back into the first areas
 def C.copy(+n: U32, a: Array<U32>, +cap: U32) -> Array<U32>:
-  C.cp(U32.to_nat((n * 6 : U32)), a[(C.rb(cap) : U32)], 0, cap)
+  C.cp(U32.to_nat(n), C.cp(U32.to_nat((n * 6 : U32)), a[(C.rb(cap) : U32)], 0, C.rb(cap), 0)[(C.rob(cap) : U32)],
+    0, C.rob(cap), C.roa(cap))
 
 # the constants as a record of this task's own: one record shared by every
 # task is a reference count that every core bumps at every read
@@ -1056,17 +1152,282 @@ def Fb.kc(k: P.K) -> P.K:
   P.K{g, mu, j, acc, size} = k
   P.K{g, mu, j, acc, size}
 
+# What a chunk sends to the ones around it
+# ---------------------------------------
+# After its cubes tick, a chunk sends: the cubes that left it (they belong
+# to the chunk they walked into now) and copies of the cubes near its
+# border (the chunk next door has to see them to not walk into them). Each
+# message carries the chunk it goes to, and the walk that ticks the chunks
+# splits the messages along the way -- so handing them out is parallel too.
+
+type Msg is Data:
+  Msg{d: U32, own: Bool, x: U32, y: U32, z: U32, vx: U32, vy: U32, vz: U32}
+
+# the chunk (ix, iz) of the grid, as one number -- or one past the last
+# chunk, when it falls outside the grid (a message there is dropped)
+def C.ix(+ix: U32, +iz: U32, +nbx: U32, +nbz: U32) -> U32:
+  Pick.u(Bool.and((ix < nbx : U32), (iz < nbz : U32)), (iz * nbx + ix : U32), (nbx * nbz : U32))
+
+# the colour of the chunk (ix, iz)
+def C.col(+ix: U32, +iz: U32) -> Nat:
+  U32.to_nat(((ix .&. 1) + ((iz .&. 1) * 2) : U32))
+
+def C.next(+ix: U32, +iz: U32, +nc: Nat) -> Bool:
+  Nat.is_eq(C.col(ix, iz), nc)
+
+def C.mv(c: Bool, +d: U32, +own: Bool, +x: U32, +y: U32, +z: U32, +vx: U32, +vy: U32, +vz: U32,
+  ms: List<&2, Msg>) -> List<&2, Msg>:
+  match c:
+    case True{}:
+      Msg{d, own, x, y, z, vx, vy, vz} <> ms
+    case False{}:
+      ms
+
+# where a cube of the chunk goes: out of it (it moved away and is the next
+# chunk's now), or as a copy to the sides it is near, and only to the
+# chunks that tick next round -- a copy is only worth sending to a chunk
+# that is about to look at it
+def C.tag(+x: U32, +y: U32, +z: U32, +vx: U32, +vy: U32, +vz: U32, +ox: U32, +oz: U32, +ix: U32, +iz: U32,
+  +nbx: U32, +nbz: U32, +side: U32, +nc: Nat, ms: List<&2, Msg>) -> List<&2, Msg>:
+  +cx = (F.cell(x) - ox : U32)
+  +cz = (F.cell(z) - oz : U32)
+  +out = Bool.or(Bool.or((cx < 2 : U32), (cx >= side + 2 : U32)), Bool.or((cz < 2 : U32), (cz >= side + 2 : U32)))
+  +dx = Pick.u((cx < 2 : U32), (ix - 1 : U32), Pick.u((cx >= side + 2 : U32), (ix + 1 : U32), ix))
+  +dz = Pick.u((cz < 2 : U32), (iz - 1 : U32), Pick.u((cz >= side + 2 : U32), (iz + 1 : U32), iz))
+  +lx = Bool.and(Bool.not(out), (cx < 4 : U32))
+  +hx = Bool.and(Bool.not(out), (cx >= side : U32))
+  +lz = Bool.and(Bool.not(out), (cz < 4 : U32))
+  +hz = Bool.and(Bool.not(out), (cz >= side : U32))
+  C.mv(out, C.ix(dx, dz, nbx, nbz), True{}, x, y, z, vx, vy, vz,
+    C.mv(Bool.and(lx, C.next((ix - 1 : U32), iz, nc)), C.ix((ix - 1 : U32), iz, nbx, nbz), False{}, x, y, z, vx, vy, vz,
+      C.mv(Bool.and(hx, C.next((ix + 1 : U32), iz, nc)), C.ix((ix + 1 : U32), iz, nbx, nbz), False{}, x, y, z, vx, vy, vz,
+        C.mv(Bool.and(lz, C.next(ix, (iz - 1 : U32), nc)), C.ix(ix, (iz - 1 : U32), nbx, nbz), False{}, x, y, z, vx, vy, vz,
+          C.mv(Bool.and(hz, C.next(ix, (iz + 1 : U32), nc)), C.ix(ix, (iz + 1 : U32), nbx, nbz), False{}, x, y, z, vx, vy, vz,
+            C.mv(Bool.and(Bool.and(lx, lz), C.next((ix - 1 : U32), (iz - 1 : U32), nc)),
+              C.ix((ix - 1 : U32), (iz - 1 : U32), nbx, nbz), False{}, x, y, z, vx, vy, vz,
+              C.mv(Bool.and(Bool.and(lx, hz), C.next((ix - 1 : U32), (iz + 1 : U32), nc)),
+                C.ix((ix - 1 : U32), (iz + 1 : U32), nbx, nbz), False{}, x, y, z, vx, vy, vz,
+                C.mv(Bool.and(Bool.and(hx, lz), C.next((ix + 1 : U32), (iz - 1 : U32), nc)),
+                  C.ix((ix + 1 : U32), (iz - 1 : U32), nbx, nbz), False{}, x, y, z, vx, vy, vz,
+                  C.mv(Bool.and(Bool.and(hx, hz), C.next((ix + 1 : U32), (iz + 1 : U32), nc)),
+                    C.ix((ix + 1 : U32), (iz + 1 : U32), nbx, nbz), False{}, x, y, z, vx, vy, vz, ms)))))))))
+
+# the chunk's own cubes into messages, read straight as words: one read a
+# step, and a cube that walked out loses its mark here (the next round's
+# tidy-up drops it)
+def F.pfinM(r: Array<U32> & U32, ms: List<&2, Msg>) -> Array<U32> & List<&2, Msg>:
+  (a, v) = r
+  (a, ms)
+
+def C.emit(fuel: Nat, n: Nat, ph: Nat, r: Array<U32> & U32, +i: U32, +cap: U32, +ox: U32, +oz: U32, +ix: U32,
+  +iz: U32, +nbx: U32, +nbz: U32, +side: U32, +nc: Nat, +x: U32, +y: U32, +z: U32, +vx: U32, +vy: U32,
+  ms: List<&2, Msg>) -> Array<U32> & List<&2, Msg>:
+  match fuel n ph:
+    case 0n _ _:
+      F.pfinM(r, ms)
+    case _ 0n _:
+      F.pfinM(r, ms)
+    case 1n+f 1n++m 6n:
+      (a, +v) = r
+      +own = U32.is_eq(v, 1)
+      C.emit(f, Pick.n(own, n, m), Pick.n(own, 5n, 6n),
+        a[Pick.u(own, (i * 6 : U32), (C.roa(cap) + i + 1 : U32))], Pick.u(own, i, (i + 1 : U32)), cap, ox, oz,
+        ix, iz, nbx, nbz, side, nc, x, y, z, vx, vy, ms)
+    case 1n+f 1n+m 5n:
+      (a, v) = r
+      C.emit(f, n, 4n, a[(i * 6 + 1 : U32)], i, cap, ox, oz, ix, iz, nbx, nbz, side, nc, v, y, z, vx, vy, ms)
+    case 1n+f 1n+m 4n:
+      (a, v) = r
+      C.emit(f, n, 3n, a[(i * 6 + 2 : U32)], i, cap, ox, oz, ix, iz, nbx, nbz, side, nc, x, v, z, vx, vy, ms)
+    case 1n+f 1n+m 3n:
+      (a, v) = r
+      C.emit(f, n, 2n, a[(i * 6 + 3 : U32)], i, cap, ox, oz, ix, iz, nbx, nbz, side, nc, x, y, v, vx, vy, ms)
+    case 1n+f 1n+m 2n:
+      (a, v) = r
+      C.emit(f, n, 1n, a[(i * 6 + 4 : U32)], i, cap, ox, oz, ix, iz, nbx, nbz, side, nc, x, y, z, v, vy, ms)
+    case 1n+f 1n+m 1n:
+      (a, v) = r
+      C.emit(f, n, 0n, a[(i * 6 + 5 : U32)], i, cap, ox, oz, ix, iz, nbx, nbz, side, nc, x, y, z, vx, v, ms)
+    case 1n+f 1n+m _:
+      (a, +v) = r
+      +gone = Bool.or(Bool.or(((F.cell(x) - ox) < 2 : U32), ((F.cell(x) - ox) >= side + 2 : U32)),
+        Bool.or(((F.cell(z) - oz) < 2 : U32), ((F.cell(z) - oz) >= side + 2 : U32)))
+      C.emit(f, m, 6n,
+        (a[(C.roa(cap) + i : U32)] <- Pick.u(gone, 0, 1))[(C.roa(cap) + i + 1 : U32)], (i + 1 : U32), cap, ox, oz,
+        ix, iz, nbx, nbz, side, nc, x, y, z, vx, vy,
+        C.tag(x, y, z, vx, vy, v, ox, oz, ix, iz, nbx, nbz, side, nc, ms))
+
+def C.w3(a: Array<U32>, +i: U32, +p: U32, +q: U32, +t: U32) -> Array<U32>:
+  ((a[i] <- p)[(i + 1 : U32)] <- q)[(i + 2 : U32)] <- t
+
+def C.put_if(c: Bool, a: Array<U32>, +i: U32, +cap: U32, +own: Bool, +x: U32, +y: U32, +z: U32, +vx: U32,
+  +vy: U32, +vz: U32) -> Array<U32>:
+  match c:
+    case True{}:
+      C.w3(C.w3(a, (i * 6 : U32), x, y, z), (i * 6 + 3 : U32), vx, vy, vz)[(C.roa(cap) + i : U32)] <- Pick.u(own, 1, 0)
+    case False{}:
+      a
+
+# the cubes that came in, written from j on: the run is made twice, first
+# for the ones that moved in (they are the chunk's own now), then for the
+# copies, which go after them and are seen but never ticked
+def C.take(ms: List<&2, Msg>, a: Array<U32>, +cap: U32, +want: Bool, +j: U32) -> Array<U32> & U32:
+  match ms:
+    case []:
+      (a, j)
+    case Msg{d, +own, +x, +y, +z, +vx, +vy, +vz} <> rest:
+      +hit = Bool.or(Bool.and(own, want), Bool.and(Bool.not(own), Bool.not(want)))
+      C.take(rest, C.put_if(hit, a, j, cap, own, x, y, z, vx, vy, vz), cap, want,
+        Pick.u(hit, (j + 1 : U32), j))
+
+type Mz is Data:
+  Mz{a: List<&2, Msg>, b: List<&2, Msg>}
+
+type Cr is Type:
+  Cr{t: Chk, ms: List<&2, Msg>}
+
+def Msg.d(m: Msg) -> U32:
+  Msg{d, own, x, y, z, vx, vy, vz} = m
+  d
+
+def C.p2(c: Bool, +m: Msg, r: Mz) -> Mz:
+  match c:
+    case True{}:
+      Mz{a, b} = r
+      Mz{m <> a, b}
+    case False{}:
+      Mz{a, b} = r
+      Mz{a, m <> b}
+
+# the messages for the chunks before mid, and the rest
+def C.part(ms: List<&2, Msg>, +mid: U32) -> Mz:
+  match ms:
+    case []:
+      Mz{[], []}
+    case +m <> rest:
+      C.p2((Msg.d(m) < mid : U32), m, C.part(rest, mid))
+
+def C.l5(r: Array<U32> & List<&2, Msg>, +n: U32, +cap: U32, +ox: U32, +oz: U32) -> Cr:
+  (a, ms) = r
+  Cr{ChL{a, n, cap, ox, oz}, ms}
+
+# the chunk's cubes sorted and ticked, then what it sends out
+def C.l4c(a: Array<U32>, +nall: U32, +cap: U32, +ox: U32, +oz: U32, +o: Og, +nbx: U32, +nbz: U32,
+  +side: U32, +nc: Nat) -> Cr:
+  C.l5(C.emit(Nat.add(Nat.mul(8n, U32.to_nat(nall)), 16n), U32.to_nat(nall), 6n, a[(C.roa(cap) : U32)], 0, cap,
+    ox, oz, ((ox + 2) / side : U32), ((oz + 2) / side : U32), nbx, nbz, side, nc, 0, 0, 0, 0, 0, []),
+    nall, cap, ox, oz)
+
+def C.l4b(a: Array<U32>, +nall: U32, +cap: U32, +ox: U32, +oz: U32, +o: Og, +nbx: U32, +nbz: U32,
+  +side: U32, +nc: Nat) -> Cr:
+  C.l4c(a, nall, cap, ox, oz, o, nbx, nbz, side, nc)
+
+def C.l4(a: Array<U32>, +nall: U32, +cap: U32, +ox: U32, +oz: U32, +o: Og, +k: P.K, +mm: Nat, +nbx: U32,
+  +nbz: U32, +side: U32, +nc: Nat) -> Cr:
+  C.l4b(C.ticks(U32.to_nat(nall),
+    C.copy(nall, C.sort(nall, a, 0, C.rb(cap), cap, U32.from_nat(C.gg()), ox, oz, U32.from_nat(C.g())),
+      cap)[(C.roa(cap) : U32)], 0, Fb.og(o), Fb.kc(k), cap, U32.from_nat(C.g()), ox, oz, nall, mm),
+    nall, cap, ox, oz, o, nbx, nbz, side, nc)
+
+# only the chunks of this round's colour tick, but every chunk sends its
+# border cubes every round: that is what keeps each chunk's copies of the
+# ones around it up to date, whatever colour they are
+def C.l2(mine: Bool, a: Array<U32>, +nall: U32, +cap: U32, +ox: U32, +oz: U32, +o: Og, +k: P.K,
+  +mm: Nat, +nbx: U32, +nbz: U32, +side: U32, +nc: Nat) -> Cr:
+  match mine:
+    case True{}:
+      C.l4(a, nall, cap, ox, oz, o, k, mm, nbx, nbz, side, nc)
+    case False{}:
+      C.l4c(a, nall, cap, ox, oz, o, nbx, nbz, side, nc)
+
+def C.l3(r: Array<U32> & U32, +cap: U32, +ox: U32, +oz: U32, +o: Og, +k: P.K, +mm: Nat, +nbx: U32, +nbz: U32,
+  +side: U32, +nc: Nat, +mine: Bool) -> Cr:
+  (a, nall) = r
+  C.l2(mine, a, nall, cap, ox, oz, o, k, mm, nbx, nbz, side, nc)
+
+def C.l1(r: Array<U32> & U32, +ms: List<&2, Msg>, +cap: U32, +ox: U32, +oz: U32, +o: Og, +k: P.K, +mm: Nat,
+  +nbx: U32, +nbz: U32, +side: U32, +nc: Nat, +mine: Bool) -> Cr:
+  (a, n) = r
+  C.l3(C.take(ms, a, cap, False{}, n), cap, ox, oz, o, k, mm, nbx, nbz, side, nc, mine)
+
+def C.l0(r: Array<U32> & U32, +ms: List<&2, Msg>, +cap: U32, +ox: U32, +oz: U32, +o: Og, +k: P.K, +mm: Nat,
+  +nbx: U32, +nbz: U32, +side: U32, +nc: Nat, +mine: Bool) -> Cr:
+  (a, n) = r
+  C.l1(C.take(ms, a, cap, True{}, n), ms, cap, ox, oz, o, k, mm, nbx, nbz, side, nc, mine)
+
+# a chunk's round: only its own cubes kept (the copies of last round and
+# the ones that walked out go), then what came in (the cubes that moved in
+# first, then the copies), then its tick if this is its colour
+def C.leaf(a: Array<U32>, +nall: U32, +cap: U32, +ox: U32, +oz: U32, +ms: List<&2, Msg>, +o: Og, +k: P.K,
+  +mm: Nat, +nbx: U32, +nbz: U32, +side: U32, +nc: Nat, +mine: Bool) -> Cr:
+  C.l0(C.keepown(nall, a, cap), ms, cap, ox, oz, o, k, mm, nbx, nbz, side, nc, mine)
+
+def C.join(ra: Cr, rb: Cr) -> Cr:
+  Cr{ta, ma} = ra
+  Cr{tb, mb} = rb
+  Cr{ChN{ta, tb}, List.append(&2, Msg, ma, mb)}
+
+# is the chunk at (ix, iz) of this round's colour?
+def C.mine(+ox: U32, +oz: U32, +side: U32, +c: Nat) -> Bool:
+  U32.is_eq(((((ox + 2) / side) .&. 1) + ((((oz + 2) / side) .&. 1) * 2) : U32), U32.from_nat(c))
+
+def C.keep(c: Bool, +m: Msg, ms: List<&2, Msg>) -> List<&2, Msg>:
+  match c:
+    case True{}:
+      m <> ms
+    case False{}:
+      ms
+
+# the messages for the chunks from lo to hi - 1
+def C.only(ms: List<&2, Msg>, +lo: U32, +hi: U32) -> List<&2, Msg>:
+  match ms:
+    case []:
+      []
+    case +m <> rest:
+      C.keep(Bool.and((Msg.d(m) >= lo : U32), (Msg.d(m) < hi : U32)), m, C.only(rest, lo, hi))
+
+# a round: the messages walk down the tree with the halves, so handing
+# them out runs at the same time as the ticks. Only the chunks of this
+# round's colour tick; the rest just take in what came to them
+def C.round(t: Chk, +ms: List<&2, Msg>, +lo: U32, +hi: U32, +c: Nat, +o: Og, +k: P.K, +mm: Nat, +nbx: U32, +nbz: U32,
+  +side: U32) -> Cr:
+  match t:
+    case ChE{}:
+      Cr{ChE{}, []}
+    case ChL{a, +n, +cap, +ox, +oz}:
+      C.leaf(a, n, cap, ox, oz, ms, o, k, mm, nbx, nbz, side, Nat.mod(Nat.add(c, 1n), 4n),
+        C.mine(ox, oz, side, c))
+    case ChN{l, h}:
+      +mid = ((lo + hi) / 2 : U32)
+      x y = C.round(l, C.only(ms, lo, mid), lo, mid, c, o, k, mm, nbx, nbz, side)
+            C.round(h, C.only(ms, mid, hi), mid, hi, c, o, k, mm, nbx, nbz, side)
+      C.join(x, y)
+
+def C.t2(r: Cr, +c: Nat, +nch: U32, +o: Og, +k: P.K, +mm: Nat, +nbx: U32, +nbz: U32, +side: U32) -> Cr:
+  Cr{t, ms} = r
+  C.round(t, ms, 0, nch, c, o, k, mm, nbx, nbz, side)
+
+# a tick of the whole crowd: four rounds, one per colour. What a round's
+# chunks send is handed out at the start of the next one -- and what the
+# last round sends waits for the next tick, when it is still fresh (those
+# chunks have not moved since)
+def C.tick(r: Cr, +nch: U32, +o: Og, +k: P.K, +mm: Nat, +nbx: U32, +nbz: U32, +side: U32) -> Cr:
+  C.t2(C.t2(C.t2(C.t2(r, 0n, nch, o, k, mm, nbx, nbz, side), 1n, nch, o, k, mm, nbx, nbz, side), 2n, nch, o, k,
+    mm, nbx, nbz, side), 3n, nch, o, k, mm, nbx, nbz, side)
+
 # every chunk's tick at the same time, each on its own array: sort by cell,
 # then every cube of the chunk in order. Nothing shared is read inside, so
 # the cores fill up (a shared list or trie would count references atomically)
+def C.r2(a: Array<U32>, +n: U32, +o: Og, +k: P.K, +cap: U32, +ox: U32, +oz: U32, +mm: Nat) -> Array<U32>:
+  C.ticks(U32.to_nat(n), a[(C.roa(cap) : U32)], 0, Fb.og(o), Fb.kc(k), cap, U32.from_nat(C.g()), ox, oz, n, mm)
+
 def C.run(t: Chk, +o: Og, +k: P.K, +mm: Nat) -> Chk:
   match t:
     case ChE{}:
       ChE{}
     case ChL{a, +n, +cap, +ox, +oz}:
-      ChL{C.ticks(U32.to_nat(n),
-        C.copy(n, C.sort(n, a, 0, C.rb(cap), cap, U32.from_nat(C.gg()), ox, oz, U32.from_nat(C.g())), cap),
-        0, Fb.og(o), Fb.kc(k), cap, U32.from_nat(C.g()), ox, oz, n, mm), n, cap, ox, oz}
+      ChL{C.r2(C.copy(n, C.sort(n, a, 0, C.rb(cap), cap, U32.from_nat(C.gg()), ox, oz, U32.from_nat(C.g())), cap),
+        n, o, k, cap, ox, oz, mm), n, cap, ox, oz}
     case ChN{lo, hi}:
       x y = C.run(lo, o, k, mm) C.run(hi, o, k, mm)
       ChN{x, y}
