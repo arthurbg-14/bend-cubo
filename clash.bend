@@ -17,7 +17,7 @@ def meets(+a: P.Body, xs: List<&2, P.Body>) -> Nat:
     case []:
       0n
     case +b <> rest:
-      Nat.add(M.Pick.n(P.Geo.meets(W.W.size(), P.Body.x(a), P.Body.y(a), P.Body.z(a), b), 1n, 0n), meets(a, rest))
+      Nat.add(M.Pick.n(P.Geo.meets(W.W.size(), P.Body.x(a), P.Body.y(a), P.Body.z(a), P.Rot.q(P.Body.rot(a)), b), 1n, 0n), meets(a, rest))
 
 def clash(xs: List<&2, P.Body>) -> Nat:
   match xs:
@@ -82,7 +82,7 @@ def clean(xs: List<&2, P.Body>, +w: W.World) -> List<&2, P.Body>:
     case []:
       []
     case +b <> rest:
-      W.W.take_if(P.Geo.free(W.W.size(), P.Body.x(b), P.Body.y(b), P.Body.z(b), W.W.around(M.Knob.defaults(), cells(w), 12345, b)), b,
+      W.W.take_if(P.Geo.free(W.W.size(), P.Body.x(b), P.Body.y(b), P.Body.z(b), P.Rot.q(P.Body.rot(b)), W.W.around(M.Knob.defaults(), cells(w), 12345, b)), b,
         clean(rest, w))
 
 def start2(+w: W.World) -> W.World:

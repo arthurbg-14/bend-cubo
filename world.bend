@@ -199,8 +199,8 @@ def Cells.set(t: Cells, +cx: U32, +cz: U32, cubes: List<&2, P.Body>) -> Cells:
 def W.reach(+k: P.K, b: P.Body) -> Nat:
   P.K{+g, mu, jump, +acc, size} = k
   P.Body{x, y, z, vx, vy, vz, gr, h, rt} = b
-  Nat.add(Nat.mul(2n, Nat.add(Nat.add(P.Z.mag(vx), P.Z.mag(vy)), P.Z.mag(vz))),
-    Nat.add(Nat.mul(2n, Nat.add(acc, g)), 65536n))
+  Nat.add(Nat.add(Nat.mul(2n, Nat.add(Nat.add(P.Z.mag(vx), P.Z.mag(vy)), P.Z.mag(vz))),
+    Nat.add(Nat.mul(2n, Nat.add(acc, g)), 65536n)), Nat.div(Nat.mul(3n, W.size()), 8n))
 
 # the sleeping cubes of the cells in (x0 .. x0 + nx - 1, z0 .. z0 + nz - 1),
 # i counting them down
@@ -214,8 +214,8 @@ def W.rect(+i: Nat, +t: Cells, +seed: U32, +x0: U32, +z0: U32, +nx: Nat) -> List
 
 def W.reachz(+k: P.K, +vx: P.Z, +vy: P.Z, +vz: P.Z) -> Nat:
   P.K{+g, mu, jump, +acc, size} = k
-  Nat.add(Nat.mul(2n, Nat.add(Nat.add(P.Z.mag(vx), P.Z.mag(vy)), P.Z.mag(vz))),
-    Nat.add(Nat.mul(2n, Nat.add(acc, g)), 65536n))
+  Nat.add(Nat.add(Nat.mul(2n, Nat.add(Nat.add(P.Z.mag(vx), P.Z.mag(vy)), P.Z.mag(vz))),
+    Nat.add(Nat.mul(2n, Nat.add(acc, g)), 65536n)), Nat.div(Nat.mul(3n, W.size()), 8n))
 
 # How far a cube (no input) can reach in a tick: it moves by v + v' on each
 # axis, and without a motor v' only loses speed (friction) or gains g
@@ -224,8 +224,8 @@ def W.reachz(+k: P.K, +vx: P.Z, +vy: P.Z, +vz: P.Z) -> Nat:
 # handed exactly the bodies it may touch, not every one within a quarter
 # of a metre more.
 def W.creachz(+k: P.K, +vx: P.Z, +vy: P.Z, +vz: P.Z) -> Nat:
-  Nat.add(Nat.mul(2n, Nat.add(Nat.add(P.Z.mag(vx), P.Z.mag(vy)), P.Z.mag(vz))),
-    Nat.add(Nat.mul(2n, Nat.add(P.K.g(k), P.K.acc(k))), 16n))
+  Nat.add(Nat.add(Nat.mul(2n, Nat.add(Nat.add(P.Z.mag(vx), P.Z.mag(vy)), P.Z.mag(vz))),
+    Nat.add(Nat.mul(2n, Nat.add(P.K.g(k), P.K.acc(k))), 16n)), Nat.div(Nat.mul(3n, W.size()), 8n))
 
 def W.creach(+k: P.K, b: P.Body) -> Nat:
   P.Body{x, y, z, +vx, +vy, +vz, gr, h, rt} = b
@@ -284,9 +284,13 @@ def W.around3(+t: Cells, +seed: U32, +m: Nat, +x: Nat, +y: Nat, +z: Nat) -> List
 def W.around(+k: P.K, +t: Cells, +seed: U32, +b: P.Body) -> List<&2, P.Body>:
   W.around3(t, seed, W.reach(k, b), P.Body.x(b), P.Body.y(b), P.Body.z(b))
 
+# a cube that is turning, or that has turned and is not square with the
+# world, is moving as much as one that is going somewhere: it cannot go
+# to sleep in a cell, because a cell holds square cubes only
 def W.moving(b: P.Body) -> Bool:
-  P.Body{x, y, z, vx, vy, vz, g, h, rt} = b
-  Bool.or(Nat.is_lt(0n, P.Z.mag(vx)), Bool.or(Nat.is_lt(0n, P.Z.mag(vy)), Nat.is_lt(0n, P.Z.mag(vz))))
+  P.Body{x, y, z, vx, vy, vz, g, h, +rt} = b
+  Bool.or(Bool.or(Nat.is_lt(0n, P.Z.mag(vx)), Bool.or(Nat.is_lt(0n, P.Z.mag(vy)), Nat.is_lt(0n, P.Z.mag(vz)))),
+    Bool.not(P.Rot.still(rt)))
 
 def W.same(+a: P.Body, +b: P.Body) -> Bool:
   Bool.and(Nat.is_eq(P.Body.x(a), P.Body.x(b)), Bool.and(Nat.is_eq(P.Body.y(a), P.Body.y(b)), Nat.is_eq(P.Body.z(a), P.Body.z(b))))

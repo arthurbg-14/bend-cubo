@@ -11,7 +11,7 @@ def meets(+a: P.Body, xs: List<&2, P.Body>) -> Nat:
     case []:
       0n
     case +b <> rest:
-      Nat.add(M.Pick.n(P.Geo.meets(W.W.size(), P.Body.x(a), P.Body.y(a), P.Body.z(a), b), 1n, 0n), meets(a, rest))
+      Nat.add(M.Pick.n(P.Geo.meets(W.W.size(), P.Body.x(a), P.Body.y(a), P.Body.z(a), P.Rot.q(P.Body.rot(a)), b), 1n, 0n), meets(a, rest))
 
 def clash(xs: List<&2, P.Body>) -> Nat:
   match xs:
