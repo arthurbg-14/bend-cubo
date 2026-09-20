@@ -1829,9 +1829,51 @@ def C.round(t: Chk, z: Mz, +lo: U32, +hi: U32, +c: Nat, +o: Og, +k: P.K, +mm: Na
             C.round(h, C.part(mb, ((mid + hi) / 2 : U32)), mid, hi, c, o, k, mm, nbx, nbz, side)
       C.join(x, y)
 
+# Handing the messages out and ticking are two walks, not one: the tick's
+# walk then forks and does nothing else, which is what fills the cores
+# (measured: one walk that also splits lists stops at five of them).
+
+def C.dl(+cap: U32, +ox: U32, +oz: U32, r: Array<U32> & U32) -> Chk:
+  (a, n) = r
+  ChL{a, n, cap, ox, oz}
+
+def C.dl1(r: Array<U32> & U32, +cap: U32, +ox: U32, +oz: U32, +ms: List<&2, Msg>) -> Chk:
+  (a, +n) = r
+  C.dl(cap, ox, oz, C.take(ms, a, cap, False{}, n))
+
+def C.dl0(+ms: List<&2, Msg>, a: Array<U32>, +n: U32, +cap: U32, +ox: U32, +oz: U32) -> Chk:
+  C.dl1(C.take(ms, a, cap, True{}, n), cap, ox, oz, ms)
+
+# what came in, written from the cubes the chunk already holds on
+def C.deliver(t: Chk, z: Mz, +lo: U32, +hi: U32) -> Chk:
+  match t:
+    case ChE{}:
+      Mz{ma, mb} = z
+      ChE{}
+    case ChL{a, +n, +cap, +ox, +oz}:
+      Mz{ma, mb} = z
+      C.dl0(List.append(&2, Msg, ma, mb), a, n, cap, ox, oz)
+    case ChN{l, h}:
+      Mz{ma, mb} = z
+      +mid = ((lo + hi) / 2 : U32)
+      x y = C.deliver(l, C.part(ma, ((lo + mid) / 2 : U32)), lo, mid)
+            C.deliver(h, C.part(mb, ((mid + hi) / 2 : U32)), mid, hi)
+      ChN{x, y}
+
+# the chunks of this colour tick, and say what they send; nothing else
+def C.tickall(t: Chk, +c: Nat, +o: Og, +k: P.K, +mm: Nat, +nbx: U32, +nbz: U32, +side: U32) -> Cr:
+  match t:
+    case ChE{}:
+      Cr{ChE{}, []}
+    case ChL{a, +n, +cap, +ox, +oz}:
+      C.l2(C.mine(ox, oz, side, c), a, n, cap, ox, oz, o, k, mm, nbx, nbz, side, Nat.mod(Nat.add(c, 1n), 4n))
+    case ChN{l, h}:
+      x y = C.tickall(l, c, o, k, mm, nbx, nbz, side) C.tickall(h, c, o, k, mm, nbx, nbz, side)
+      C.join(x, y)
+
 def C.t2(r: Cr, +c: Nat, +nch: U32, +o: Og, +k: P.K, +mm: Nat, +nbx: U32, +nbz: U32, +side: U32) -> Cr:
   Cr{t, ms} = r
-  C.round(t, C.part(C.only(ms, 0, nch), ((nch) / 2 : U32)), 0, nch, c, o, k, mm, nbx, nbz, side)
+  C.tickall(C.deliver(t, C.part(C.only(ms, 0, nch), ((nch) / 2 : U32)), 0, nch), c, o, k, mm, nbx, nbz, side)
 
 # a tick of the whole crowd: four rounds, one per colour. What a round's
 # chunks send is handed out at the start of the next one -- and what the
