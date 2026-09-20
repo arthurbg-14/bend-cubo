@@ -132,9 +132,62 @@ def fin2(r: W.Gr2) -> IO(Unit):
 def start() -> IO(Unit):
   fin2(W.C.gbodies(grid(6n, 6n, scene(12n)), oar(), 1))
 
+# The second test: the world's own tick with the grid kept alive
+# (W.tick_cg), on a crowd wide enough to have chunks in BOTH directions --
+# 4096 cubes over 73 m are 8 x 8 chunks, so the handover along z (between
+# rows of chunks) is exercised, which two chunks side by side never do.
+def one(+i: Nat, +j: Nat) -> P.Body:
+  +o = W.W.base(W.W.origin())
+  P.Body{Nat.add(o, Nat.mul(Nat.add(i, 5n), 300000n)), Nat.mul(Nat.add(Nat.mod(Nat.add(i, j), 5n), 12n), 70000n),
+    Nat.add(o, Nat.mul(j, 300000n)), P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, False{}, False{}}
+
+def wrow(+i: Nat, +j: Nat) -> List<&2, P.Body>:
+  match j:
+    case 0n:
+      []
+    case 1n+m:
+      one(i, m) <> wrow(i, m)
+
+def wall(+i: Nat, +n: Nat) -> List<&2, P.Body>:
+  match i:
+    case 0n:
+      []
+    case 1n+m:
+      List.append(&2, P.Body, wrow(m, n), wall(m, n))
+
+def wld(bs: List<&2, P.Body>) -> W.World:
+  W.World{12345, W.CGen{}, bs, [], W.W.cube(W.W.base(W.W.origin()), 0n, W.W.base(W.W.origin()))}
+
+def wticks(n: Nat, r: W.Wc) -> W.Wc:
+  match n:
+    case 0n:
+      r
+    case 1n+m:
+      W.Wc{w, c} = r
+      wticks(m, W.W.tick_cg(M.Knob.defaults(), P.In.idle(), w, c))
+
+# every cube of the region: the ones still moving and the ones that
+# landed and went to sleep in the cells
+def wbodies(w: W.World) -> List<&2, P.Body>:
+  W.World{+seed, +t, awake, dirty, p} = w
+  +c0 = (W.W.origin() - 5 : U32)
+  List.append(&2, P.Body, awake, W.W.rect(8100n, t, seed, c0, c0, 90n))
+
+def wfin(+n0: Nat, +w: W.World) -> IO(Unit):
+  IO.print("grade viva: " ++ Nat.show(clash(wbodies(w))) ++ " overlaps, "
+    ++ Nat.show(List.length(&2, P.Body, wbodies(w))) ++ " cubos (" ++ Nat.show(n0)
+    ++ " no inicio, 4096 deles caindo em 8 x 8 chunks)")
+
+def wtest2(+n0: Nat) -> IO(Unit):
+  wfin(n0, W.W.cgflush(M.Knob.defaults(), wticks(80n, W.Wc{wld(wall(64n, 64n)), W.CNil{}})))
+
+def wtest() -> IO(Unit):
+  wtest2(List.length(&2, P.Body, wbodies(wld(wall(64n, 64n)))))
+
 # the same scene held in a balanced tree of 8 x 8 chunks, ticked through
 # the messages (the faster of the two ways to hand cubes over)
 def main() -> IO(Unit):
   do IO<Unit>:
     a : Unit <- start()
-    fin(W.C.gbodies(ticks(300n, grid(6n, 6n, scene(12n))), oar(), 1))
+    b : Unit <- fin(W.C.gbodies(ticks(300n, grid(6n, 6n, scene(12n))), oar(), 1))
+    wtest()

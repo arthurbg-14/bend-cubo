@@ -1703,6 +1703,74 @@ def C.pg1(ra: Chk & Bool, b: Chk, +side: U32, +cn: Nat, +dx: Nat, +dz: Nat) -> C
 def C.xpair(a: Chk, b: Chk, +dx: Nat, +dz: Nat, +side: U32, +cn: Nat) -> Ck2:
   C.pg1(C.colr(a, side, cn), b, side, cn, dx, dz)
 
+# Handing over on the tree itself
+# ------------------------------
+# The chunks live in one balanced tree: the top levels split z (the rows),
+# the bottom ones split x (the chunks of a row). Every node has exactly
+# one boundary -- between what its left half ends with and what its right
+# half starts with -- and every pair of neighbours is the boundary of
+# exactly one node. So the handover is a walk of the same tree the tick
+# forks over: both halves at once, then the boundary between them. No
+# turning the tree into rows and back four times a tick (measured: that
+# alone was 8,5 of the 27 ms of a tick with 100 mil cubes).
+
+def C.mkn(r: Ck2) -> Chk:
+  Ck2{a, b} = r
+  ChN{a, b}
+
+def C.zjoinn(al: Chk, bh: Chk, r: Ck2) -> Ck2:
+  Ck2{ah, bl} = r
+  Ck2{ChN{al, ah}, ChN{bl, bh}}
+
+def C.zmerge(p: Ck2, q: Ck2) -> Ck2:
+  Ck2{al, bl} = p
+  Ck2{ah, bh} = q
+  Ck2{ChN{al, ah}, ChN{bl, bh}}
+
+# the boundary along x: the last chunk of the left half against the first
+# of the right half
+def C.xb(a: Chk, b: Chk, +side: U32, +cn: Nat) -> Ck2:
+  match a b:
+    case ChN{al, ah} ChN{bl, bh}:
+      C.zjoinn(al, bh, C.xb(ah, bl, side, cn))
+    case ChL{aa, +na, +capa, +oxa, +oza} ChL{ab, +nb, +capb, +oxb, +ozb}:
+      C.xpair(ChL{aa, na, capa, oxa, oza}, ChL{ab, nb, capb, oxb, ozb}, 1n, 0n, side, cn)
+    case _ _:
+      Ck2{a, b}
+
+# the boundary along z: descend to the last row of the left half and the
+# first of the right half (dz levels), then pair them column by column,
+# every column at the same time
+def C.zb(dz: Nat, a: Chk, b: Chk, +side: U32, +cn: Nat) -> Ck2:
+  match dz a b:
+    case 1n+m ChN{al, ah} ChN{bl, bh}:
+      C.zjoinn(al, bh, C.zb(m, ah, bl, side, cn))
+    case 0n ChN{al, ah} ChN{bl, bh}:
+      p q = C.zb(0n, al, bl, side, cn) C.zb(0n, ah, bh, side, cn)
+      C.zmerge(p, q)
+    case _ ChL{aa, +na, +capa, +oxa, +oza} ChL{ab, +nb, +capb, +oxb, +ozb}:
+      C.xpair(ChL{aa, na, capa, oxa, oza}, ChL{ab, nb, capb, oxb, ozb}, 0n, 1n, side, cn)
+    case _ _ _:
+      Ck2{a, b}
+
+def C.bnd(isz: Bool, dz: Nat, a: Chk, b: Chk, +side: U32, +cn: Nat) -> Ck2:
+  match isz:
+    case True{}:
+      C.zb(dz, a, b, side, cn)
+    case False{}:
+      C.xb(a, b, side, cn)
+
+# the whole handover: both halves at once, then this node's boundary
+def C.ex(t: Chk, +d: Nat, +lz: Nat, +side: U32, +cn: Nat) -> Chk:
+  match t:
+    case ChE{}:
+      ChE{}
+    case ChL{a, +n, +cap, +ox, +oz}:
+      ChL{a, n, cap, ox, oz}
+    case ChN{lo, hi}:
+      x y = C.ex(lo, Nat.add(d, 1n), lz, side, cn) C.ex(hi, Nat.add(d, 1n), lz, side, cn)
+      C.mkn(C.bnd(Nat.is_lt(d, lz), Nat.sub(lz, Nat.add(d, 1n)), x, y, side, cn))
+
 # The grid: rows of chunks
 # -----------------------
 # Kept as rows so that two chunks side by side can be held at once -- that
@@ -4521,11 +4589,29 @@ def C.jobs(fuel: Nat, ph: Nat, todo: List<&2, Job>, +t: Two, +u: Two, +xs: List<
     case 1n+f _ _:
       acc
 
+def C.mkrw(+xs: List<&2, P.Body>, +ss: List<&2, P.Body>, +lx: Nat, +lz: Nat, +cx0: U32, +cz0: U32,
+  +o: Og) -> Rw:
+  C.rev(C.jobs(Nat.add(Nat.mul(16n, Nat.pow(2n, Nat.add(lx, lz))), 32n), C.nph(lz, lx), [],
+    Two{[], []}, Two{[], []}, xs, ss, lz, lx, 0, 0, cx0, cz0, RwE{}, o), RwE{})
+
 def C.mkgrid(+xs: List<&2, P.Body>, +ss: List<&2, P.Body>, +lx: Nat, +lz: Nat, +cx0: U32, +cz0: U32,
   +o: Og) -> Gr:
-  C.rows0(C.rev(C.jobs(Nat.add(Nat.mul(16n, Nat.pow(2n, Nat.add(lx, lz))), 32n), C.nph(lz, lx), [],
-    Two{[], []}, Two{[], []}, xs, ss, lz, lx, 0, 0, cx0, cz0, RwE{}, o), RwE{}),
-    Nat.pow(2n, lx), Nat.pow(2n, lz))
+  C.rows0(C.mkrw(xs, ss, lx, lz, cx0, cz0, o), Nat.pow(2n, lx), Nat.pow(2n, lz))
+
+# the same chunks, as the balanced tree they will live in
+def C.mktr(+xs: List<&2, P.Body>, +ss: List<&2, P.Body>, +lx: Nat, +lz: Nat, +cx0: U32, +cz0: U32,
+  +o: Og) -> Chk:
+  C.mktree(Nat.add(lx, lz), C.mkrw(xs, ss, lx, lz, cx0, cz0, o))
+
+# a round on the tree: the chunks of this colour tick (every branch at the
+# same time), then the handover walks the same tree
+def C.rndt(t: Chk, +c: Nat, +o: Og, +k: P.K, +mm: Nat, +side: U32, +lz: Nat) -> Chk:
+  C.ex(C.ftick(t, c, o, k, mm, side), 0n, lz, side, Nat.mod(Nat.add(c, 1n), 4n))
+
+def C.tickt(t: Chk, +o: Og, +k: P.K, +mm: Nat, +lx: Nat, +lz: Nat) -> Chk:
+  C.rndt(C.rndt(C.rndt(C.rndt(t, 0n, o, k, mm, U32.from_nat(C.side()), lz), 1n, o, k, mm,
+    U32.from_nat(C.side()), lz), 2n, o, k, mm, U32.from_nat(C.side()), lz), 3n, o, k, mm,
+    U32.from_nat(C.side()), lz)
 
 # every chunk sorted by cell, without ticking: a chunk just built is in no
 # order at all, and the border runs the handover reads come from the order
@@ -4560,6 +4646,11 @@ def C.gsort(g: Gr, +o: Og, +k: P.K, +mm: Nat) -> Gr:
 # this one is built fresh every tick and would start with no copies of the
 # neighbours at all -- and two cubes on opposite sides of a chunk line
 # would not see each other
+# the first tick of a tree just built: it is in no order yet, and the
+# handover reads the order
+def C.tickt0(t: Chk, +o: Og, +k: P.K, +mm: Nat, +lx: Nat, +lz: Nat) -> Chk:
+  C.tickt(C.ex(C.fsort(t, o, k, mm), 0n, lz, U32.from_nat(C.side()), 0n), o, k, mm, lx, lz)
+
 # the first tick of a grid just built: it is in no order at all yet, and
 # the border runs the handover reads come from the order
 def C.tickg0(g: Gr, +o: Og, +k: P.K, +mm: Nat, +lx: Nat, +lz: Nat) -> Gr:
@@ -4630,6 +4721,16 @@ def W.cp6(r: Gr2, +k: P.K, +seed: U32, t: Cells, dirty: List<&2, Cell>, +p: P.Bo
   Gr2{g, sls} = r
   W.cp7(W.pat(C.gkil(g, sls), P.Body.x(p), P.Body.y(p), P.Body.z(p), Two{[], []}), k, seed, t, dirty, p, bs)
 
+# the same, out of the tree the live grid keeps
+def W.ct6(r: ChL2, +k: P.K, +seed: U32, t: Cells, dirty: List<&2, Cell>, +p: P.Body,
+  bs: List<&2, P.Body>) -> World:
+  ChL2{c, sls} = r
+  W.cp7(W.pat(C.ckil(c, sls), P.Body.x(p), P.Body.y(p), P.Body.z(p), Two{[], []}), k, seed, t, dirty, p, bs)
+
+def W.ct5(r: ChL2, +k: P.K, +seed: U32, t: Cells, dirty: List<&2, Cell>, p: P.Body, +o: Og) -> World:
+  ChL2{c, bs} = r
+  W.ct6(C.cbodies(c, o, 2), k, seed, t, dirty, p, bs)
+
 def W.cp5(r: Gr2, +k: P.K, +seed: U32, t: Cells, dirty: List<&2, Cell>, p: P.Body, +o: Og) -> World:
   Gr2{g, bs} = r
   W.cp6(C.gbodies(g, o, 2), k, seed, t, dirty, p, bs)
@@ -4663,7 +4764,7 @@ def W.tick_cpar(+k: P.K, inp: P.In, w: World) -> World:
 
 type Crowd is Type:
   CNil{}
-  CGr{g: Gr, cx0: U32, cz0: U32, lx: Nat, lz: Nat, mm: Nat, left: Nat}
+  CGr{t: Chk, cx0: U32, cz0: U32, lx: Nat, lz: Nat, mm: Nat, left: Nat}
 
 type Wc is Type:
   Wc{w: World, c: Crowd}
@@ -4677,11 +4778,11 @@ def W.cglife() -> Nat:
 
 # the crowd out of the grid and back into the world, the sleepers that
 # moved woken, the player taken out of the obstacles
-def W.cgend(+k: P.K, w: World, g: Gr, +cx0: U32, +cz0: U32) -> Wc:
+def W.cgend(+k: P.K, w: World, g: Chk, +cx0: U32, +cz0: U32) -> Wc:
   World{+seed, +t, awake, dirty, +p} = w
-  Wc{W.cp5(C.gbodies(g, W.ogof(cx0, cz0), 1), k, seed, t, dirty, p, W.ogof(cx0, cz0)), CNil{}}
+  Wc{W.ct5(C.cbodies(g, W.ogof(cx0, cz0), 1), k, seed, t, dirty, p, W.ogof(cx0, cz0)), CNil{}}
 
-def W.cg3(left: Nat, +k: P.K, w: World, g: Gr, +cx0: U32, +cz0: U32, +lx: Nat, +lz: Nat, +mm: Nat) -> Wc:
+def W.cg3(left: Nat, +k: P.K, w: World, g: Chk, +cx0: U32, +cz0: U32, +lx: Nat, +lz: Nat, +mm: Nat) -> Wc:
   match left:
     case 0n:
       W.cgend(k, w, g, cx0, cz0)
@@ -4690,8 +4791,8 @@ def W.cg3(left: Nat, +k: P.K, w: World, g: Gr, +cx0: U32, +cz0: U32, +lx: Nat, +
 
 # one tick of a grid that is already alive: the four colour rounds, and
 # nothing else at all
-def W.cg2(+k: P.K, w: World, g: Gr, +cx0: U32, +cz0: U32, +lx: Nat, +lz: Nat, +mm: Nat, +left: Nat) -> Wc:
-  W.cg3(left, k, w, C.tickg(g, W.ogof(cx0, cz0), k, mm, lx, lz), cx0, cz0, lx, lz, mm)
+def W.cg2(+k: P.K, w: World, g: Chk, +cx0: U32, +cz0: U32, +lx: Nat, +lz: Nat, +mm: Nat, +left: Nat) -> Wc:
+  W.cg3(left, k, w, C.tickt(g, W.ogof(cx0, cz0), k, mm, lx, lz), cx0, cz0, lx, lz, mm)
 
 # the grid built from the crowd: the cubes are its own, the sleepers under
 # them and the player are obstacles (they are seen and pushed, they do not
@@ -4699,7 +4800,7 @@ def W.cg2(+k: P.K, w: World, g: Gr, +cx0: U32, +cz0: U32, +lx: Nat, +lz: Nat, +m
 def W.cgb(+k: P.K, +seed: U32, t: Cells, dirty: List<&2, Cell>, p: P.Body, awake: List<&2, P.Body>,
   sl: List<&2, P.Body>, +cx0: U32, +cz0: U32, +lx: Nat, +lz: Nat, +mm: Nat) -> Wc:
   Wc{World{seed, t, [], dirty, p},
-    CGr{C.tickg0(C.mkgrid(awake, sl, lx, lz, cx0, cz0, W.ogof(cx0, cz0)), W.ogof(cx0, cz0), k, mm, lx, lz),
+    CGr{C.tickt0(C.mktr(awake, sl, lx, lz, cx0, cz0, W.ogof(cx0, cz0)), W.ogof(cx0, cz0), k, mm, lx, lz),
       cx0, cz0, lx, lz, mm, W.cglife()}}
 
 # The grid is built wider than the crowd: it has to hold every cube for as
