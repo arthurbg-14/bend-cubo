@@ -103,7 +103,46 @@ def tip(n: Nat, +bad: Nat, +w: W.World) -> String:
     case 1n+m:
       tip(m, Nat.add(bad, clash(todos(w))), W.W.tick_flat(M.Knob.defaults(), P.In.idle(), w))
 
+# A rotacao tem que sobreviver ao array onde a multidao e guardada: um
+# cubo girando que dorme, muda de chunk ou e empacotado tem que sair de la
+# girando igual -- senao o giro some sem lei nenhuma pedir.
+def spin() -> P.Rot:
+  P.Rot{2n, 123456789, P.Neg{4321n}}
+
+def spun() -> P.Body:
+  +o = W.W.base(W.W.origin())
+  P.Body{Nat.add(o, 262144n), 262144n, Nat.add(o, 2621440n), P.Pos{7n}, P.Pos{0n}, P.Neg{9n}, False{}, False{},
+    spin()}
+
+def og() -> W.Og:
+  +o = W.W.base(W.W.origin())
+  W.Og{o, o}
+
+def same(+a: P.Rot, +b: P.Rot) -> Bool:
+  Bool.and(Nat.is_eq(P.Rot.ax(a), P.Rot.ax(b)),
+    Bool.and(U32.is_eq(P.Rot.ang(a), P.Rot.ang(b)),
+      Bool.and(Nat.is_eq(P.Z.pos(P.Rot.w(a)), P.Z.pos(P.Rot.w(b))),
+        Nat.is_eq(P.Z.neg(P.Rot.w(a)), P.Z.neg(P.Rot.w(b))))))
+
+def turn2(bs: List<&2, P.Body>) -> String:
+  match bs:
+    case []:
+      "FAIL: o cubo sumiu do array"
+    case +b <> rest:
+      M.Pick.s(same(P.Body.rot(b), spin()), "OK", "FAIL") ++ ": eixo "
+        ++ Nat.show(P.Rot.ax(P.Body.rot(b))) ++ ", angulo "
+        ++ Nat.show(U32.to_nat(P.Rot.ang(P.Body.rot(b)))) ++ ", giro -"
+        ++ Nat.show(P.Z.neg(P.Rot.w(P.Body.rot(b)))) ++ " (eixo 2, angulo 123456789, giro -4321)"
+
+def turn1(r: Array<U32> & List<&2, P.Body>) -> String:
+  (a, bs) = r
+  turn2(bs)
+
+def turn() -> String:
+  turn1(W.F.unpack(1, W.F.pack([spun()], Array.new(U32, 8n, 0), 0, og(), False{}), 0, og()))
+
 def main() -> IO(Unit):
   do IO<Unit>:
     a : Unit <- IO.print("veloz x parede: " ++ run(40n, 0n, wld()))
+    b : Unit <- IO.print("rotacao no array: " ++ turn())
     IO.print("quina:          " ++ tip(200n, 0n, perched()))

@@ -302,6 +302,10 @@ def Rot.hit(r: Rot, +rx: Z, +ry: Z, +rz: Z, +jx: Z, +jy: Z, +jz: Z) -> Rot:
 type Body is Data:
   Body{x: Nat, y: Nat, z: Nat, vx: Z, vy: Z, vz: Z, ground: Bool, hit: Bool, rot: Rot}
 
+def Body.rot(b: Body) -> Rot:
+  Body{x, y, z, vx, vy, vz, ground, hit, rt} = b
+  rt
+
 def Body.hit(b: Body) -> Bool:
   Body{x, y, z, vx, vy, vz, ground, hit, rt} = b
   hit

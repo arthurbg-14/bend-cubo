@@ -32,13 +32,19 @@ def sgn(c: Bool, +v: Nat) -> P.Z:
     case False{}:
       P.Neg{v}
 
+# cada cubo entra girando de um jeito: o giro tem que atravessar a
+# ordenacao, a troca entre chunks e o sono sem mudar
+def spin(+i: Nat, +j: Nat, +l: Nat) -> P.Rot:
+  P.Rot{Nat.mod(Nat.add(Nat.add(i, j), l), 3n), U32.from_nat(Nat.add(Nat.mul(i, 977n), Nat.mul(j, 13n))),
+    P.Pos{Nat.add(Nat.mul(l, 100n), i)}}
+
 def body(+i: Nat, +j: Nat, +l: Nat) -> P.Body:
   +o = W.W.base(W.W.origin())
   +x = Nat.add(Nat.add(o, 786432n), Nat.mul(i, 275251n))
   +z = Nat.add(Nat.add(o, 786432n), Nat.mul(j, 275251n))
   +y = Nat.add(Nat.mul(Nat.add(l, 1n), 340000n), Nat.mul(Nat.mod(Nat.add(i, j), 3n), 26000n))
   +v = M.Pick.n(Nat.is_eq(l, 2n), Nat.mul(Nat.mod(i, 3n), 2048n), 0n)
-  P.Body{x, y, z, sgn(Nat.is_eq(Nat.mod(j, 2n), 0n), v), P.Pos{0n}, P.Pos{0n}, False{}, False{}, P.Rot.rest()}
+  P.Body{x, y, z, sgn(Nat.is_eq(Nat.mod(j, 2n), 0n), v), P.Pos{0n}, P.Pos{0n}, False{}, False{}, spin(i, j, l)}
 
 def col(+i: Nat, +j: Nat, l: Nat) -> List<&2, P.Body>:
   match l:
@@ -116,6 +122,14 @@ def ticks(t: Nat, g: W.Gr) -> W.Gr:
     case 1n+m:
       ticks(m, W.C.tick3(g, oar(), M.Knob.defaults(), 32768n, 16, 6n, 6n, 6n))
 
+def spins(xs: List<&2, P.Body>, +s: Nat) -> Nat:
+  match xs:
+    case []:
+      s
+    case +b <> rest:
+      spins(rest, Nat.add(s, Nat.add(Nat.add(P.Z.pos(P.Rot.w(P.Body.rot(b))), P.Z.neg(P.Rot.w(P.Body.rot(b)))),
+        Nat.mul(P.Rot.ax(P.Body.rot(b)), 1000000n))))
+
 def out(+bs: List<&2, P.Body>) -> IO(Unit):
   IO.print("chunks: " ++ Nat.show(clash(bs)) ++ " overlaps, " ++ Nat.show(List.length(&2, P.Body, bs))
     ++ " cubes (432 at the start)")
@@ -124,6 +138,10 @@ def fin(r: W.Gr2) -> IO(Unit):
   W.Gr2{g, bs} = r
   out(bs)
 
+def gyr(r: W.Gr2) -> IO(Unit):
+  W.Gr2{g, +bs} = r
+  IO.print("giro: soma " ++ Nat.show(spins(bs, 0n)) ++ " (tem que bater com a do inicio)")
+
 def fin2(r: W.Gr2) -> IO(Unit):
   W.Gr2{g, +bs} = r
   IO.print("no inicio: " ++ Nat.show(List.length(&2, P.Body, bs)) ++ " cubos, " ++ Nat.show(clash(bs))
@@ -131,6 +149,9 @@ def fin2(r: W.Gr2) -> IO(Unit):
 
 def start() -> IO(Unit):
   fin2(W.C.gbodies(grid(6n, 6n, scene(12n)), oar(), 1))
+
+def start2() -> IO(Unit):
+  gyr(W.C.gbodies(grid(6n, 6n, scene(12n)), oar(), 1))
 
 # The second test: the world's own tick with the grid kept alive
 # (W.tick_cg), on a crowd wide enough to have chunks in BOTH directions --
@@ -189,5 +210,7 @@ def wtest() -> IO(Unit):
 def main() -> IO(Unit):
   do IO<Unit>:
     a : Unit <- start()
+    a2 : Unit <- start2()
     b : Unit <- fin(W.C.gbodies(ticks(300n, grid(6n, 6n, scene(12n))), oar(), 1))
+    b2 : Unit <- gyr(W.C.gbodies(ticks(300n, grid(6n, 6n, scene(12n))), oar(), 1))
     wtest()
