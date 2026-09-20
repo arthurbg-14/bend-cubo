@@ -47,5 +47,7 @@ fi
 if [ "${1:-}" = test ]; then
   CC="$(pwd)/cc-native.sh" "$BEND" clash.bend -o clash
   ./clash
+  CC="$(pwd)/cc-native.sh" "$BEND" fast.bend -o fast
+  ./fast
 fi
 echo "built ./cubo"

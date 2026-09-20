@@ -224,7 +224,8 @@ def W.reachz(+k: P.K, +vx: P.Z, +vy: P.Z, +vz: P.Z) -> Nat:
 # handed exactly the bodies it may touch, not every one within a quarter
 # of a metre more.
 def W.creachz(+k: P.K, +vx: P.Z, +vy: P.Z, +vz: P.Z) -> Nat:
-  Nat.add(Nat.mul(2n, Nat.add(Nat.add(P.Z.mag(vx), P.Z.mag(vy)), P.Z.mag(vz))), Nat.add(Nat.mul(2n, P.K.g(k)), 16n))
+  Nat.add(Nat.mul(2n, Nat.add(Nat.add(P.Z.mag(vx), P.Z.mag(vy)), P.Z.mag(vz))),
+    Nat.add(Nat.mul(2n, Nat.add(P.K.g(k), P.K.acc(k))), 16n))
 
 def W.creach(+k: P.K, b: P.Body) -> Nat:
   P.Body{x, y, z, +vx, +vy, +vz, gr, h} = b
@@ -2878,6 +2879,15 @@ def W.fl1(+k: P.K, inp: P.In, +seed: U32, +t: Cells, dirty: List<&2, Cell>, +p: 
   W.fl2(k, inp, seed, t, dirty, p, awake, sl, na, U32.from_nat(List.length(&2, P.Body, sl)), F.org(bx, mm), mm,
     F.cap0((na + U32.from_nat(List.length(&2, P.Body, sl)) + 1 : U32)))
 
+# the box the player can end his tick in. He is the only body with a motor
+# and no top speed, so his reach decides how big the grid has to be -- but
+# NOT how far each cube has to look, which is what used to make the whole
+# tick crawl (and drop out of the dense path) the moment he ran.
+def W.pbox(+k: P.K, p: P.Body) -> Bx:
+  P.Body{+x, +y, +z, +vx, +vy, +vz, +gr, +h} = p
+  +r = W.reach(k, P.Body{x, y, z, vx, vy, vz, gr, h})
+  Bx{Nat.sub(x, r), Nat.sub(y, r), Nat.sub(z, r), Nat.add(x, r), Nat.add(y, r), Nat.add(z, r)}
+
 def O.bb(xs: List<&2, P.Body>, b: Bx) -> Bx:
   match xs:
     case []:
@@ -2901,13 +2911,13 @@ def W.sleep_all(+k: P.K, w: World) -> World:
 # the crowd's tick with the blocks of a colour running at the same time
 def W.tick_fpar(+k: P.K, inp: P.In, w: World) -> World:
   World{+seed, +t, +awake, dirty, +p} = w
-  W.flp1(k, inp, seed, t, dirty, p, awake, U32.from_nat(List.length(&2, P.Body, awake)), O.bb(awake, O.box([p])),
-    F.mx(k, awake, W.reach(k, p)))
+  W.flp1(k, inp, seed, t, dirty, p, awake, U32.from_nat(List.length(&2, P.Body, awake)), O.bb(awake, W.pbox(k, p)),
+    F.mx(k, awake, 0n))
 
 def W.tick_flat(+k: P.K, inp: P.In, w: World) -> World:
   World{+seed, +t, +awake, dirty, +p} = w
-  W.fl1(k, inp, seed, t, dirty, p, awake, U32.from_nat(List.length(&2, P.Body, awake)), O.bb(awake, O.box([p])),
-    F.mx(k, awake, W.reach(k, p)))
+  W.fl1(k, inp, seed, t, dirty, p, awake, U32.from_nat(List.length(&2, P.Body, awake)), O.bb(awake, W.pbox(k, p)),
+    F.mx(k, awake, 0n))
 
 # The world's tick
 # ----------------
@@ -4782,7 +4792,7 @@ def W.cp2(+k: P.K, +seed: U32, +t: Cells, dirty: List<&2, Cell>, +p: P.Body, awa
 
 def W.cp1(+k: P.K, w: World) -> World:
   World{+seed, +t, +awake, dirty, +p} = w
-  W.cp2(k, seed, t, dirty, p, awake, O.bb(awake, O.box([p])), F.mx(k, awake, W.reach(k, p)))
+  W.cp2(k, seed, t, dirty, p, awake, O.bb(awake, W.pbox(k, p)), F.mx(k, awake, 0n))
 
 # the player first, alone, then the crowd in chunks, all at the same time
 def W.tick_cpar(+k: P.K, inp: P.In, w: World) -> World:
@@ -4842,19 +4852,28 @@ def W.cgb(+k: P.K, +seed: U32, t: Cells, dirty: List<&2, Cell>, p: P.Body, awake
 # margin a cube reaches the outer edge, where there is no neighbour to
 # take it, its cell is clamped and it stops seeing who is next to it.
 def W.cgmg(+mm: Nat) -> Nat:
-  Nat.add(Nat.mul(mm, Nat.add(W.cglife(), 2n)), Nat.mul(2n, W.size()))
+  Nat.add(Nat.mul(mm, Nat.add(W.cglife(), 2n)), Nat.mul(8n, W.size()))
 
-def W.cg1(+k: P.K, w: World, +bx: Bx, +mm: Nat) -> Wc:
+# The reach the grid is built with has to hold for as long as the grid
+# lives: a cube falling gains 2 g of reach every tick (and 2 acc if it is
+# pushed), so the crowd's reach at the moment of building is not enough
+# sixty-four ticks later. This is what the player's own reach used to
+# cover by accident, back when it set everyone's rectangle.
+def W.cgmm(+k: P.K, +mm: Nat) -> Nat:
+  Nat.add(mm, Nat.mul(W.cglife(), Nat.mul(2n, Nat.add(P.K.g(k), P.K.acc(k)))))
+
+def W.cg1(+k: P.K, w: World, +bx: Bx, +mm0: Nat) -> Wc:
   World{+seed, +t, +awake, dirty, +p} = w
+  +mm = W.cgmm(k, mm0)
   W.cgb(k, seed, t, dirty, p, awake,
     p <> W.rect(Nat.mul(F.gnx(bx, W.cgmg(mm)), F.gnz(bx, W.cgmg(mm))), t, seed, F.cx0(bx, W.cgmg(mm)),
       F.cz0(bx, W.cgmg(mm)), F.gnx(bx, W.cgmg(mm))),
     F.cx0(bx, W.cgmg(mm)), F.cz0(bx, W.cgmg(mm)), W.lg2(F.gnx(bx, W.cgmg(mm))), W.lg2(F.gnz(bx, W.cgmg(mm))),
-    Nat.add(mm, 8192n))
+    mm)
 
 def W.cgnew(+k: P.K, w: World) -> Wc:
   World{seed, t, +awake, dirty, +p} = w
-  W.cg1(k, World{seed, t, awake, dirty, p}, O.bb(awake, O.box([p])), F.mx(k, awake, W.reach(k, p)))
+  W.cg1(k, World{seed, t, awake, dirty, p}, O.bb(awake, W.pbox(k, p)), F.mx(k, awake, 0n))
 
 # the crowd back into the world whatever state the grid is in: what the
 # GPU, the HUD and anything else that needs the cubes as a list asks for
@@ -4896,12 +4915,12 @@ def W.dense(+bx: Bx, +n: Nat, +mm: Nat) -> Bool:
   W.dense1(Bool.and(Nat.is_lt(gx, lim), Nat.is_lt(gz, lim)), gx, gz, lim)
 
 def W.tick2(+k: P.K, inp: P.In, +awake: List<&2, P.Body>, +p: P.Body, +n: Nat, +mm: Nat, w: World) -> World:
-  W.tick_dense(W.dense(O.bb(awake, O.box([p])), n, mm), Bool.or(Nat.is_lt(n, 128n), Nat.is_lt(229376n, mm)), k, inp, w)
+  W.tick_dense(W.dense(O.bb(awake, W.pbox(k, p)), n, mm), Bool.or(Nat.is_lt(n, 128n), Nat.is_lt(229376n, mm)), k, inp, w)
 
 # a tick of the whole world
 def W.tick(+k: P.K, inp: P.In, w: World) -> World:
   World{seed, t, +awake, dirty, +p} = w
-  W.tick2(k, inp, awake, p, List.length(&2, P.Body, awake), F.mx(k, awake, W.reach(k, p)),
+  W.tick2(k, inp, awake, p, List.length(&2, P.Body, awake), F.mx(k, awake, 0n),
     World{seed, t, awake, dirty, p})
 
 # a new world of seed, the player standing at the start
