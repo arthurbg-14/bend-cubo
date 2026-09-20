@@ -561,14 +561,41 @@ def F.grid(n: Nat, ph: Nat, r: Array<U32> & U32, +i: U32, +cap: U32, +msk: U32, 
       F.grid(m, 2n, F.putw(F.putw(a, (F.nx(cap) + i : U32), v), (F.hd(cap) + s : U32), (i + 1 : U32))[((i + 1) * 6 : U32)],
         (i + 1 : U32), cap, msk, x, s)
 
+# the cell a body is homed in, as one word (two cells hashing to the same
+# slot share a chain, so a walk has to tell them apart)
+def F.key2(+cx: U32, +cz: U32) -> U32:
+  (((cx .&. 65535) << 16n) .|. (cz .&. 65535) : U32)
+
+def F.cell(+x: U32) -> U32:
+  (x >> 18n : U32)
+
+# the same build, keeping each body's cell at 8 cap + i (the array must
+# have room for nine parts, not eight)
+def F.grid2(n: Nat, ph: Nat, r: Array<U32> & U32, +i: U32, +cap: U32, +msk: U32, +x: U32, +s: U32) -> Array<U32>:
+  match n ph:
+    case 0n _:
+      F.fin(r)
+    case 1n+m 2n:
+      (a, v) = r
+      F.grid2(n, 1n, a[(i * 6 + 2 : U32)], i, cap, msk, v, s)
+    case 1n+m 1n:
+      (a, +v) = r
+      +sl = F.slot(x, v, msk)
+      F.grid2(n, 0n, F.putw(a, (F.hd(cap) + cap + i : U32), F.key2(F.cell(x), F.cell(v)))[(F.hd(cap) + sl : U32)],
+        i, cap, msk, x, sl)
+    case 1n+m _:
+      (a, v) = r
+      F.grid2(m, 2n, F.putw(F.putw(a, (F.nx(cap) + i : U32), v), (F.hd(cap) + s : U32), (i + 1 : U32))[((i + 1) * 6 : U32)],
+        (i + 1 : U32), cap, msk, x, s)
+
+def F.build2(+n: U32, a: Array<U32>, +cap: U32, +msk: U32) -> Array<U32>:
+  F.grid2(U32.to_nat(n), 2n, a[0], 0, cap, msk, 0, 0)
+
 def F.build(+n: U32, a: Array<U32>, +cap: U32, +msk: U32) -> Array<U32>:
   F.grid(U32.to_nat(n), 2n, a[0], 0, cap, msk, 0, 0)
 
 def F.d(+a: U32, +b: U32) -> U32:
   Pick.u((a < b : U32), (b - a : U32), (a - b : U32))
-
-def F.cell(+x: U32) -> U32:
-  (x >> 18n : U32)
 
 def F.keep(c: Bool, +j: U32, acc: List<&2, U32>) -> List<&2, U32>:
   match c:
@@ -799,6 +826,281 @@ def F.cap0(+n: U32) -> U32 & Nat:
   F.cap(30n, (n <= 16 : U32), n, 16, 4n)
 
 
+# The crowd's tick, block by block, all at once
+# --------------------------------------------
+# The cubes of a block of 4 x 4 m tick together, and blocks two apart never
+# touch the same cube, so a tick runs four rounds (the colours of a 2 x 2
+# checkerboard) and every block of a round runs at the same time as the
+# others. A task gets its own little array -- its cubes first, then the
+# ones around it that they can touch, copied straight out of the crowd's
+# array -- so it reads nothing shared while it runs: what Bend needs to
+# fill the cores (a shared list or trie makes every read count references
+# atomically, and the cores go idle).
+
+type Fa is Type:
+  FaE{}
+  FaL{a: Array<U32>, nown: U32, nall: U32, cap: U32}
+  FaN{lo: Fa, hi: Fa}
+
+def Fb.lg() -> Nat:
+  2n
+
+# the block a cell belongs to
+def Fb.of(+c: U32) -> U32:
+  (c >> Fb.lg() : U32)
+
+# the first cell of block b, and the one after its last
+def Fb.c0(+b: U32) -> U32:
+  (b << Fb.lg() : U32)
+
+def Fb.c1(+b: U32) -> U32:
+  ((b + 1 << Fb.lg()) - 1 : U32)
+
+# is the cell (cx, cz) inside the block (bx, bz)?
+def Fb.in(+cx: U32, +cz: U32, +bx: U32, +bz: U32) -> Bool:
+  Bool.and(U32.is_eq(Fb.of(cx), bx), U32.is_eq(Fb.of(cz), bz))
+
+def Fb.ct(r: Array<U32> & U32, +own: U32, +all: U32) -> Array<U32> & U32 & U32:
+  (a, v) = r
+  (a, (own, all))
+
+# how many bodies the cells of a block and the two cells around it hold:
+# own (awake and homed in the block) and all of them. One read a step: the
+# chain's next link -- the cell alone says whether a body is the block's.
+def Fb.cnt(fuel: Nat, cn: Nat, ph: Nat, r: Array<U32> & U32, +na: U32, +cap: U32, +msk: U32, +lox: U32,
+  +hix: U32, +cx: U32, +cz: U32, +bx: U32, +bz: U32, +j: U32, +own: U32, +all: U32) -> Array<U32> & U32 & U32:
+  match fuel cn ph:
+    case 0n _ _:
+      Fb.ct(r, own, all)
+    case _ 0n _:
+      Fb.ct(r, own, all)
+    case 1n+f 1n++c 0n:
+      (a, +v) = r
+      +e = U32.is_eq(v, 0)
+      +w = U32.is_eq(cx, hix)
+      +ncx = Pick.u(w, lox, (cx + 1 : U32))
+      +ncz = Pick.u(w, (cz + 1 : U32), cz)
+      Fb.cnt(f, Pick.n(e, c, 1n+c), Pick.n(e, 0n, 1n),
+        a[Pick.u(e, (F.hd(cap) + F.slot2(ncx, ncz, msk) : U32), (F.hd(cap) + cap + v - 1 : U32))], na, cap, msk,
+        lox, hix, Pick.u(e, ncx, cx), Pick.u(e, ncz, cz), bx, bz, (v - 1 : U32), own, all)
+    case 1n+f 1n+c _:
+      (a, +v) = r
+      +here = U32.is_eq(v, F.key2(cx, cz))
+      Fb.cnt(f, 1n+c, 0n, a[(F.nx(cap) + j : U32)], na, cap, msk, lox, hix, cx, cz, bx, bz, j,
+        Pick.u(Bool.and(here, Bool.and((j < na : U32), Fb.in(cx, cz, bx, bz))), (own + 1 : U32), own),
+        Pick.u(here, (all + 1 : U32), all))
+
+def Fb.cf(r: Array<U32> & U32, d: Array<U32>) -> Array<U32> & Array<U32>:
+  (a, v) = r
+  (a, d)
+
+# the same walk, copying what it finds into the block's own array: its
+# cubes first (slots 0 .. nown - 1), then the ones around, and the body's
+# place in the crowd's array kept at 8 cap + slot, to write the tick back
+def Fb.cpy(fuel: Nat, cn: Nat, ph: Nat, r: Array<U32> & U32, d: Array<U32>, +na: U32, +cap: U32, +msk: U32,
+  +lox: U32, +hix: U32, +cx: U32, +cz: U32, +bx: U32, +bz: U32, +nown: U32, +dcap: U32, +j: U32, +slot: U32,
+  +io: U32, +ih: U32) -> Array<U32> & Array<U32>:
+  match fuel cn ph:
+    case 0n _ _:
+      Fb.cf(r, d)
+    case _ 0n _:
+      Fb.cf(r, d)
+    case 1n+f 1n++c 0n:
+      (a, +v) = r
+      +e = U32.is_eq(v, 0)
+      +w = U32.is_eq(cx, hix)
+      +ncx = Pick.u(w, lox, (cx + 1 : U32))
+      +ncz = Pick.u(w, (cz + 1 : U32), cz)
+      Fb.cpy(f, Pick.n(e, c, 1n+c), Pick.n(e, 0n, 1n),
+        a[Pick.u(e, (F.hd(cap) + F.slot2(ncx, ncz, msk) : U32), (F.hd(cap) + cap + v - 1 : U32))], d, na, cap, msk,
+        lox, hix, Pick.u(e, ncx, cx), Pick.u(e, ncz, cz), bx, bz, nown, dcap, (v - 1 : U32), slot, io, ih)
+    case 1n+f 1n+c 1n:
+      (a, +v) = r
+      +here = U32.is_eq(v, F.key2(cx, cz))
+      +mine = Bool.and((j < na : U32), Fb.in(cx, cz, bx, bz))
+      Fb.cpy(f, 1n+c, Pick.n(here, 2n, 0n),
+        a[Pick.u(here, (j * 6 : U32), (F.nx(cap) + j : U32))], d, na, cap, msk, lox, hix, cx, cz, bx, bz, nown,
+        dcap, j, Pick.u(mine, io, (nown + ih : U32)),
+        Pick.u(Bool.and(here, mine), (io + 1 : U32), io),
+        Pick.u(Bool.and(here, Bool.not(mine)), (ih + 1 : U32), ih))
+    case 1n+f 1n+c 2n:
+      (a, v) = r
+      Fb.cpy(f, 1n+c, 3n, a[(j * 6 + 1 : U32)], d[(slot * 6 : U32)] <- v, na, cap, msk, lox, hix, cx, cz, bx, bz,
+        nown, dcap, j, slot, io, ih)
+    case 1n+f 1n+c 3n:
+      (a, v) = r
+      Fb.cpy(f, 1n+c, 4n, a[(j * 6 + 2 : U32)], d[(slot * 6 + 1 : U32)] <- v, na, cap, msk, lox, hix, cx, cz, bx, bz,
+        nown, dcap, j, slot, io, ih)
+    case 1n+f 1n+c 4n:
+      (a, v) = r
+      Fb.cpy(f, 1n+c, 5n, a[(j * 6 + 3 : U32)], d[(slot * 6 + 2 : U32)] <- v, na, cap, msk, lox, hix, cx, cz, bx, bz,
+        nown, dcap, j, slot, io, ih)
+    case 1n+f 1n+c 5n:
+      (a, v) = r
+      Fb.cpy(f, 1n+c, 6n, a[(j * 6 + 4 : U32)], d[(slot * 6 + 3 : U32)] <- v, na, cap, msk, lox, hix, cx, cz, bx, bz,
+        nown, dcap, j, slot, io, ih)
+    case 1n+f 1n+c 6n:
+      (a, v) = r
+      Fb.cpy(f, 1n+c, 7n, a[(j * 6 + 5 : U32)], d[(slot * 6 + 4 : U32)] <- v, na, cap, msk, lox, hix, cx, cz, bx, bz,
+        nown, dcap, j, slot, io, ih)
+    case 1n+f 1n+c _:
+      (a, v) = r
+      Fb.cpy(f, 1n+c, 0n, a[(F.nx(cap) + j : U32)],
+        (d[(slot * 6 + 5 : U32)] <- v)[(F.hd(dcap) + dcap + slot : U32)] <- j, na, cap, msk, lox, hix, cx, cz,
+        bx, bz, nown, dcap, j, slot, io, ih)
+
+def Fb.mk6(r: Array<U32> & Array<U32>, +own: U32, +all: U32, +dcap: U32) -> Array<U32> & Fa:
+  (a, d) = r
+  (a, FaL{F.build(all, d, dcap, (dcap - 1 : U32)), own, all, dcap})
+
+def Fb.mk5(a: Array<U32>, +own: U32, +all: U32, +bx: U32, +bz: U32, +na: U32, +cap: U32, +msk: U32, +lox: U32,
+  +hix: U32, +loz: U32, +cells: Nat, rc: U32 & Nat) -> Array<U32> & Fa:
+  (+dcap, b) = rc
+  Fb.mk6(Fb.cpy(Nat.add(Nat.mul(16n, Nat.add(U32.to_nat(all), cells)), 64n), cells, 0n,
+    a[(F.hd(cap) + F.slot2(lox, loz, msk) : U32)], Array.new(U32, Nat.add(b, 4n), 0), na, cap, msk, lox, hix,
+    lox, loz, bx, bz, own, dcap, 0, 0, 0, 0), own, all, dcap)
+
+def Fb.mk4(empty: Bool, a: Array<U32>, +own: U32, +all: U32, +bx: U32, +bz: U32, +na: U32, +cap: U32, +msk: U32,
+  +lox: U32, +hix: U32, +loz: U32, +cells: Nat) -> Array<U32> & Fa:
+  match empty:
+    case True{}:
+      (a, FaE{})
+    case False{}:
+      Fb.mk5(a, own, all, bx, bz, na, cap, msk, lox, hix, loz, cells, F.cap0(all))
+
+def Fb.mk3(a: Array<U32>, p: U32 & U32, +bx: U32, +bz: U32, +na: U32, +cap: U32, +msk: U32, +lox: U32, +hix: U32,
+  +loz: U32, +cells: Nat) -> Array<U32> & Fa:
+  (+own, +all) = p
+  Fb.mk4(Bool.or(U32.is_eq(own, 0), U32.is_eq(all, 0)), a, own, all, bx, bz, na, cap, msk, lox, hix, loz, cells)
+
+def Fb.mk2(r: Array<U32> & U32 & U32, +bx: U32, +bz: U32, +na: U32, +cap: U32, +msk: U32, +lox: U32, +hix: U32,
+  +loz: U32, +cells: Nat) -> Array<U32> & Fa:
+  (a, p) = r
+  Fb.mk3(a, p, bx, bz, na, cap, msk, lox, hix, loz, cells)
+
+# the block (bx, bz) into an array of its own: count what the cells of the
+# block and the two around it hold, then copy it
+def Fb.mk(a: Array<U32>, +bx: U32, +bz: U32, +na: U32, +cap: U32, +msk: U32) -> Array<U32> & Fa:
+  +lox = (Fb.c0(bx) - 2 : U32)
+  +hix = (Fb.c1(bx) + 2 : U32)
+  +loz = (Fb.c0(bz) - 2 : U32)
+  +side = Nat.add(Nat.pow(2n, Fb.lg()), 4n)
+  +cells = Nat.mul(side, side)
+  Fb.mk2(Fb.cnt(Nat.add(Nat.mul(16n, Nat.add(U32.to_nat(cap), cells)), 64n), cells, 0n,
+    a[(F.hd(cap) + F.slot2(lox, loz, msk) : U32)], na, cap, msk, lox, hix, lox, loz, bx, bz, 0, 0, 0),
+    bx, bz, na, cap, msk, lox, hix, loz, cells)
+
+# the blocks of a colour (every other block on each axis), each with its
+# own array, gathered in a tree: the tree is what the tick forks over. The
+# step ahead takes the pair the block's build gives back, so the loop is a
+# single function (Bend has no mutual recursion).
+def Fb.tree(n: Nat, r: Array<U32> & Fa, t: Fa, +i: Nat, +nbx: Nat, +cx: U32, +cz: U32, +na: U32, +cap: U32,
+  +msk: U32) -> Array<U32> & Fa:
+  match n:
+    case 0n:
+      (a, leaf) = r
+      (a, FaN{t, leaf})
+    case 1n+m:
+      (a, leaf) = r
+      Fb.tree(m, Fb.mk(a, (cx + U32.from_nat(Nat.mul(2n, Nat.mod(i, nbx))) : U32),
+        (cz + U32.from_nat(Nat.mul(2n, Nat.div(i, nbx))) : U32), na, cap, msk), FaN{t, leaf}, Nat.add(i, 1n),
+        nbx, cx, cz, na, cap, msk)
+
+# the constants as a record of this task's own: one record shared by every
+# task is a reference count that every core bumps at every read
+def Fb.og(o: Og) -> Og:
+  Og{x, z} = o
+  Og{x, z}
+
+def Fb.kc(k: P.K) -> P.K:
+  P.K{g, mu, j, acc, size} = k
+  P.K{g, mu, j, acc, size}
+
+# every block of the round at the same time, each on its own array
+def Fb.run(t: Fa, +o: Og, +k: P.K, +mm: Nat) -> Fa:
+  match t:
+    case FaE{}:
+      FaE{}
+    case FaL{a, +nown, +nall, +cap}:
+      FaL{F.ticks(U32.to_nat(nown), a, 0, Fb.og(o), Fb.kc(k), cap, (cap - 1 : U32), nown, mm), nown, nall, cap}
+    case FaN{lo, hi}:
+      x y = Fb.run(lo, o, k, mm) Fb.run(hi, o, k, mm)
+      FaN{x, y}
+
+def Fb.bf(r: Array<U32> & U32, a: Array<U32>) -> Array<U32> & Array<U32>:
+  (d, v) = r
+  (d, a)
+
+# the round's results back into the crowd's array: the block's own cubes
+# whole, the ones it only had around it just their velocity and flags (a
+# push moves no one), each at the place 8 cap + slot kept for it
+def Fb.bk(fuel: Nat, n: Nat, ph: Nat, r: Array<U32> & U32, a: Array<U32>, +i: U32, +nown: U32, +dcap: U32,
+  +orig: U32) -> Array<U32> & Array<U32>:
+  match fuel n ph:
+    case 0n _ _:
+      Fb.bf(r, a)
+    case _ 0n _:
+      Fb.bf(r, a)
+    case 1n+f 1n+m 0n:
+      (d, +v) = r
+      +own = (i < nown : U32)
+      Fb.bk(f, n, Pick.n(own, 1n, 4n), d[(i * 6 + Pick.u(own, 0, 3) : U32)], a, i, nown, dcap, v)
+    case 1n+f 1n+m 1n:
+      (d, v) = r
+      Fb.bk(f, n, 2n, d[(i * 6 + 1 : U32)], a[(orig * 6 : U32)] <- v, i, nown, dcap, orig)
+    case 1n+f 1n+m 2n:
+      (d, v) = r
+      Fb.bk(f, n, 3n, d[(i * 6 + 2 : U32)], a[(orig * 6 + 1 : U32)] <- v, i, nown, dcap, orig)
+    case 1n+f 1n+m 3n:
+      (d, v) = r
+      Fb.bk(f, n, 4n, d[(i * 6 + 3 : U32)], a[(orig * 6 + 2 : U32)] <- v, i, nown, dcap, orig)
+    case 1n+f 1n+m 4n:
+      (d, v) = r
+      Fb.bk(f, n, 5n, d[(i * 6 + 4 : U32)], a[(orig * 6 + 3 : U32)] <- v, i, nown, dcap, orig)
+    case 1n+f 1n+m 5n:
+      (d, v) = r
+      Fb.bk(f, n, 6n, d[(i * 6 + 5 : U32)], a[(orig * 6 + 4 : U32)] <- v, i, nown, dcap, orig)
+    case 1n+f 1n+m _:
+      (d, v) = r
+      Fb.bk(f, m, 0n, d[(F.hd(dcap) + dcap + i + 1 : U32)], a[(orig * 6 + 5 : U32)] <- v, (i + 1 : U32), nown,
+        dcap, orig)
+
+def Fb.drop(r: Array<U32> & Array<U32>) -> Array<U32>:
+  (d, a) = r
+  a
+
+def Fb.back(t: Fa, a: Array<U32>) -> Array<U32>:
+  match t:
+    case FaE{}:
+      a
+    case FaL{d, +nown, +nall, +cap}:
+      Fb.drop(Fb.bk(Nat.add(Nat.mul(8n, U32.to_nat(nall)), 16n), U32.to_nat(nall), 0n,
+        d[(F.hd(cap) + cap : U32)], a, 0, nown, cap, 0))
+    case FaN{lo, hi}:
+      Fb.back(hi, Fb.back(lo, a))
+
+def Fb.rd2(r: Array<U32> & Fa, +o: Og, +k: P.K, +mm: Nat) -> Array<U32>:
+  (a, t) = r
+  Fb.back(Fb.run(t, o, k, mm), a)
+
+# one round: the blocks of a colour built one by one (cheap array copies),
+# then ticked all at once, then written back
+def Fb.round(a: Array<U32>, +c: Nat, +nbx: Nat, +nbz: Nat, +na: U32, +cap: U32, +msk: U32, +o: Og, +k: P.K,
+  +mm: Nat) -> Array<U32>:
+  +cx = Nat.mod(c, 2n)
+  +cz = Nat.div(c, 2n)
+  +ni = Nat.div(Nat.add(Nat.sub(nbx, Nat.min(cx, nbx)), 1n), 2n)
+  +nj = Nat.div(Nat.add(Nat.sub(nbz, Nat.min(cz, nbz)), 1n), 2n)
+  Fb.rd2(Fb.tree(Nat.mul(ni, nj), (a, FaE{}), FaE{}, 0n, ni, U32.from_nat(cx), U32.from_nat(cz), na, cap, msk),
+    o, k, mm)
+
+# the four rounds of a tick
+def Fb.all(a: Array<U32>, +nbx: Nat, +nbz: Nat, +na: U32, +cap: U32, +msk: U32, +o: Og, +k: P.K,
+  +mm: Nat) -> Array<U32>:
+  Fb.round(Fb.round(Fb.round(Fb.round(a, 0n, nbx, nbz, na, cap, msk, o, k, mm),
+    1n, nbx, nbz, na, cap, msk, o, k, mm), 2n, nbx, nbz, na, cap, msk, o, k, mm),
+    3n, nbx, nbz, na, cap, msk, o, k, mm)
+
 # The flat tick: the crowd, the sleepers around it and the player in one
 # array; the player ticks first (with the input), then every cube, in
 # order; then the pushed sleepers wake and the cubes at rest sleep.
@@ -953,6 +1255,26 @@ def W.fl2(+k: P.K, inp: P.In, +seed: U32, t: Cells, dirty: List<&2, Cell>, +p: P
         (na + m : U32), o, k, cap, (cap - 1 : U32), na, mm, inp),
       0, o, k, cap, (cap - 1 : U32), na, mm))
 
+# the same tick, but the cubes run block by block, every block of a colour
+# at the same time (four rounds)
+def W.flp2(+k: P.K, inp: P.In, +seed: U32, t: Cells, dirty: List<&2, Cell>, +p: P.Body, awake: List<&2, P.Body>,
+  sl: List<&2, P.Body>, +na: U32, +m: U32, +o: Og, +mm: Nat, +nbx: Nat, +nbz: Nat, r: U32 & Nat) -> World:
+  (+cap, b) = r
+  F.f2(k, seed, t, dirty, o, na, m,
+    Fb.all(
+      F.oneR(F.get(F.build2((na + m + 1 : U32), F.put(F.pack(sl, F.pack(awake, Array.new(U32, Nat.add(b, 4n), 0), 0, o,
+        False{}), na, o, True{}), (na + m : U32), o, True{}, p), cap, (cap - 1 : U32)), (na + m : U32), o),
+        (na + m : U32), o, k, cap, (cap - 1 : U32), na, mm, inp),
+      nbx, nbz, na, cap, (cap - 1 : U32), o, k, mm))
+
+def W.flp1(+k: P.K, inp: P.In, +seed: U32, +t: Cells, dirty: List<&2, Cell>, +p: P.Body, +awake: List<&2, P.Body>,
+  +na: U32, +bx: Bx, +mm: Nat) -> World:
+  +sl = W.rect(Nat.mul(F.gnx(bx, mm), F.gnz(bx, mm)), t, seed, F.cx0(bx, mm), F.cz0(bx, mm), F.gnx(bx, mm))
+  W.flp2(k, inp, seed, t, dirty, p, awake, sl, na, U32.from_nat(List.length(&2, P.Body, sl)), F.org(bx, mm), mm,
+    Nat.add(Nat.div(Nat.sub(F.gnx(bx, mm), 1n), Nat.pow(2n, Fb.lg())), 1n),
+    Nat.add(Nat.div(Nat.sub(F.gnz(bx, mm), 1n), Nat.pow(2n, Fb.lg())), 1n),
+    F.cap0((na + U32.from_nat(List.length(&2, P.Body, sl)) + 1 : U32)))
+
 def W.fl1(+k: P.K, inp: P.In, +seed: U32, +t: Cells, dirty: List<&2, Cell>, +p: P.Body, +awake: List<&2, P.Body>,
   +na: U32, +bx: Bx, +mm: Nat) -> World:
   +sl = W.rect(Nat.mul(F.gnx(bx, mm), F.gnz(bx, mm)), t, seed, F.cx0(bx, mm), F.cz0(bx, mm), F.gnx(bx, mm))
@@ -978,6 +1300,12 @@ def W.sleep_all(+k: P.K, w: World) -> World:
   World{+seed, t, awake, dirty, p} = w
   W.slept(seed, p, W.sleep(awake, k, seed, Sl{t, dirty, []}))
 
+
+# the crowd's tick with the blocks of a colour running at the same time
+def W.tick_fpar(+k: P.K, inp: P.In, w: World) -> World:
+  World{+seed, +t, +awake, dirty, +p} = w
+  W.flp1(k, inp, seed, t, dirty, p, awake, U32.from_nat(List.length(&2, P.Body, awake)), O.bb(awake, O.box([p])),
+    F.mx(k, awake, W.reach(k, p)))
 
 def W.tick_flat(+k: P.K, inp: P.In, w: World) -> World:
   World{+seed, +t, +awake, dirty, +p} = w

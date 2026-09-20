@@ -104,6 +104,8 @@ def tick(v: Nat, +w: W.World) -> W.World:
       W.W.tick_flat(M.Knob.defaults(), P.In.idle(), w)
     case 4n:
       W.W.tick_par(M.Knob.defaults(), P.In.idle(), w)
+    case 5n:
+      W.W.tick_fpar(M.Knob.defaults(), P.In.idle(), w)
     case _:
       W.W.tick(M.Knob.defaults(), P.In.idle(), w)
 
@@ -126,7 +128,8 @@ def main2(+w: W.World) -> IO(Unit):
     d : Unit <- IO.print("blocks: " ++ run(300n, 2n, 0n, w, 0n))
     e : Unit <- IO.print("flat:   " ++ run(300n, 3n, 0n, w, 0n))
     f : Unit <- IO.print("par:    " ++ run(300n, 4n, 0n, w, 0n))
-    IO.print("game:   " ++ run(300n, 5n, 0n, w, 0n))
+    g : Unit <- IO.print("blocos: " ++ run(300n, 5n, 0n, w, 0n))
+    IO.print("game:   " ++ run(300n, 6n, 0n, w, 0n))
 
 def main() -> IO(Unit):
   main2(start())

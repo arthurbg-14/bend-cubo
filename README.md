@@ -315,6 +315,7 @@ livre:
 | 256 mundos, cada um no seu `Array<U32>` | 10,2 | iguais (4,7× mais rápido) |
 | 8 mundos em listas compartilhadas | 5,3 | +270 % |
 | o tick da multidão cortado ao meio (listas entre as folhas) | 2,8 | +41 % |
+| o tick da multidão por blocos, cada bloco no seu array (`W.tick_fpar`) | 1,3 | +30 % |
 
 Duas coisas saem daí. O escalonador do Bend só espalha o trabalho quando há
 centenas de folhas: com 8 tarefas ele usa 2 núcleos, com 256 usa todos.
@@ -324,12 +325,18 @@ passa a contar referências de forma atômica assim que há mais de uma thread
 correm em 10 núcleos sem uma instrução a mais.
 
 Por isso o tick da multidão densa roda hoje **numa thread só**, num array
-só: as versões paralelas que construí (blocos coloridos, e o corte da
-multidão ao meio, `W.tick_par`, que o teste de colisão cobre) gastam de 3 a
-8 vezes mais instruções para repartir e juntar os corpos em listas do que o
-tick gasta para simulá-los, e o pouco que ganham em núcleos não paga isso. O
-caminho para o paralelismo valer é montar os arrays de cada folha antes de
-bifurcar e deixar dentro do fork só o tick, que não lê nada compartilhado.
+só. Três versões paralelas foram construídas e medidas, todas passando no
+teste de colisão: os blocos coloridos com folha de array, o corte da
+multidão ao meio (`W.tick_par`) e o tick por blocos com um array privado
+por tarefa (`W.tick_fpar`) — este último é exatamente o desenho que os
+números acima pedem, e ainda assim perde: 10,9 mil instruções por cubo-tick
+contra 7,3 mil do array único, porque as cópias que tornam cada tarefa
+independente custam mais do que o tick por corpo (54% do total) devolve. E
+o escalonador só espalha com mais de 128 tarefas, o que força blocos
+pequenos — e bloco pequeno tem franja grande. Com este runtime, nesta
+máquina, o caminho para mais cubos não é paralelismo: é cortar o custo do
+tick sequencial (varredura de dormentes refeita todo tick, listas montadas
+e desmontadas a cada tick: 46% do total).
 
 A GPU desenha no máximo 250 cubos em movimento de uma vez, o jogador
 incluído. Os outros aparecem quando param.
