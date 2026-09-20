@@ -389,33 +389,35 @@ vistos e empurrados, não ticam e não voltam como multidão.
 Medido nesta máquina livre, com `./build.sh cem` (102 400 cubos, todos em
 movimento durante a medida inteira, 64 ticks):
 
-| threads | ms por tick | ganho |
-|---|---|---|
-| 1 | 55,2 | 1,00× |
-| 4 | 32,5 | 1,70× |
-| 8 | 27,5 | 2,00× |
-| 12 | 25,8 | 2,14× |
-| 16 | 27,9 | 1,98× |
-
-E o quanto cabe em tempo real (o tick é 7,81 ms), medido:
-
-| cubos em movimento | ms por tick |
+| threads | ms por tick |
 |---|---|
-| 16 384 | 6,86 |
-| **20 736** | **7,55** (tempo real) |
-| 30 976 | 11,72 |
-| 50 176 | 15,91 |
-| 102 400 | 25,83 |
+| 1 | 41,8 |
+| 12 | **20,2** (1,87× medido lado a lado) |
 
-Duas medidas explicam o teto. A máquina inteira só dá **3,87×** para este
+E o quanto cabe em tempo real (o tick é 7,81 ms), medido: **25 600 cubos em
+movimento, 7,13 ms por tick** — e essa medida saiu com o processador a 92 °C,
+ou seja estrangulado. Antes desta rodada de otimização eram 20 736 cubos a
+7,55 ms, e antes dos chunks eram cerca de 10 mil.
+
+O caminho até aqui, cada passo medido A/B intercalado (o notebook varia
+demais para número isolado valer):
+
+| o que mudou | ganho |
+|---|---|
+| ordenar os chunks só na primeira rodada da grade, não em todas | −20 % |
+| tirar o fork por par de chunks da troca de franja (centenas de milhares de tarefas minúsculas por tick) | −24 % |
+| a franja anda na própria árvore, sem virar linhas e voltar quatro vezes por tick | −25 % |
+| franja de mão única e chunk que não tica não se remexe | −14 % |
+
+Três medidas explicam o teto. A máquina inteira só dá **3,87×** para este
 trabalho: oito cópias do programa rodando ao mesmo tempo, uma thread cada,
-levam 6,5 s para fazer oito vezes o que uma faz em 3,1 s. Dentro desse teto
-o Bend entrega 1,85× — o `perf` mostra que, com oito threads, um quarto dos
-ciclos ia para o escalonador (`pool_work`) quando a troca de franja abria um
-fork por par de chunks; tirando esses forks (a troca virou sequencial dentro
-da linha, e as linhas é que correm em paralelo) o tick caiu de 34,3 para
-26,0 ms. Reordenar todos os chunks só na primeira rodada da grade, e não em
-todas, tirou outros 20%.
+levam 6,5 s para fazer oito vezes o que uma faz em 3,1 s — o teto não é o
+Bend, é o notebook. Dentro dele o tick entrega 1,87×. E o `perf` mostra onde
+o resto foi: com oito threads, um quarto dos ciclos estava no escalonador
+(`pool_work`) por causa dos forks miúdos, e a conversão da grade em linhas e
+de volta custava 8,5 ms dos 27 de um tick — mais que o orçamento inteiro de
+tempo real. As duas coisas foram embora. (O `spin_*` que aparece no `perf`
+é trabalho, não espera: aparece igual com uma thread só.)
 
 O tick da multidão densa do jogo ainda roda **numa thread só**, num array
 só. Três versões paralelas foram construídas e medidas, todas passando no
