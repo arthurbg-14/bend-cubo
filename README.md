@@ -61,6 +61,12 @@ segurar W. No ar
 o motor não faz nada: saiu do chão, o que manda é a parábola
 (`no_air_control`).
 
+Um cubo só é segurado pelo que está embaixo do meio dele. Empoleirado numa
+quina, com o meio para fora do apoio, ele **escorrega da beirada e cai** --
+um passo de 6 cm por tick, que não muda velocidade nem altura, então não
+inventa energia. Dois cubos com um vão entre eles seguram um terceiro por
+cima: o que conta é o meio estar dentro do vão coberto pelos apoios.
+
 Para empurrar, é só andar contra um cubo verde. Ele sai com a sua velocidade
 dividida entre os dois (a colisão conserva o momento) e desliza até o atrito
 pará-lo. Empurra também uma fila inteira. Um pulo sobe 1,5 m com as
@@ -118,6 +124,8 @@ movimento. O tick marca isso no próprio corpo (`hit`).
 | `push_energy` | uma colisão nunca cria energia cinética |
 | `energy_never_grows` | sem entrada, nenhum tick aumenta a energia do corpo mais a dos obstáculos que ele toca; só o motor e o pulo põem energia |
 | `no_clip` | um corpo livre dos obstáculos continua livre depois do tick, com qualquer entrada: nada anda, cai ou é empurrado para dentro de outro cubo |
+| `no_slip_when_held` | o que segura um corpo é o que está embaixo do **meio** dele: apoiado em cheio (ou no ar) ele não sai do lugar |
+| `slip_makes_no_energy` | escorregar de uma beirada não cria energia: mesma velocidade, mesma altura |
 
 Não há `@unsafe`, `?TODO` nem axiomas. A verificação leva cerca de 10 s.
 

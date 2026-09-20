@@ -68,5 +68,33 @@ def run(n: Nat, +bad: Nat, +w: W.World) -> String:
     case 1n+m:
       run(m, Nat.add(bad, clash(awake(w))), W.W.tick_flat(M.Knob.defaults(), P.In.idle(), w))
 
+# Um cubo equilibrado na quina de outro: o meio dele fica para fora do
+# apoio, entao ele tem que escorregar da beirada e cair no chao. Antes
+# ficava pendurado para sempre, porque qualquer encostada segurava.
+def perched() -> W.World:
+  +o = W.W.base(W.W.origin())
+  W.World{12345, W.CLeaf{[]},
+    [W.W.cube(Nat.add(o, 786432n), 0n, Nat.add(o, 786432n)),
+     W.W.cube(Nat.add(o, 991232n), 262144n, Nat.add(o, 786432n))],
+    [], W.W.cube(Nat.sub(o, 5242880n), 0n, o)}
+
+def high(xs: List<&2, P.Body>, +m: Nat) -> Nat:
+  match xs:
+    case []:
+      m
+    case +b <> rest:
+      high(rest, Nat.max(m, P.Body.y(b)))
+
+def tip(n: Nat, +bad: Nat, +w: W.World) -> String:
+  match n:
+    case 0n:
+      M.Pick.s(Bool.and(Nat.is_eq(bad, 0n), Nat.is_eq(high(awake(w), 0n), 0n)), "OK", "FAIL")
+        ++ ": " ++ Nat.show(bad) ++ " overlaps, o mais alto a "
+        ++ M.Fmt.dec2(high(awake(w), 0n), 262144n) ++ " m (tem que acabar em 0,00)"
+    case 1n+m:
+      tip(m, Nat.add(bad, clash(awake(w))), W.W.tick_flat(M.Knob.defaults(), P.In.idle(), w))
+
 def main() -> IO(Unit):
-  IO.print("veloz x parede: " ++ run(40n, 0n, wld()))
+  do IO<Unit>:
+    a : Unit <- IO.print("veloz x parede: " ++ run(40n, 0n, wld()))
+    IO.print("quina:          " ++ tip(200n, 0n, perched()))
