@@ -509,6 +509,13 @@ def F.oz(+o: Og) -> Nat:
 def F.w() -> U32:
   16
 
+def Pick.rot(c: Bool, a: P.Rot, b: P.Rot) -> P.Rot:
+  match c:
+    case True{}:
+      a
+    case False{}:
+      b
+
 def F.pz(c: Bool, +a: P.Z, +b: P.Z) -> P.Z:
   match c:
     case True{}:
@@ -523,14 +530,21 @@ def F.zof(+w: U32) -> P.Z:
 def F.wof(+z: P.Z) -> U32:
   Pick.u(Nat.is_lt(0n, P.Z.neg(z)), (U32.from_nat(P.Z.neg(z)) .|. 2147483648 : U32), U32.from_nat(P.Z.pos(z)))
 
-# vz keeps its sign in bit 30 and the flags above it
-def F.vzw(+z: P.Z, +g: Bool, +h: Bool, +sl: Bool) -> U32:
+# vz keeps its sign in bit 30 and the flags above it. Bit 27 says the body
+# carries a rotation: almost every cube in a crowd is square with the world
+# and still, and for those the seven words of the rotation are always the
+# same seven numbers -- so they are not written, not read and not copied.
+def F.vzw(+z: P.Z, +g: Bool, +h: Bool, +sl: Bool, +sp: Bool) -> U32:
   (Pick.u(Nat.is_lt(0n, P.Z.neg(z)), (U32.from_nat(P.Z.neg(z)) .|. 1073741824 : U32), U32.from_nat(P.Z.pos(z)))
-    .|. (Pick.u(g, 2147483648, 0) .|. (Pick.u(h, 1, 0) << 29n) .|. (Pick.u(sl, 1, 0) << 28n) : U32) : U32)
+    .|. (Pick.u(g, 2147483648, 0) .|. (Pick.u(h, 1, 0) << 29n) .|. (Pick.u(sl, 1, 0) << 28n)
+      .|. (Pick.u(sp, 1, 0) << 27n) : U32) : U32)
 
 def F.vzof(+w: U32) -> P.Z:
-  F.pz(U32.is_eq(((w >> 30n) .&. 1 : U32), 0), P.Pos{U32.to_nat((w .&. 268435455 : U32))},
-    P.Neg{U32.to_nat((w .&. 268435455 : U32))})
+  F.pz(U32.is_eq(((w >> 30n) .&. 1 : U32), 0), P.Pos{U32.to_nat((w .&. 134217727 : U32))},
+    P.Neg{U32.to_nat((w .&. 134217727 : U32))})
+
+def F.spun(+w: U32) -> Bool:
+  U32.is_eq(((w >> 27n) .&. 1 : U32), 1)
 
 def F.ground(+w: U32) -> Bool:
   U32.is_eq((w >> 31n : U32), 1)
@@ -553,6 +567,13 @@ def F.setrot(a: Array<U32>, +i: U32, +rt: P.Rot) -> Array<U32>:
   a[(i * 16 + 10 : U32)] <- F.wof(P.Wv.x(P.Rot.w(rt)))
   a[(i * 16 + 11 : U32)] <- F.wof(P.Wv.y(P.Rot.w(rt)))
   a[(i * 16 + 12 : U32)] <- F.wof(P.Wv.z(P.Rot.w(rt)))
+
+def F.setrot_if(sp: Bool, a: Array<U32>, +i: U32, +rt: P.Rot) -> Array<U32>:
+  match sp:
+    case True{}:
+      F.setrot(a, i, rt)
+    case False{}:
+      a
 
 def F.r6(r: Array<U32> & U32, +q0: U32, +q1: U32, +q2: U32, +q3: U32, +wx: U32,
   +wy: U32) -> Array<U32> & P.Rot:
@@ -599,7 +620,8 @@ def F.put(a: Array<U32>, +i: U32, +o: Og, +sl: Bool, b: P.Body) -> Array<U32>:
   a[(i * 16 + 2 : U32)] <- U32.from_nat(Nat.sub(z, F.oz(o)))
   a[(i * 16 + 3 : U32)] <- F.wof(vx)
   a[(i * 16 + 4 : U32)] <- F.wof(vy)
-  F.setrot(a[(i * 16 + 5 : U32)] <- F.vzw(vz, g, h, sl), i, rt)
+  F.setrot_if(Bool.not(P.Rot.still(rt)), a[(i * 16 + 5 : U32)] <- F.vzw(vz, g, h, sl, Bool.not(P.Rot.still(rt))),
+    i, rt)
 
 # the array's layout: bodies at 0, the chain links at 16*cap, the cells'
 # heads at 17*cap (cap slots, a power of two)
@@ -743,59 +765,63 @@ def F.lfin(r: Array<U32> & U32, acc: List<&2, P.Body>) -> Array<U32> & List<&2, 
 
 # the bodies of the indexes idxs out of the array, one word per call: 13
 # to 8 the six of the body, 7 to 1 the seven of the rotation, then the body
-def F.load(idxs: List<&2, U32>, ph: Nat, r: Array<U32> & U32, +o: Og, +j: U32, +x: U32, +y: U32, +z: U32, +vx: U32,
-  +vy: U32, +vz: U32, +rt: P.Rot, acc: List<&2, P.Body>) -> Array<U32> & List<&2, P.Body>:
-  match idxs ph:
-    case _ 13n:
+def F.load(fuel: Nat, idxs: List<&2, U32>, ph: Nat, r: Array<U32> & U32, +o: Og, +j: U32, +x: U32, +y: U32, +z: U32, +vx: U32,
+  +vy: U32, +vz: U32, +sp: Bool, +rt: P.Rot, acc: List<&2, P.Body>) -> Array<U32> & List<&2, P.Body>:
+  match fuel idxs ph:
+    case 1n+f _ 13n:
       (a, v) = r
-      F.load(idxs, 12n, a[(j * 16 + 1 : U32)], o, j, v, y, z, vx, vy, vz, rt, acc)
-    case _ 12n:
+      F.load(f, idxs, 12n, a[(j * 16 + 1 : U32)], o, j, v, y, z, vx, vy, vz, sp, rt, acc)
+    case 1n+f _ 12n:
       (a, v) = r
-      F.load(idxs, 11n, a[(j * 16 + 2 : U32)], o, j, x, v, z, vx, vy, vz, rt, acc)
-    case _ 11n:
+      F.load(f, idxs, 11n, a[(j * 16 + 2 : U32)], o, j, x, v, z, vx, vy, vz, sp, rt, acc)
+    case 1n+f _ 11n:
       (a, v) = r
-      F.load(idxs, 10n, a[(j * 16 + 3 : U32)], o, j, x, y, v, vx, vy, vz, rt, acc)
-    case _ 10n:
+      F.load(f, idxs, 10n, a[(j * 16 + 3 : U32)], o, j, x, y, v, vx, vy, vz, sp, rt, acc)
+    case 1n+f _ 10n:
       (a, v) = r
-      F.load(idxs, 9n, a[(j * 16 + 4 : U32)], o, j, x, y, z, v, vy, vz, rt, acc)
-    case _ 9n:
+      F.load(f, idxs, 9n, a[(j * 16 + 4 : U32)], o, j, x, y, z, v, vy, vz, sp, rt, acc)
+    case 1n+f _ 9n:
       (a, v) = r
-      F.load(idxs, 8n, a[(j * 16 + 5 : U32)], o, j, x, y, z, vx, v, vz, rt, acc)
-    case _ 8n:
+      F.load(f, idxs, 8n, a[(j * 16 + 5 : U32)], o, j, x, y, z, vx, v, vz, sp, rt, acc)
+    case 1n+f _ 8n:
+      (a, +v) = r
+      F.load(f, idxs, Pick.n(F.spun(v), 7n, 0n),
+        a[Pick.u(F.spun(v), (j * 16 + 6 : U32), (j * 16 + 12 : U32))], o, j, x, y, z, vx, vy, v,
+        F.spun(v), rt, acc)
+    case 1n+f _ 7n:
       (a, v) = r
-      F.load(idxs, 7n, a[(j * 16 + 6 : U32)], o, j, x, y, z, vx, vy, v, rt, acc)
-    case _ 7n:
+      F.load(f, idxs, 6n, a[(j * 16 + 7 : U32)], o, j, x, y, z, vx, vy, vz, sp, P.Rot.put(0n, rt, F.zof(v)), acc)
+    case 1n+f _ 6n:
       (a, v) = r
-      F.load(idxs, 6n, a[(j * 16 + 7 : U32)], o, j, x, y, z, vx, vy, vz, P.Rot.put(0n, rt, F.zof(v)), acc)
-    case _ 6n:
+      F.load(f, idxs, 5n, a[(j * 16 + 8 : U32)], o, j, x, y, z, vx, vy, vz, sp, P.Rot.put(1n, rt, F.zof(v)), acc)
+    case 1n+f _ 5n:
       (a, v) = r
-      F.load(idxs, 5n, a[(j * 16 + 8 : U32)], o, j, x, y, z, vx, vy, vz, P.Rot.put(1n, rt, F.zof(v)), acc)
-    case _ 5n:
+      F.load(f, idxs, 4n, a[(j * 16 + 9 : U32)], o, j, x, y, z, vx, vy, vz, sp, P.Rot.put(2n, rt, F.zof(v)), acc)
+    case 1n+f _ 4n:
       (a, v) = r
-      F.load(idxs, 4n, a[(j * 16 + 9 : U32)], o, j, x, y, z, vx, vy, vz, P.Rot.put(2n, rt, F.zof(v)), acc)
-    case _ 4n:
+      F.load(f, idxs, 3n, a[(j * 16 + 10 : U32)], o, j, x, y, z, vx, vy, vz, sp, P.Rot.put(3n, rt, F.zof(v)), acc)
+    case 1n+f _ 3n:
       (a, v) = r
-      F.load(idxs, 3n, a[(j * 16 + 10 : U32)], o, j, x, y, z, vx, vy, vz, P.Rot.put(3n, rt, F.zof(v)), acc)
-    case _ 3n:
+      F.load(f, idxs, 2n, a[(j * 16 + 11 : U32)], o, j, x, y, z, vx, vy, vz, sp, P.Rot.put(4n, rt, F.zof(v)), acc)
+    case 1n+f _ 2n:
       (a, v) = r
-      F.load(idxs, 2n, a[(j * 16 + 11 : U32)], o, j, x, y, z, vx, vy, vz, P.Rot.put(4n, rt, F.zof(v)), acc)
-    case _ 2n:
-      (a, v) = r
-      F.load(idxs, 1n, a[(j * 16 + 12 : U32)], o, j, x, y, z, vx, vy, vz, P.Rot.put(5n, rt, F.zof(v)), acc)
-    case Nil{} _:
-      (a, v) = r
-      (a, F.body(o, x, y, z, vx, vy, vz, P.Rot.put(6n, rt, F.zof(v))) <> acc)
-    case +j2 <> rest _:
-      (a, v) = r
-      F.load(rest, 13n, a[(j2 * 16 : U32)], o, j2, 0, 0, 0, 0, 0, 0, P.Rot.rest(),
-        F.body(o, x, y, z, vx, vy, vz, P.Rot.put(6n, rt, F.zof(v))) <> acc)
+      F.load(f, idxs, 1n, a[(j * 16 + 12 : U32)], o, j, x, y, z, vx, vy, vz, sp, P.Rot.put(5n, rt, F.zof(v)), acc)
+    case 0n _ _:
+      F.lfin(r, acc)
+    case 1n+f Nil{} _:
+      (a, +v) = r
+      (a, F.body(o, x, y, z, vx, vy, vz, Pick.rot(sp, P.Rot.put(6n, rt, F.zof(v)), P.Rot.rest())) <> acc)
+    case 1n+f +j2 <> rest _:
+      (a, +v) = r
+      F.load(f, rest, 13n, a[(j2 * 16 : U32)], o, j2, 0, 0, 0, 0, 0, 0, False{}, P.Rot.rest(),
+        F.body(o, x, y, z, vx, vy, vz, Pick.rot(sp, P.Rot.put(6n, rt, F.zof(v)), P.Rot.rest())) <> acc)
 
 def F.load0(idxs: List<&2, U32>, a: Array<U32>, +o: Og) -> Array<U32> & List<&2, P.Body>:
   match idxs:
     case []:
       (a, [])
     case +j <> rest:
-      F.load(rest, 13n, a[(j * 16 : U32)], o, j, 0, 0, 0, 0, 0, 0, P.Rot.rest(), [])
+      F.load(1048576n, rest, 13n, a[(j * 16 : U32)], o, j, 0, 0, 0, 0, 0, 0, False{}, P.Rot.rest(), [])
 
 # what a tick pushed, back into the array (a push moves no one: only the
 # velocities, the flags and the turning change)
@@ -803,8 +829,9 @@ def F.wb(idxs: List<&2, U32>, obs: List<&2, P.Body>, a: Array<U32>, +o: Og, +na:
   match idxs obs:
     case +j <> ir b <> br:
       P.Body{x, y, z, vx, vy, +vz, +g, +h, +rt} = b
-      F.wb(ir, br, F.setrot(F.putw(F.putw(F.putw(a, (j * 16 + 3 : U32), F.wof(vx)), (j * 16 + 4 : U32), F.wof(vy)),
-        (j * 16 + 5 : U32), F.vzw(vz, g, h, (j >= na : U32))), j, rt), o, na)
+      F.wb(ir, br, F.setrot_if(Bool.not(P.Rot.still(rt)),
+        F.putw(F.putw(F.putw(a, (j * 16 + 3 : U32), F.wof(vx)), (j * 16 + 4 : U32), F.wof(vy)),
+          (j * 16 + 5 : U32), F.vzw(vz, g, h, (j >= na : U32), Bool.not(P.Rot.still(rt)))), j, rt), o, na)
     case _ _:
       a
 
@@ -846,10 +873,18 @@ def F.rb0(r: Array<U32> & U32, +i: U32, +o: Og, +x: U32, +y: U32, +z: U32, +vx: 
   F.rb1(a[(i * 16 + 7 : U32)], i, o, x, y, z, vx, vy, vz, P.Rot.put(0n, rt, F.zof(v)))
 
 # read body i: each read hands the array on, the rotation after the six
+def F.g5b(sp: Bool, a: Array<U32>, +i: U32, +o: Og, +x: U32, +y: U32, +z: U32, +vx: U32, +vy: U32,
+  +v: U32) -> Array<U32> & P.Body:
+  match sp:
+    case True{}:
+      F.rb0(a[(i * 16 + 6 : U32)], i, o, x, y, z, vx, vy, v, P.Rot.rest())
+    case False{}:
+      (a, F.body(o, x, y, z, vx, vy, v, P.Rot.rest()))
+
 def F.g5(r: Array<U32> & U32, +i: U32, +o: Og, +x: U32, +y: U32, +z: U32, +vx: U32,
   +vy: U32) -> Array<U32> & P.Body:
-  (a, v) = r
-  F.rb0(a[(i * 16 + 6 : U32)], i, o, x, y, z, vx, vy, v, P.Rot.rest())
+  (a, +v) = r
+  F.g5b(F.spun(v), a, i, o, x, y, z, vx, vy, v)
 
 def F.g4(r: Array<U32> & U32, +i: U32, +o: Og, +x: U32, +y: U32, +z: U32, +vx: U32) -> Array<U32> & P.Body:
   (a, v) = r
@@ -930,54 +965,59 @@ def F.ufin(r: Array<U32> & U32, acc: List<&2, P.Body>) -> Array<U32> & List<&2, 
   (a, acc)
 
 # the bodies 0 .. n-1 back out of the array
-def F.unp(n: Nat, ph: Nat, r: Array<U32> & U32, +i: U32, +o: Og, +x: U32, +y: U32, +z: U32, +vx: U32, +vy: U32,
-  +vz: U32, +rt: P.Rot, acc: List<&2, P.Body>) -> Array<U32> & List<&2, P.Body>:
-  match n ph:
-    case 0n _:
+def F.unp(fuel: Nat, n: Nat, ph: Nat, r: Array<U32> & U32, +i: U32, +o: Og, +x: U32, +y: U32, +z: U32, +vx: U32, +vy: U32,
+  +vz: U32, +sp: Bool, +rt: P.Rot, acc: List<&2, P.Body>) -> Array<U32> & List<&2, P.Body>:
+  match fuel n ph:
+    case 0n _ _:
       F.ufin(r, acc)
-    case 1n+m 13n:
+    case _ 0n _:
+      F.ufin(r, acc)
+    case 1n+f 1n+m 13n:
       (a, v) = r
-      F.unp(n, 12n, a[(i * 16 + 1 : U32)], i, o, v, y, z, vx, vy, vz, rt, acc)
-    case 1n+m 12n:
+      F.unp(f, n, 12n, a[(i * 16 + 1 : U32)], i, o, v, y, z, vx, vy, vz, sp, rt, acc)
+    case 1n+f 1n+m 12n:
       (a, v) = r
-      F.unp(n, 11n, a[(i * 16 + 2 : U32)], i, o, x, v, z, vx, vy, vz, rt, acc)
-    case 1n+m 11n:
+      F.unp(f, n, 11n, a[(i * 16 + 2 : U32)], i, o, x, v, z, vx, vy, vz, sp, rt, acc)
+    case 1n+f 1n+m 11n:
       (a, v) = r
-      F.unp(n, 10n, a[(i * 16 + 3 : U32)], i, o, x, y, v, vx, vy, vz, rt, acc)
-    case 1n+m 10n:
+      F.unp(f, n, 10n, a[(i * 16 + 3 : U32)], i, o, x, y, v, vx, vy, vz, sp, rt, acc)
+    case 1n+f 1n+m 10n:
       (a, v) = r
-      F.unp(n, 9n, a[(i * 16 + 4 : U32)], i, o, x, y, z, v, vy, vz, rt, acc)
-    case 1n+m 9n:
+      F.unp(f, n, 9n, a[(i * 16 + 4 : U32)], i, o, x, y, z, v, vy, vz, sp, rt, acc)
+    case 1n+f 1n+m 9n:
       (a, v) = r
-      F.unp(n, 8n, a[(i * 16 + 5 : U32)], i, o, x, y, z, vx, v, vz, rt, acc)
-    case 1n+m 8n:
+      F.unp(f, n, 8n, a[(i * 16 + 5 : U32)], i, o, x, y, z, vx, v, vz, sp, rt, acc)
+    case 1n+f 1n+m 8n:
+      (a, +v) = r
+      F.unp(f, n, Pick.n(F.spun(v), 7n, 0n),
+        a[Pick.u(F.spun(v), (i * 16 + 6 : U32), (i * 16 + 12 : U32))], i, o, x, y, z, vx, vy, v,
+        F.spun(v), rt, acc)
+    case 1n+f 1n+m 7n:
       (a, v) = r
-      F.unp(n, 7n, a[(i * 16 + 6 : U32)], i, o, x, y, z, vx, vy, v, rt, acc)
-    case 1n+m 7n:
+      F.unp(f, n, 6n, a[(i * 16 + 7 : U32)], i, o, x, y, z, vx, vy, vz, sp, P.Rot.put(0n, rt, F.zof(v)), acc)
+    case 1n+f 1n+m 6n:
       (a, v) = r
-      F.unp(n, 6n, a[(i * 16 + 7 : U32)], i, o, x, y, z, vx, vy, vz, P.Rot.put(0n, rt, F.zof(v)), acc)
-    case 1n+m 6n:
+      F.unp(f, n, 5n, a[(i * 16 + 8 : U32)], i, o, x, y, z, vx, vy, vz, sp, P.Rot.put(1n, rt, F.zof(v)), acc)
+    case 1n+f 1n+m 5n:
       (a, v) = r
-      F.unp(n, 5n, a[(i * 16 + 8 : U32)], i, o, x, y, z, vx, vy, vz, P.Rot.put(1n, rt, F.zof(v)), acc)
-    case 1n+m 5n:
+      F.unp(f, n, 4n, a[(i * 16 + 9 : U32)], i, o, x, y, z, vx, vy, vz, sp, P.Rot.put(2n, rt, F.zof(v)), acc)
+    case 1n+f 1n+m 4n:
       (a, v) = r
-      F.unp(n, 4n, a[(i * 16 + 9 : U32)], i, o, x, y, z, vx, vy, vz, P.Rot.put(2n, rt, F.zof(v)), acc)
-    case 1n+m 4n:
+      F.unp(f, n, 3n, a[(i * 16 + 10 : U32)], i, o, x, y, z, vx, vy, vz, sp, P.Rot.put(3n, rt, F.zof(v)), acc)
+    case 1n+f 1n+m 3n:
       (a, v) = r
-      F.unp(n, 3n, a[(i * 16 + 10 : U32)], i, o, x, y, z, vx, vy, vz, P.Rot.put(3n, rt, F.zof(v)), acc)
-    case 1n+m 3n:
+      F.unp(f, n, 2n, a[(i * 16 + 11 : U32)], i, o, x, y, z, vx, vy, vz, sp, P.Rot.put(4n, rt, F.zof(v)), acc)
+    case 1n+f 1n+m 2n:
       (a, v) = r
-      F.unp(n, 2n, a[(i * 16 + 11 : U32)], i, o, x, y, z, vx, vy, vz, P.Rot.put(4n, rt, F.zof(v)), acc)
-    case 1n+m 2n:
+      F.unp(f, n, 1n, a[(i * 16 + 12 : U32)], i, o, x, y, z, vx, vy, vz, sp, P.Rot.put(5n, rt, F.zof(v)), acc)
+    case 1n+f 1n+m _:
       (a, v) = r
-      F.unp(n, 1n, a[(i * 16 + 12 : U32)], i, o, x, y, z, vx, vy, vz, P.Rot.put(5n, rt, F.zof(v)), acc)
-    case 1n+m _:
-      (a, v) = r
-      F.unp(m, 13n, a[((i + 1) * 16 : U32)], (i + 1 : U32), o, 0, 0, 0, 0, 0, 0, P.Rot.rest(),
-        F.body(o, x, y, z, vx, vy, vz, P.Rot.put(6n, rt, F.zof(v))) <> acc)
+      F.unp(f, m, 13n, a[((i + 1) * 16 : U32)], (i + 1 : U32), o, 0, 0, 0, 0, 0, 0, False{}, P.Rot.rest(),
+        F.body(o, x, y, z, vx, vy, vz, Pick.rot(sp, P.Rot.put(6n, rt, F.zof(v)), P.Rot.rest())) <> acc)
 
 def F.unpack(+n: U32, a: Array<U32>, +i: U32, +o: Og) -> Array<U32> & List<&2, P.Body>:
-  F.unp(U32.to_nat(n), 13n, a[(i * 16 : U32)], i, o, 0, 0, 0, 0, 0, 0, P.Rot.rest(), [])
+  F.unp(Nat.add(Nat.mul(16n, U32.to_nat(n)), 16n), U32.to_nat(n), 13n, a[(i * 16 : U32)], i, o,
+    0, 0, 0, 0, 0, 0, False{}, P.Rot.rest(), [])
 
 def F.cap(fuel: Nat, done: Bool, +n: U32, +c: U32, +b: Nat) -> U32 & Nat:
   match fuel done:
@@ -1064,77 +1104,81 @@ def C.pre(n: Nat, r: Array<U32> & U32, +i: U32, +off: U32, +cur: U32, +s: U32) -
 
 # every body into its cell's place in the other area, carrying the mark
 # that says whether the chunk owns it
-def C.sc(n: Nat, ph: Nat, r: Array<U32> & U32, +i: U32, +src: U32, +dst: U32, +cur: U32, +sown: U32,
+def C.sc(fuel: Nat, n: Nat, ph: Nat, r: Array<U32> & U32, +i: U32, +src: U32, +dst: U32, +cur: U32, +sown: U32,
   +down: U32, +ox: U32, +oz: U32, +g: U32, +x: U32, +c: U32, +pos: U32) -> Array<U32>:
-  match n ph:
-    case 0n _:
+  match fuel n ph:
+    case 0n _ _:
       F.fin(r)
-    case 1n+m 16n:
+    case _ 0n _:
+      F.fin(r)
+    case 1n+f 1n+m 16n:
       (a, +v) = r
-      C.sc(n, 15n, a[(src + i * 16 + 2 : U32)], i, src, dst, cur, sown, down, ox, oz, g, v, c, pos)
-    case 1n+m 15n:
+      C.sc(f, n, 15n, a[(src + i * 16 + 2 : U32)], i, src, dst, cur, sown, down, ox, oz, g, v, c, pos)
+    case 1n+f 1n+m 15n:
       (a, +v) = r
       +cc = C.ci(x, v, ox, oz, g)
-      C.sc(n, 14n, a[(cur + cc : U32)], i, src, dst, cur, sown, down, ox, oz, g, x, cc, pos)
-    case 1n+m 14n:
+      C.sc(f, n, 14n, a[(cur + cc : U32)], i, src, dst, cur, sown, down, ox, oz, g, x, cc, pos)
+    case 1n+f 1n+m 14n:
       (a, +v) = r
-      C.sc(n, 13n, (a[(cur + c : U32)] <- (v + 1 : U32))[(sown + i : U32)], i, src, dst, cur, sown, down, ox, oz,
+      C.sc(f, n, 13n, (a[(cur + c : U32)] <- (v + 1 : U32))[(sown + i : U32)], i, src, dst, cur, sown, down, ox, oz,
         g, x, c, v)
-    case 1n+m 13n:
+    case 1n+f 1n+m 13n:
       (a, v) = r
-      C.sc(n, 12n, (a[(down + pos : U32)] <- v)[(src + i * 16 : U32)], i, src, dst, cur, sown, down, ox, oz, g, x,
+      C.sc(f, n, 12n, (a[(down + pos : U32)] <- v)[(src + i * 16 : U32)], i, src, dst, cur, sown, down, ox, oz, g, x,
         c, pos)
-    case 1n+m 12n:
+    case 1n+f 1n+m 12n:
       (a, v) = r
-      C.sc(n, 11n, (a[(dst + pos * 16 : U32)] <- v)[(src + i * 16 + 1 : U32)], i, src, dst, cur,
+      C.sc(f, n, 11n, (a[(dst + pos * 16 : U32)] <- v)[(src + i * 16 + 1 : U32)], i, src, dst, cur,
         sown, down, ox, oz, g, x, c, pos)
-    case 1n+m 11n:
+    case 1n+f 1n+m 11n:
       (a, v) = r
-      C.sc(n, 10n, (a[(dst + pos * 16 + 1 : U32)] <- v)[(src + i * 16 + 2 : U32)], i, src, dst, cur,
+      C.sc(f, n, 10n, (a[(dst + pos * 16 + 1 : U32)] <- v)[(src + i * 16 + 2 : U32)], i, src, dst, cur,
         sown, down, ox, oz, g, x, c, pos)
-    case 1n+m 10n:
+    case 1n+f 1n+m 10n:
       (a, v) = r
-      C.sc(n, 9n, (a[(dst + pos * 16 + 2 : U32)] <- v)[(src + i * 16 + 3 : U32)], i, src, dst, cur,
+      C.sc(f, n, 9n, (a[(dst + pos * 16 + 2 : U32)] <- v)[(src + i * 16 + 3 : U32)], i, src, dst, cur,
         sown, down, ox, oz, g, x, c, pos)
-    case 1n+m 9n:
+    case 1n+f 1n+m 9n:
       (a, v) = r
-      C.sc(n, 8n, (a[(dst + pos * 16 + 3 : U32)] <- v)[(src + i * 16 + 4 : U32)], i, src, dst, cur,
+      C.sc(f, n, 8n, (a[(dst + pos * 16 + 3 : U32)] <- v)[(src + i * 16 + 4 : U32)], i, src, dst, cur,
         sown, down, ox, oz, g, x, c, pos)
-    case 1n+m 8n:
+    case 1n+f 1n+m 8n:
       (a, v) = r
-      C.sc(n, 7n, (a[(dst + pos * 16 + 4 : U32)] <- v)[(src + i * 16 + 5 : U32)], i, src, dst, cur,
+      C.sc(f, n, 7n, (a[(dst + pos * 16 + 4 : U32)] <- v)[(src + i * 16 + 5 : U32)], i, src, dst, cur,
         sown, down, ox, oz, g, x, c, pos)
-    case 1n+m 7n:
-      (a, v) = r
-      C.sc(n, 6n, (a[(dst + pos * 16 + 5 : U32)] <- v)[(src + i * 16 + 6 : U32)], i, src, dst, cur,
+    case 1n+f 1n++m 7n:
+      (a, +v) = r
+      C.sc(f, Pick.n(F.spun(v), n, m), Pick.n(F.spun(v), 6n, 16n),
+        (a[(dst + pos * 16 + 5 : U32)] <- v)[Pick.u(F.spun(v), (src + i * 16 + 6 : U32),
+          (src + (i + 1) * 16 : U32))], Pick.u(F.spun(v), i, (i + 1 : U32)), src, dst, cur,
         sown, down, ox, oz, g, x, c, pos)
-    case 1n+m 6n:
+    case 1n+f 1n+m 6n:
       (a, v) = r
-      C.sc(n, 5n, (a[(dst + pos * 16 + 6 : U32)] <- v)[(src + i * 16 + 7 : U32)], i, src, dst, cur,
+      C.sc(f, n, 5n, (a[(dst + pos * 16 + 6 : U32)] <- v)[(src + i * 16 + 7 : U32)], i, src, dst, cur,
         sown, down, ox, oz, g, x, c, pos)
-    case 1n+m 5n:
+    case 1n+f 1n+m 5n:
       (a, v) = r
-      C.sc(n, 4n, (a[(dst + pos * 16 + 7 : U32)] <- v)[(src + i * 16 + 8 : U32)], i, src, dst, cur,
+      C.sc(f, n, 4n, (a[(dst + pos * 16 + 7 : U32)] <- v)[(src + i * 16 + 8 : U32)], i, src, dst, cur,
         sown, down, ox, oz, g, x, c, pos)
-    case 1n+m 4n:
+    case 1n+f 1n+m 4n:
       (a, v) = r
-      C.sc(n, 3n, (a[(dst + pos * 16 + 8 : U32)] <- v)[(src + i * 16 + 9 : U32)], i, src, dst, cur,
+      C.sc(f, n, 3n, (a[(dst + pos * 16 + 8 : U32)] <- v)[(src + i * 16 + 9 : U32)], i, src, dst, cur,
         sown, down, ox, oz, g, x, c, pos)
-    case 1n+m 3n:
+    case 1n+f 1n+m 3n:
       (a, v) = r
-      C.sc(n, 2n, (a[(dst + pos * 16 + 9 : U32)] <- v)[(src + i * 16 + 10 : U32)], i, src, dst, cur,
+      C.sc(f, n, 2n, (a[(dst + pos * 16 + 9 : U32)] <- v)[(src + i * 16 + 10 : U32)], i, src, dst, cur,
         sown, down, ox, oz, g, x, c, pos)
-    case 1n+m 2n:
+    case 1n+f 1n+m 2n:
       (a, v) = r
-      C.sc(n, 1n, (a[(dst + pos * 16 + 10 : U32)] <- v)[(src + i * 16 + 11 : U32)], i, src, dst, cur,
+      C.sc(f, n, 1n, (a[(dst + pos * 16 + 10 : U32)] <- v)[(src + i * 16 + 11 : U32)], i, src, dst, cur,
         sown, down, ox, oz, g, x, c, pos)
-    case 1n+m 1n:
+    case 1n+f 1n+m 1n:
       (a, v) = r
-      C.sc(n, 0n, (a[(dst + pos * 16 + 11 : U32)] <- v)[(src + i * 16 + 12 : U32)], i, src, dst, cur,
+      C.sc(f, n, 0n, (a[(dst + pos * 16 + 11 : U32)] <- v)[(src + i * 16 + 12 : U32)], i, src, dst, cur,
         sown, down, ox, oz, g, x, c, pos)
-    case 1n+m _:
+    case 1n+f 1n+m _:
       (a, v) = r
-      C.sc(m, 16n, (a[(dst + pos * 16 + 12 : U32)] <- v)[(src + (i + 1) * 16 : U32)], (i + 1 : U32), src, dst, cur,
+      C.sc(f, m, 16n, (a[(dst + pos * 16 + 12 : U32)] <- v)[(src + (i + 1) * 16 : U32)], (i + 1 : U32), src, dst, cur,
         sown, down, ox, oz, g, x, c, pos)
 
 # the cells' counts back to zero before counting again
@@ -1177,9 +1221,12 @@ def C.pk(fuel: Nat, n: Nat, ph: Nat, r: Array<U32> & U32, +i: U32, +j: U32, +cap
     case 1n+f 1n+m 8n:
       (a, v) = r
       C.pk(f, n, 7n, (a[(j * 16 + 4 : U32)] <- v)[(i * 16 + 5 : U32)], i, j, cap, ov)
-    case 1n+f 1n+m 7n:
-      (a, v) = r
-      C.pk(f, n, 6n, (a[(j * 16 + 5 : U32)] <- v)[(i * 16 + 6 : U32)], i, j, cap, ov)
+    case 1n+f 1n++m 7n:
+      (a, +v) = r
+      C.pk(f, Pick.n(F.spun(v), n, m), Pick.n(F.spun(v), 6n, 13n),
+        ((a[(j * 16 + 5 : U32)] <- v)[(C.roa(cap) + j : U32)] <- ov)[Pick.u(F.spun(v), (i * 16 + 6 : U32),
+          (C.roa(cap) + i + 1 : U32))], Pick.u(F.spun(v), i, (i + 1 : U32)),
+        Pick.u(F.spun(v), j, (j + 1 : U32)), cap, ov)
     case 1n+f 1n+m 6n:
       (a, v) = r
       C.pk(f, n, 5n, (a[(j * 16 + 6 : U32)] <- v)[(i * 16 + 7 : U32)], i, j, cap, ov)
@@ -1263,7 +1310,7 @@ def C.reoff(+n: U32, a: Array<U32>, +cap: U32, +gg: U32, +ox: U32, +oz: U32, +g:
 # added up, then every body to its place
 def C.sort3(a: Array<U32>, +n: U32, +src: U32, +dst: U32, +cap: U32, +gg: U32, +ox: U32, +oz: U32,
   +g: U32) -> Array<U32>:
-  C.sc(U32.to_nat(n), 16n, a[src], 0, src, dst, C.rcur(cap, gg), C.roa(cap), C.rob(cap), ox, oz, g, 0, 0, 0)
+  C.sc(Nat.add(Nat.mul(20n, U32.to_nat(n)), 16n), U32.to_nat(n), 16n, a[src], 0, src, dst, C.rcur(cap, gg), C.roa(cap), C.rob(cap), ox, oz, g, 0, 0, 0)
 
 def C.sort2(a: Array<U32>, +n: U32, +src: U32, +dst: U32, +cap: U32, +gg: U32, +ox: U32, +oz: U32,
   +g: U32) -> Array<U32>:
@@ -1505,8 +1552,18 @@ def C.emit(fuel: Nat, n: Nat, ph: Nat, r: Array<U32> & U32, +i: U32, +cap: U32, 
       (a, v) = r
       C.emit(f, n, 20n, a[(i * 16 + 5 : U32)], i, cap, ox, oz, ix, iz, nbx, nbz, side, nc, x, y, z, vx, v, vz, rt, ms)
     case 1n+f 1n+m 20n:
-      (a, v) = r
-      C.emit(f, n, 19n, a[(i * 16 + 6 : U32)], i, cap, ox, oz, ix, iz, nbx, nbz, side, nc, x, y, z, vx, vy, v, rt, ms)
+      (a, +v) = r
+      C.emit(f, n, Pick.n(F.spun(v), 19n, 21n),
+        a[Pick.u(F.spun(v), (i * 16 + 6 : U32), (C.roa(cap) + i : U32))], i, cap, ox, oz, ix, iz, nbx, nbz, side,
+        nc, x, y, z, vx, vy, v, rt, ms)
+    case 1n+f 1n++m 21n:
+      (a, +v) = r
+      +gone = Bool.or(Bool.or(((F.cell(x) - ox) < 1 : U32), ((F.cell(x) - ox) >= side + 1 : U32)),
+        Bool.or(((F.cell(z) - oz) < 1 : U32), ((F.cell(z) - oz) >= side + 1 : U32)))
+      C.emit(f, m, 6n,
+        (a[(C.roa(cap) + i : U32)] <- Pick.u(gone, 0, 1))[(C.roa(cap) + i + 1 : U32)], (i + 1 : U32), cap, ox, oz,
+        ix, iz, nbx, nbz, side, nc, x, y, z, vx, vy, vz, P.Rot.rest(),
+        C.tag(x, y, z, vx, vy, vz, P.Rot.rest(), ox, oz, ix, iz, nbx, nbz, side, nc, ms))
     case 1n+f 1n+m 19n:
       (a, v) = r
       C.emit(f, n, 18n, a[(i * 16 + 7 : U32)], i, cap, ox, oz, ix, iz, nbx, nbz, side, nc, x, y, z, vx, vy,
@@ -1809,9 +1866,10 @@ def C.give2(fuel: Nat, seg: Nat, ph: Nat, r: Array<U32> & U32, b: Array<U32>, +i
       C.give2(f, 1n+sg, 1n, a[(i * 16 + 5 : U32)], b, i, j, cap, capb, oxa, oza, oxb, ozb, side, g, dx, dz, en,
         fl, x, y, z, vx, v, vz, rt)
     case 1n+f 1n++sg 1n:
-      (a, v) = r
-      C.give2(f, 1n+sg, 20n, a[(i * 16 + 6 : U32)], b, i, j, cap, capb, oxa, oza, oxb, ozb, side, g, dx, dz, en,
-        fl, x, y, z, vx, vy, v, rt)
+      (a, +v) = r
+      C.give2(f, 1n+sg, Pick.n(F.spun(v), 20n, 22n),
+        a[Pick.u(F.spun(v), (i * 16 + 6 : U32), (C.roa(cap) + i : U32))], b, i, j, cap, capb, oxa, oza, oxb,
+        ozb, side, g, dx, dz, en, fl, x, y, z, vx, vy, v, rt)
     case 1n+f 1n++sg 20n:
       (a, v) = r
       C.give2(f, 1n+sg, 19n, a[(i * 16 + 7 : U32)], b, i, j, cap, capb, oxa, oza, oxb, ozb, side, g, dx, dz, en,
@@ -1836,6 +1894,24 @@ def C.give2(fuel: Nat, seg: Nat, ph: Nat, r: Array<U32> & U32, b: Array<U32>, +i
       (a, v) = r
       C.give2(f, 1n+sg, 14n, a[(i * 16 + 12 : U32)], b, i, j, cap, capb, oxa, oza, oxb, ozb, side, g, dx, dz, en,
         fl, x, y, z, vx, vy, vz, P.Rot.put(5n, rt, F.zof(v)))
+    case 1n+f 1n++sg 22n:
+      (a, +v) = r
+      # the same handover, for a cube that carries no rotation: its seven
+      # words were never read, and the neighbour gets it square
+      +take = Bool.and(Bool.not(U32.is_eq(fl, 0)), C.atb((F.cell(x) - oxa : U32), (F.cell(z) - oza : U32), dx, dz, side))
+      +inx = Bool.and(((F.cell(x) - oxb) >= 1 : U32), ((F.cell(x) - oxb) < side + 1 : U32))
+      +inz = Bool.and(((F.cell(z) - ozb) >= 1 : U32), ((F.cell(z) - ozb) < side + 1 : U32))
+      +mine = C.owns(dx, inx, inz)
+      +gone = Bool.not(Bool.and(Bool.and(((F.cell(x) - oxa) >= 1 : U32), ((F.cell(x) - oxa) < side + 1 : U32)),
+        Bool.and(((F.cell(z) - oza) >= 1 : U32), ((F.cell(z) - oza) < side + 1 : U32))))
+      +last = U32.is_eq((i + 1 : U32), en)
+      C.give2(f, Pick.n(last, sg, 1n+sg), Pick.n(last, 9n, 7n),
+        C.gm(a, cap, i, Pick.u(Bool.and(gone, take), 0, fl))[Pick.u(last,
+          (C.roff(cap) + C.sa(sg, dx, dz, side, g) : U32), (C.roa(cap) + i + 1 : U32))],
+        C.put_if(take, b, j, capb, Bool.and(mine, U32.is_eq(fl, 1)), x, y, z, vx, vy, vz,
+          P.Rot.rest()), (i + 1 : U32),
+        Pick.u(take, (j + 1 : U32), j), cap, capb, oxa, oza, oxb, ozb, side, g, dx, dz, en, fl, x, y, z, vx, vy, vz, rt)
+
     case 1n+f 1n++sg _:
       (a, +v) = r
       # anything that is not a copy goes over the border: the chunk's own
@@ -2774,8 +2850,11 @@ def Fb.cpy(fuel: Nat, cn: Nat, ph: Nat, r: Array<U32> & U32, d: Array<U32>, +na:
       Fb.cpy(f, 1n+c, 7n, a[(j * 16 + 5 : U32)], d[(slot * 16 + 4 : U32)] <- v, na, cap, msk, lox, hix, cx, cz, bx, bz,
         nown, dcap, j, slot, io, ih)
     case 1n+f 1n+c 7n:
-      (a, v) = r
-      Fb.cpy(f, 1n+c, 8n, a[(j * 16 + 6 : U32)], d[(slot * 16 + 5 : U32)] <- v, na, cap, msk, lox, hix, cx, cz, bx, bz,
+      (a, +v) = r
+      Fb.cpy(f, 1n+c, Pick.n(F.spun(v), 8n, 0n),
+        a[Pick.u(F.spun(v), (j * 16 + 6 : U32), (F.nx(cap) + j : U32))],
+        (d[(slot * 16 + 5 : U32)] <- v)[Pick.u(F.spun(v), (F.hd(dcap) + dcap + slot : U32),
+          (F.hd(dcap) + dcap + slot : U32))] <- j, na, cap, msk, lox, hix, cx, cz, bx, bz,
         nown, dcap, j, slot, io, ih)
     case 1n+f 1n+c 8n:
       (a, v) = r
@@ -2908,9 +2987,11 @@ def Fb.bk(fuel: Nat, n: Nat, ph: Nat, r: Array<U32> & U32, a: Array<U32>, +i: U3
     case 1n+f 1n+m 5n:
       (d, v) = r
       Fb.bk(f, n, 6n, d[(i * 16 + 5 : U32)], a[(orig * 16 + 4 : U32)] <- v, i, nown, dcap, orig)
-    case 1n+f 1n+m 6n:
-      (d, v) = r
-      Fb.bk(f, n, 7n, d[(i * 16 + 6 : U32)], a[(orig * 16 + 5 : U32)] <- v, i, nown, dcap, orig)
+    case 1n+f 1n++m 6n:
+      (d, +v) = r
+      Fb.bk(f, Pick.n(F.spun(v), n, m), Pick.n(F.spun(v), 7n, 0n),
+        d[Pick.u(F.spun(v), (i * 16 + 6 : U32), (F.hd(dcap) + dcap + i + 1 : U32))],
+        a[(orig * 16 + 5 : U32)] <- v, Pick.u(F.spun(v), i, (i + 1 : U32)), nown, dcap, orig)
     case 1n+f 1n+m 7n:
       (d, v) = r
       Fb.bk(f, n, 8n, d[(i * 16 + 7 : U32)], a[(orig * 16 + 6 : U32)] <- v, i, nown, dcap, orig)
