@@ -4808,7 +4808,7 @@ def W.ogof(+cx0: U32, +cz0: U32) -> Og:
 
 # how many ticks a grid lives before the crowd comes back as a list
 def W.cglife() -> Nat:
-  32n
+  64n
 
 # the crowd out of the grid and back into the world, the sleepers that
 # moved woken, the player taken out of the obstacles
