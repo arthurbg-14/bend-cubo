@@ -1445,6 +1445,17 @@ def C.mine(+ox: U32, +oz: U32, +side: U32, +c: Nat) -> Bool:
 type Ck2 is Type:
   Ck2{a: Chk, b: Chk}
 
+# which colour a chunk ticks in, and whether either of a pair is the one
+# the round is preparing (an empty chunk never is)
+def C.colr(t: Chk, +side: U32, +cn: Nat) -> Chk & Bool:
+  match t:
+    case ChE{}:
+      (ChE{}, False{})
+    case ChL{a, +n, +cap, +ox, +oz}:
+      (ChL{a, n, cap, ox, oz}, C.mine(ox, oz, side, cn))
+    case ChN{lo, hi}:
+      (ChN{lo, hi}, False{})
+
 # a cube that crossed the border changes owner along the axis of this
 # pass: a cube that left by a corner crosses in x first and in z after,
 # and the pass of the other axis finishes the move
@@ -1658,7 +1669,12 @@ def C.xp1(r: Array<U32> & Array<U32> & U32, +na: U32, +nb: U32, +capa: U32, +oxa
   C.xp2(aa, q, na, nb, capa, oxa, oza, capb, oxb, ozb, side, dx, dz)
 
 # two chunks side by side: each hands the other what is near their border
-def C.xpair(a: Chk, b: Chk, +dx: Nat, +dz: Nat, +side: U32) -> Ck2:
+# The handover happens for a pair only when one of the two is the one
+# about to tick: a chunk needs fresh copies of its neighbours right before
+# its own round, and the cubes that walked into it before it ticks. Doing
+# it in every round was four times the work (and it is the part that does
+# not spread over the cores).
+def C.xpair2(a: Chk, b: Chk, +dx: Nat, +dz: Nat, +side: U32) -> Ck2:
   match a b:
     case ChL{aa, +na, +capa, +oxa, +oza} ChL{ab, +nb, +capb, +oxb, +ozb}:
       C.xp1(C.give2(Nat.add(Nat.mul(10n, Nat.add(U32.to_nat(na), U32.to_nat(U32.from_nat(C.g())))), 64n),
@@ -1668,6 +1684,24 @@ def C.xpair(a: Chk, b: Chk, +dx: Nat, +dz: Nat, +side: U32) -> Ck2:
         na, nb, capa, oxa, oza, capb, oxb, ozb, side, dx, dz)
     case _ _:
       Ck2{a, b}
+
+def C.xskip(go: Bool, a: Chk, b: Chk, +dx: Nat, +dz: Nat, +side: U32) -> Ck2:
+  match go:
+    case False{}:
+      Ck2{a, b}
+    case True{}:
+      C.xpair2(a, b, dx, dz, side)
+
+def C.pg2(rb: Chk & Bool, a: Chk, +ba: Bool, +dx: Nat, +dz: Nat, +side: U32) -> Ck2:
+  (b, +bb) = rb
+  C.xskip(Bool.or(ba, bb), a, b, dx, dz, side)
+
+def C.pg1(ra: Chk & Bool, b: Chk, +side: U32, +cn: Nat, +dx: Nat, +dz: Nat) -> Ck2:
+  (a, +ba) = ra
+  C.pg2(C.colr(b, side, cn), a, ba, dx, dz, side)
+
+def C.xpair(a: Chk, b: Chk, +dx: Nat, +dz: Nat, +side: U32, +cn: Nat) -> Ck2:
+  C.pg1(C.colr(a, side, cn), b, side, cn, dx, dz)
 
 # The grid: rows of chunks
 # -----------------------
@@ -1694,14 +1728,14 @@ def C.xrow(rest: Rw, p: Ck2, +side: U32) -> Rw:
       RwC{c, RwC{d, RwE{}}}
     case RwC{e, more}:
       Ck2{c, d} = p
-      RwC{c, C.xrow(more, C.xpair(d, e, 1n, 0n, side), side)}
+      RwC{c, C.xrow(more, C.xpair2(d, e, 1n, 0n, side), side)}
 
 def C.xr1(c: Chk, rest: Rw, +side: U32) -> Rw:
   match rest:
     case RwE{}:
       RwC{c, RwE{}}
     case RwC{d, more}:
-      C.xrow(more, C.xpair(c, d, 1n, 0n, side), side)
+      C.xrow(more, C.xpair2(c, d, 1n, 0n, side), side)
 
 def C.xr0(r: Rw, +side: U32) -> Rw:
   match r:
@@ -1719,7 +1753,7 @@ def C.zrow(ra: Rw, rb: Rw, p: Ck2, +side: U32) -> Rw2:
   match ra rb:
     case RwC{x, moreA} RwC{y, moreB}:
       Ck2{c, d} = p
-      C.zr2(c, d, C.zrow(moreA, moreB, C.xpair(x, y, 0n, 1n, side), side))
+      C.zr2(c, d, C.zrow(moreA, moreB, C.xpair2(x, y, 0n, 1n, side), side))
     case _ _:
       Ck2{c, d} = p
       Rw2{RwC{c, RwE{}}, RwC{d, RwE{}}}
@@ -1727,7 +1761,7 @@ def C.zrow(ra: Rw, rb: Rw, p: Ck2, +side: U32) -> Rw2:
 def C.zr0(ra: Rw, rb: Rw, +side: U32) -> Rw2:
   match ra rb:
     case RwC{x, mA} RwC{y, mB}:
-      C.zrow(mA, mB, C.xpair(x, y, 0n, 1n, side), side)
+      C.zrow(mA, mB, C.xpair2(x, y, 0n, 1n, side), side)
     case _ _:
       Rw2{ra, rb}
 
@@ -1755,24 +1789,23 @@ def C.xcons(p: Ck2, rest: Rw) -> Rw:
 
 # the row's chunks handed over two by two, every pair at the same time:
 # first (0,1), (2,3) ... and then, in another run, (1,2), (3,4) ...
-def C.xeven(r: Rw, have: Bool, a: Chk, +side: U32) -> Rw:
+def C.xeven(r: Rw, have: Bool, a: Chk, +side: U32, +cn: Nat) -> Rw:
   match r have:
     case RwE{} False{}:
       C.kill(a)
     case RwC{b, more} False{}:
-      C.kill2(a, C.xeven(more, True{}, b, side))
+      C.kill2(a, C.xeven(more, True{}, b, side, cn))
     case RwE{} True{}:
       RwC{a, RwE{}}
     case RwC{b, more} True{}:
-      x y = C.xpair(a, b, 1n, 0n, side) C.xeven(more, False{}, ChE{}, side)
-      C.xcons(x, y)
+      C.xcons(C.xpair(a, b, 1n, 0n, side, cn), C.xeven(more, False{}, ChE{}, side, cn))
 
-def C.xodd(r: Rw, +side: U32) -> Rw:
+def C.xodd(r: Rw, +side: U32, +cn: Nat) -> Rw:
   match r:
     case RwE{}:
       RwE{}
     case RwC{a, rest}:
-      RwC{a, C.xeven(rest, False{}, ChE{}, side)}
+      RwC{a, C.xeven(rest, False{}, ChE{}, side, cn)}
 
 def C.zjoin(p: Ck2, q: Rw2) -> Rw2:
   Ck2{c, d} = p
@@ -1780,11 +1813,10 @@ def C.zjoin(p: Ck2, q: Rw2) -> Rw2:
   Rw2{RwC{c, a}, RwC{d, b}}
 
 # the same for two rows, one above the other, chunk by chunk
-def C.zpar(ra: Rw, rb: Rw, +side: U32) -> Rw2:
+def C.zpar(ra: Rw, rb: Rw, +side: U32, +cn: Nat) -> Rw2:
   match ra rb:
     case RwC{x, moreA} RwC{y, moreB}:
-      p q = C.xpair(x, y, 0n, 1n, side) C.zpar(moreA, moreB, side)
-      C.zjoin(p, q)
+      C.zjoin(C.xpair(x, y, 0n, 1n, side, cn), C.zpar(moreA, moreB, side, cn))
     case _ _:
       Rw2{ra, rb}
 
@@ -1807,37 +1839,37 @@ def C.gkill2(r: Rw, rest: Gr) -> Gr:
       rest
 
 # the rows handed over two by two, all pairs at the same time
-def C.geven(g: Gr, have: Bool, r: Rw, +side: U32) -> Gr:
+def C.geven(g: Gr, have: Bool, r: Rw, +side: U32, +cn: Nat) -> Gr:
   match g have:
     case GrE{} False{}:
       C.gkill(r)
     case GrC{r2, more} False{}:
-      C.gkill2(r, C.geven(more, True{}, r2, side))
+      C.gkill2(r, C.geven(more, True{}, r2, side, cn))
     case GrE{} True{}:
       GrC{r, GrE{}}
     case GrC{r2, more} True{}:
-      p q = C.zpar(r, r2, side) C.geven(more, False{}, RwE{}, side)
+      p q = C.zpar(r, r2, side, cn) C.geven(more, False{}, RwE{}, side, cn)
       C.gcons(p, q)
 
-def C.godd(g: Gr, +side: U32) -> Gr:
+def C.godd(g: Gr, +side: U32, +cn: Nat) -> Gr:
   match g:
     case GrE{}:
       GrE{}
     case GrC{r, rest}:
-      GrC{r, C.geven(rest, False{}, RwE{}, side)}
+      GrC{r, C.geven(rest, False{}, RwE{}, side, cn)}
 
 # every row's chunks hand over inside the row (two runs), and then the
 # rows with each other (two more) -- every pair of a run at once
-def C.gxr(g: Gr, +side: U32) -> Gr:
+def C.gxr(g: Gr, +side: U32, +cn: Nat) -> Gr:
   match g:
     case GrE{}:
       GrE{}
     case GrC{r, rest}:
-      a b = C.xodd(C.xeven(r, False{}, ChE{}, side), side) C.gxr(rest, side)
+      a b = C.xodd(C.xeven(r, False{}, ChE{}, side, cn), side, cn) C.gxr(rest, side, cn)
       GrC{a, b}
 
-def C.gzr2(g: Gr, +side: U32) -> Gr:
-  C.godd(C.geven(g, False{}, RwE{}, side), side)
+def C.gzr2(g: Gr, +side: U32, +cn: Nat) -> Gr:
+  C.godd(C.geven(g, False{}, RwE{}, side, cn), side, cn)
 
 # the whole grid: every row hands over inside itself, all rows at once
 def C.gx(g: Gr, +side: U32) -> Gr:
@@ -2172,7 +2204,8 @@ def C.ftick(t: Chk, +c: Nat, +o: Og, +k: P.K, +mm: Nat, +side: U32) -> Chk:
 # handover walks every cube of every chunk, four ways a round), kept for
 # the record
 def C.round3(g: Gr, +c: Nat, +o: Og, +k: P.K, +mm: Nat, +side: U32, +lv: Nat, +nbx: Nat, +rows: Nat) -> Gr:
-  C.gzr2(C.gxr(C.rows0(C.unt(C.ftick(C.mktree(lv, C.gcat(g)), c, o, k, mm, side), RwE{}), nbx, rows), side), side)
+  C.gzr2(C.gxr(C.rows0(C.unt(C.ftick(C.mktree(lv, C.gcat(g)), c, o, k, mm, side), RwE{}), nbx, rows), side,
+    Nat.mod(Nat.add(c, 1n), 4n)), side, Nat.mod(Nat.add(c, 1n), 4n))
 
 def C.tick3(g: Gr, +o: Og, +k: P.K, +mm: Nat, +side: U32, +lv: Nat, +nbx: Nat, +rows: Nat) -> Gr:
   C.round3(C.round3(C.round3(C.round3(g, 0n, o, k, mm, side, lv, nbx, rows), 1n, o, k, mm, side, lv, nbx, rows),
@@ -2182,7 +2215,8 @@ def C.tick3(g: Gr, +o: Og, +k: P.K, +mm: Nat, +side: U32, +lv: Nat, +nbx: Nat, +
 # then between them), and the chunks of this colour ticked -- two chunks
 # of a colour are two chunks apart, so no cube is pushed by two of them
 def C.round2(g: Gr, +c: Nat, +o: Og, +k: P.K, +mm: Nat, +side: U32) -> Gr:
-  C.gtick(C.gzr2(C.gxr(C.gtidy(g), side), side), c, o, k, mm, side)
+  C.gtick(C.gzr2(C.gxr(C.gtidy(g), side, Nat.mod(Nat.add(c, 1n), 4n)), side, Nat.mod(Nat.add(c, 1n), 4n)),
+    c, o, k, mm, side)
 
 # a tick: the four colours
 def C.tick2(g: Gr, +o: Og, +k: P.K, +mm: Nat, +side: U32) -> Gr:
@@ -4368,7 +4402,7 @@ def W.lg3(fuel: Nat, ok: Bool, +n: Nat, +c: Nat, +lv: Nat) -> Nat:
       W.lg3(f, Nat.is_le(n, Nat.mul(2n, c)), n, Nat.mul(2n, c), Nat.add(lv, 1n))
 
 def W.lg2(+n: Nat) -> Nat:
-  W.lg3(24n, Nat.is_le(n, 16n), n, 16n, 0n)
+  W.lg3(24n, Nat.is_le(n, C.side()), n, C.side(), 0n)
 
 # the bodies on each side of a line of cells (along x if onx, else z)
 def C.cut1(lo: Bool, +b: P.Body, r: Two) -> Two:
@@ -4394,7 +4428,7 @@ def C.cut(xs: List<&2, P.Body>, +line: U32, +onx: Bool, acc: Two) -> Two:
 def C.mkl2(+n1: Nat, +n2: Nat, xs: List<&2, P.Body>, ss: List<&2, P.Body>, +o: Og, +ox: U32, +oz: U32,
   r: U32 & Nat) -> Chk:
   (+cap, b) = r
-  ChL{C.mark(n2, C.mark(n1, F.pack(ss, F.pack(xs, Array.new(U32, Nat.add(b, 5n), 0), 0, o, False{}),
+  ChL{C.mark(n2, C.mark(n1, F.pack(ss, F.pack(xs, Array.new(U32, Nat.add(b, 6n), 0), 0, o, False{}),
       U32.from_nat(n1), o, True{}), 0, cap, 1), U32.from_nat(n1), cap, 2),
     U32.from_nat(Nat.add(n1, n2)), cap, ox, oz}
 
@@ -4443,7 +4477,7 @@ def C.tb(t: Two) -> List<&2, P.Body>:
 
 # how many cells 2^m chunks span
 def C.st(+m: Nat) -> U32:
-  U32.from_nat(Nat.mul(16n, Nat.pow(2n, m)))
+  U32.from_nat(Nat.mul(C.side(), Nat.pow(2n, m)))
 
 # what to do next: split by z while there are z levels left, then by x,
 # and when there is only one chunk left, pack it
@@ -4526,9 +4560,16 @@ def C.gsort(g: Gr, +o: Og, +k: P.K, +mm: Nat) -> Gr:
 # this one is built fresh every tick and would start with no copies of the
 # neighbours at all -- and two cubes on opposite sides of a chunk line
 # would not see each other
-def C.tickg(g: Gr, +o: Og, +k: P.K, +mm: Nat, +lx: Nat, +lz: Nat) -> Gr:
-  C.tick3(C.gzr2(C.gxr(C.gsort(g, o, k, mm), U32.from_nat(C.side())), U32.from_nat(C.side())), o, k, mm,
+# the first tick of a grid just built: it is in no order at all yet, and
+# the border runs the handover reads come from the order
+def C.tickg0(g: Gr, +o: Og, +k: P.K, +mm: Nat, +lx: Nat, +lz: Nat) -> Gr:
+  C.tick3(C.gzr2(C.gxr(C.gsort(g, o, k, mm), U32.from_nat(C.side()), 0n), U32.from_nat(C.side()), 0n), o, k, mm,
     U32.from_nat(C.side()), Nat.add(lx, lz), Nat.pow(2n, lx), Nat.pow(2n, lz))
+
+# every tick after that: the chunks are already in order and already hold
+# their neighbours' copies, so it is only the four rounds
+def C.tickg(g: Gr, +o: Og, +k: P.K, +mm: Nat, +lx: Nat, +lz: Nat) -> Gr:
+  C.tick3(g, o, k, mm, U32.from_nat(C.side()), Nat.add(lx, lz), Nat.pow(2n, lx), Nat.pow(2n, lz))
 
 # the grid dropped: it is built again from the list every tick, and a
 # chunk's array belongs to that chunk alone
@@ -4595,7 +4636,7 @@ def W.cp5(r: Gr2, +k: P.K, +seed: U32, t: Cells, dirty: List<&2, Cell>, p: P.Bod
 
 def W.cp4(+k: P.K, +seed: U32, t: Cells, dirty: List<&2, Cell>, p: P.Body, awake: List<&2, P.Body>,
   sl: List<&2, P.Body>, +mm: Nat, +o: Og, +cx0: U32, +cz0: U32, +lx: Nat, +lz: Nat) -> World:
-  W.cp5(C.gbodies(C.tickg(C.mkgrid(awake, sl, lx, lz, cx0, cz0, o), o, k, mm, lx, lz), o, 1),
+  W.cp5(C.gbodies(C.tickg0(C.mkgrid(awake, sl, lx, lz, cx0, cz0, o), o, k, mm, lx, lz), o, 1),
     k, seed, t, dirty, p, o)
 
 def W.cp2(+k: P.K, +seed: U32, +t: Cells, dirty: List<&2, Cell>, +p: P.Body, awake: List<&2, P.Body>,
@@ -4611,6 +4652,100 @@ def W.cp1(+k: P.K, w: World) -> World:
 # the player first, alone, then the crowd in chunks, all at the same time
 def W.tick_cpar(+k: P.K, inp: P.In, w: World) -> World:
   W.cp1(k, W.player_step(k, inp, w))
+
+# The crowd's grid kept alive between ticks
+# ----------------------------------------
+# Building the grid out of the list costs more than the rounds do, so the
+# grid is kept: it is built once and then ticks by itself, and only every
+# few ticks does the crowd come back as a list (to sleep, to be drawn, to
+# be handed to the player). The rebuild also re-centres the grid on the
+# crowd, which is what keeps a cube from walking off its edge.
+
+type Crowd is Type:
+  CNil{}
+  CGr{g: Gr, cx0: U32, cz0: U32, lx: Nat, lz: Nat, mm: Nat, left: Nat}
+
+type Wc is Type:
+  Wc{w: World, c: Crowd}
+
+def W.ogof(+cx0: U32, +cz0: U32) -> Og:
+  Og{W.base(cx0), W.base(cz0)}
+
+# how many ticks a grid lives before the crowd comes back as a list
+def W.cglife() -> Nat:
+  32n
+
+# the crowd out of the grid and back into the world, the sleepers that
+# moved woken, the player taken out of the obstacles
+def W.cgend(+k: P.K, w: World, g: Gr, +cx0: U32, +cz0: U32) -> Wc:
+  World{+seed, +t, awake, dirty, +p} = w
+  Wc{W.cp5(C.gbodies(g, W.ogof(cx0, cz0), 1), k, seed, t, dirty, p, W.ogof(cx0, cz0)), CNil{}}
+
+def W.cg3(left: Nat, +k: P.K, w: World, g: Gr, +cx0: U32, +cz0: U32, +lx: Nat, +lz: Nat, +mm: Nat) -> Wc:
+  match left:
+    case 0n:
+      W.cgend(k, w, g, cx0, cz0)
+    case 1n+m:
+      Wc{w, CGr{g, cx0, cz0, lx, lz, mm, m}}
+
+# one tick of a grid that is already alive: the four colour rounds, and
+# nothing else at all
+def W.cg2(+k: P.K, w: World, g: Gr, +cx0: U32, +cz0: U32, +lx: Nat, +lz: Nat, +mm: Nat, +left: Nat) -> Wc:
+  W.cg3(left, k, w, C.tickg(g, W.ogof(cx0, cz0), k, mm, lx, lz), cx0, cz0, lx, lz, mm)
+
+# the grid built from the crowd: the cubes are its own, the sleepers under
+# them and the player are obstacles (they are seen and pushed, they do not
+# tick and they do not come back as cubes)
+def W.cgb(+k: P.K, +seed: U32, t: Cells, dirty: List<&2, Cell>, p: P.Body, awake: List<&2, P.Body>,
+  sl: List<&2, P.Body>, +cx0: U32, +cz0: U32, +lx: Nat, +lz: Nat, +mm: Nat) -> Wc:
+  Wc{World{seed, t, [], dirty, p},
+    CGr{C.tickg0(C.mkgrid(awake, sl, lx, lz, cx0, cz0, W.ogof(cx0, cz0)), W.ogof(cx0, cz0), k, mm, lx, lz),
+      cx0, cz0, lx, lz, mm, W.cglife()}}
+
+# The grid is built wider than the crowd: it has to hold every cube for as
+# long as it lives, and a cube walks at most mm a tick. Without that
+# margin a cube reaches the outer edge, where there is no neighbour to
+# take it, its cell is clamped and it stops seeing who is next to it.
+def W.cgmg(+mm: Nat) -> Nat:
+  Nat.add(Nat.mul(mm, Nat.add(W.cglife(), 2n)), Nat.mul(2n, W.size()))
+
+def W.cg1(+k: P.K, w: World, +bx: Bx, +mm: Nat) -> Wc:
+  World{+seed, +t, +awake, dirty, +p} = w
+  W.cgb(k, seed, t, dirty, p, awake,
+    p <> W.rect(Nat.mul(F.gnx(bx, W.cgmg(mm)), F.gnz(bx, W.cgmg(mm))), t, seed, F.cx0(bx, W.cgmg(mm)),
+      F.cz0(bx, W.cgmg(mm)), F.gnx(bx, W.cgmg(mm))),
+    F.cx0(bx, W.cgmg(mm)), F.cz0(bx, W.cgmg(mm)), W.lg2(F.gnx(bx, W.cgmg(mm))), W.lg2(F.gnz(bx, W.cgmg(mm))),
+    Nat.add(mm, 8192n))
+
+def W.cgnew(+k: P.K, w: World) -> Wc:
+  World{seed, t, +awake, dirty, +p} = w
+  W.cg1(k, World{seed, t, awake, dirty, p}, O.bb(awake, O.box([p])), F.mx(k, awake, W.reach(k, p)))
+
+# the crowd back into the world whatever state the grid is in: what the
+# GPU, the HUD and anything else that needs the cubes as a list asks for
+def W.cgw(r: Wc) -> World:
+  Wc{w, c} = r
+  w
+
+def W.cgf2(+k: P.K, w: World, c: Crowd) -> World:
+  match c:
+    case CNil{}:
+      w
+    case CGr{g, +cx0, +cz0, lx, lz, mm, left}:
+      W.cgw(W.cgend(k, w, g, cx0, cz0))
+
+def W.cgflush(+k: P.K, r: Wc) -> World:
+  Wc{w, c} = r
+  W.cgf2(k, w, c)
+
+# the crowd's tick with the grid kept alive: the player first, alone, then
+# the chunks, all of them at the same time
+def W.tick_cg(+k: P.K, inp: P.In, w: World, c: Crowd) -> Wc:
+  match c:
+    case CNil{}:
+      W.cgnew(k, W.player_step(k, inp, w))
+    case CGr{g, +cx0, +cz0, +lx, +lz, +mm, +left}:
+      W.cg2(k, W.player_step(k, inp, w), g, cx0, cz0, lx, lz, mm, left)
 
 def W.dense1(ok: Bool, +gx: Nat, +gz: Nat, +lim: Nat) -> Bool:
   match ok:

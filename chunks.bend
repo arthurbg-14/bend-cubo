@@ -82,7 +82,7 @@ def mine(xs: List<&2, P.Body>, +bx: Nat, +bz: Nat) -> List<&2, P.Body>:
 
 def chunk(+bx: Nat, +bz: Nat, +xs: List<&2, P.Body>, +n: Nat, r: U32 & Nat) -> W.Chk:
   (+cap, b) = r
-  W.ChL{W.C.mark(n, W.F.pack(xs, Array.new(U32, Nat.add(b, 5n), 0), 0, oar(), True{}), 0, cap, 1),
+  W.ChL{W.C.mark(n, W.F.pack(xs, Array.new(U32, Nat.add(b, 6n), 0), 0, oar(), True{}), 0, cap, 1),
     U32.from_nat(n), cap, (first(bx) - 1 - (W.W.origin() - 32) : U32),
     (first(bz) - 1 - (W.W.origin() - 32) : U32)}
 

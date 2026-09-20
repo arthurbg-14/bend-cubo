@@ -124,6 +124,24 @@ def run(n: Nat, +v: Nat, +bad: Nat, +w: W.World, +i: Nat, +n0: Nat) -> String:
       +w2 = tick(v, w)
       run(m, v, Nat.add(bad, clash(region(w2))), w2, Nat.add(i, 1n), n0)
 
+# the same run, but with the grid kept alive: the crowd only comes back as
+# a list every few ticks, so that is when the overlaps are counted (an
+# overlap never undoes itself -- two cubes inside each other stay there)
+def count(+w: W.World) -> Nat:
+  M.Pick.n(Nat.is_eq(List.length(&2, P.Body, awk(w)), 0n), 0n, clash(region(w)))
+
+def run8(n: Nat, +bad: Nat, r: W.Wc, +i: Nat, +n0: Nat) -> String:
+  match n:
+    case 0n:
+      +w = W.W.cgflush(M.Knob.defaults(), r)
+      M.Pick.s(Bool.and(Nat.is_eq(bad, 0n), Nat.is_eq(List.length(&2, P.Body, region(w)), n0)), "OK", "FAIL")
+        ++ ": " ++ Nat.show(i) ++ " ticks, " ++ Nat.show(bad) ++ " overlaps, "
+        ++ Nat.show(List.length(&2, P.Body, region(w))) ++ " cubes (" ++ Nat.show(n0) ++ " at the start), "
+        ++ Nat.show(List.length(&2, P.Body, awk(w))) ++ " awake"
+    case 1n+m:
+      W.Wc{+w, c} = r
+      run8(m, Nat.add(bad, count(w)), W.W.tick_cg(M.Knob.defaults(), P.In.idle(), w, c), Nat.add(i, 1n), n0)
+
 def main2(+w: W.World) -> IO(Unit):
   +n0 = List.length(&2, P.Body, region(w))
   do IO<Unit>:
@@ -136,6 +154,7 @@ def main2(+w: W.World) -> IO(Unit):
     f : Unit <- IO.print("par:    " ++ run(300n, 4n, 0n, w, 0n, n0))
     g : Unit <- IO.print("blocos: " ++ run(300n, 5n, 0n, w, 0n, n0))
     h : Unit <- IO.print("chunks: " ++ run(300n, 6n, 0n, w, 0n, n0))
+    h2 : Unit <- IO.print("vivos:  " ++ run8(304n, 0n, W.Wc{w, W.CNil{}}, 0n, n0))
     IO.print("game:   " ++ run(300n, 7n, 0n, w, 0n, n0))
 
 def main() -> IO(Unit):
