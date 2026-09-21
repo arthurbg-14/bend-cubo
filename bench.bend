@@ -36,7 +36,7 @@ def awake(w: W.World) -> Nat:
 def drop(+i: Nat, +j: Nat) -> P.Body:
   +o = W.W.base(W.W.origin())
   P.Body{Nat.add(o, Nat.mul(Nat.add(i, 5n), 300000n)), Nat.mul(Nat.add(Nat.add(i, j), 8n), 70000n),
-    Nat.add(o, Nat.mul(j, 300000n)), P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, False{}, False{}, P.Rot.rest()}
+    Nat.add(o, Nat.mul(j, 300000n)), P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, False{}, False{}}
 
 def rain.row(+i: Nat, +j: Nat) -> List<&2, P.Body>:
   match j:

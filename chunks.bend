@@ -16,7 +16,7 @@ def meets(+a: P.Body, xs: List<&2, P.Body>) -> Nat:
     case []:
       0n
     case +b <> rest:
-      Nat.add(M.Pick.n(P.Geo.hits(W.W.size(), P.Body.x(a), P.Body.y(a), P.Body.z(a), P.Rot.q(P.Body.rot(a)), b), 1n, 0n), meets(a, rest))
+      Nat.add(M.Pick.n(P.Geo.meets(W.W.size(), P.Body.x(a), P.Body.y(a), P.Body.z(a), b), 1n, 0n), meets(a, rest))
 
 def clash(xs: List<&2, P.Body>) -> Nat:
   match xs:
@@ -32,18 +32,13 @@ def sgn(c: Bool, +v: Nat) -> P.Z:
     case False{}:
       P.Neg{v}
 
-# cada cubo entra girando de um jeito: o giro tem que atravessar a
-# ordenacao, a troca entre chunks e o sono sem mudar
-def spin(+i: Nat, +j: Nat, +l: Nat) -> P.Rot:
-  P.Rot{P.Quat.one(), P.Wv{P.Pos{Nat.mul(i, 977n)}, P.Neg{Nat.mul(j, 13n)}, P.Pos{Nat.add(Nat.mul(l, 100n), i)}}}
-
 def body(+i: Nat, +j: Nat, +l: Nat) -> P.Body:
   +o = W.W.base(W.W.origin())
   +x = Nat.add(Nat.add(o, 786432n), Nat.mul(i, 275251n))
   +z = Nat.add(Nat.add(o, 786432n), Nat.mul(j, 275251n))
   +y = Nat.add(Nat.mul(Nat.add(l, 1n), 340000n), Nat.mul(Nat.mod(Nat.add(i, j), 3n), 26000n))
   +v = M.Pick.n(Nat.is_eq(l, 2n), Nat.mul(Nat.mod(i, 3n), 2048n), 0n)
-  P.Body{x, y, z, sgn(Nat.is_eq(Nat.mod(j, 2n), 0n), v), P.Pos{0n}, P.Pos{0n}, False{}, False{}, spin(i, j, l)}
+  P.Body{x, y, z, sgn(Nat.is_eq(Nat.mod(j, 2n), 0n), v), P.Pos{0n}, P.Pos{0n}, False{}, False{}}
 
 def col(+i: Nat, +j: Nat, l: Nat) -> List<&2, P.Body>:
   match l:
@@ -87,7 +82,7 @@ def mine(xs: List<&2, P.Body>, +bx: Nat, +bz: Nat) -> List<&2, P.Body>:
 
 def chunk(+bx: Nat, +bz: Nat, +xs: List<&2, P.Body>, +n: Nat, r: U32 & Nat) -> W.Chk:
   (+cap, b) = r
-  W.ChL{W.C.mark(n, W.F.pack(xs, Array.new(U32, Nat.add(b, 7n), 0), 0, oar(), True{}), 0, cap, 1),
+  W.ChL{W.C.mark(n, W.F.pack(xs, Array.new(U32, Nat.add(b, 6n), 0), 0, oar(), True{}), 0, cap, 1),
     U32.from_nat(n), cap, (first(bx) - 1 - (W.W.origin() - 32) : U32),
     (first(bz) - 1 - (W.W.origin() - 32) : U32)}
 
@@ -121,15 +116,6 @@ def ticks(t: Nat, g: W.Gr) -> W.Gr:
     case 1n+m:
       ticks(m, W.C.tick3(g, oar(), M.Knob.defaults(), 32768n, 16, 6n, 6n, 6n))
 
-def spins(xs: List<&2, P.Body>, +s: Nat) -> Nat:
-  match xs:
-    case []:
-      s
-    case +b <> rest:
-      spins(rest, Nat.add(s, Nat.add(Nat.add(P.Z.mag(P.Wv.x(P.Rot.w(P.Body.rot(b)))),
-        Nat.mul(P.Z.mag(P.Wv.y(P.Rot.w(P.Body.rot(b)))), 1000n)),
-        Nat.mul(P.Z.mag(P.Wv.z(P.Rot.w(P.Body.rot(b)))), 1000000n))))
-
 def out(+bs: List<&2, P.Body>) -> IO(Unit):
   IO.print("chunks: " ++ Nat.show(clash(bs)) ++ " overlaps, " ++ Nat.show(List.length(&2, P.Body, bs))
     ++ " cubes (432 at the start)")
@@ -137,43 +123,6 @@ def out(+bs: List<&2, P.Body>) -> IO(Unit):
 def fin(r: W.Gr2) -> IO(Unit):
   W.Gr2{g, bs} = r
   out(bs)
-
-# quantos cubos sairam do array com o quaternio zerado: quatro palavras
-# zeradas sao a orientacao de um cubo que nunca girou, e tem que voltar
-# como a identidade. Se voltarem como zero, multiplicar por elas zera
-# tudo e o cubo nunca mais gira -- sem lei nenhuma pedir.
-def zeroq(xs: List<&2, P.Body>, +n: Nat) -> Nat:
-  match xs:
-    case []:
-      n
-    case +b <> rest:
-      zeroq(rest, Nat.add(n, M.Pick.n(Nat.is_eq(Nat.add(Nat.add(P.Z.mag(P.Quat.a(P.Rot.q(P.Body.rot(b)))),
-        P.Z.mag(P.Quat.b(P.Rot.q(P.Body.rot(b))))), Nat.add(P.Z.mag(P.Quat.c(P.Rot.q(P.Body.rot(b)))),
-        P.Z.mag(P.Quat.d(P.Rot.q(P.Body.rot(b)))))), 0n), 1n, 0n)))
-
-def turning(xs: List<&2, P.Body>, +n: Nat) -> Nat:
-  match xs:
-    case []:
-      n
-    case +b <> rest:
-      turning(rest, Nat.add(n, M.Pick.n(P.Rot.still(P.Body.rot(b)), 0n, 1n)))
-
-# A ida e a volta pelo array nao pode mexer no giro: a soma que entra tem
-# que ser a que sai. Depois dos ticks a soma ja nao se conserva -- o
-# contato cria e tira giro, que e o que faz um cubo tombar -- entao o que
-# se cobra ali e outra coisa: que o array nao tenha comido a rotacao de
-# ninguem (nenhum quaternio zerado) e que ainda haja cubo girando.
-def gyr(+n0: Nat, r: W.Gr2) -> IO(Unit):
-  W.Gr2{g, +bs} = r
-  IO.print("giro na ida e volta: " ++ M.Pick.s(Nat.is_eq(spins(bs, 0n), n0), "OK", "FAIL") ++ ": soma "
-    ++ Nat.show(spins(bs, 0n)) ++ " (entrou " ++ Nat.show(n0) ++ ")")
-
-def gyr2(r: W.Gr2) -> IO(Unit):
-  W.Gr2{g, +bs} = r
-  IO.print("giro depois de 300 ticks: " ++ M.Pick.s(Bool.and(Nat.is_eq(zeroq(bs, 0n), 0n),
-      Nat.is_lt(0n, turning(bs, 0n))), "OK", "FAIL") ++ ": " ++ Nat.show(turning(bs, 0n))
-    ++ " cubos ainda girando, " ++ Nat.show(zeroq(bs, 0n))
-    ++ " quaternios zerados (tem que ser 0; o contato muda a soma, entao ela nao se cobra)")
 
 def fin2(r: W.Gr2) -> IO(Unit):
   W.Gr2{g, +bs} = r
@@ -183,9 +132,6 @@ def fin2(r: W.Gr2) -> IO(Unit):
 def start() -> IO(Unit):
   fin2(W.C.gbodies(grid(6n, 6n, scene(12n)), oar(), 1))
 
-def start2() -> IO(Unit):
-  gyr(spins(scene(12n), 0n), W.C.gbodies(grid(6n, 6n, scene(12n)), oar(), 1))
-
 # The second test: the world's own tick with the grid kept alive
 # (W.tick_cg), on a crowd wide enough to have chunks in BOTH directions --
 # 4096 cubes over 73 m are 8 x 8 chunks, so the handover along z (between
@@ -193,7 +139,7 @@ def start2() -> IO(Unit):
 def one(+i: Nat, +j: Nat) -> P.Body:
   +o = W.W.base(W.W.origin())
   P.Body{Nat.add(o, Nat.mul(Nat.add(i, 5n), 300000n)), Nat.mul(Nat.add(Nat.mod(Nat.add(i, j), 5n), 12n), 70000n),
-    Nat.add(o, Nat.mul(j, 300000n)), P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, False{}, False{}, P.Rot.rest()}
+    Nat.add(o, Nat.mul(j, 300000n)), P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, False{}, False{}}
 
 def wrow(+i: Nat, +j: Nat) -> List<&2, P.Body>:
   match j:
@@ -243,7 +189,5 @@ def wtest() -> IO(Unit):
 def main() -> IO(Unit):
   do IO<Unit>:
     a : Unit <- start()
-    a2 : Unit <- start2()
     b : Unit <- fin(W.C.gbodies(ticks(300n, grid(6n, 6n, scene(12n))), oar(), 1))
-    b2 : Unit <- gyr2(W.C.gbodies(ticks(300n, grid(6n, 6n, scene(12n))), oar(), 1))
     wtest()

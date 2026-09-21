@@ -17,7 +17,7 @@ def meets(+a: P.Body, xs: List<&2, P.Body>) -> Nat:
     case []:
       0n
     case +b <> rest:
-      Nat.add(M.Pick.n(P.Geo.hits(W.W.size(), P.Body.x(a), P.Body.y(a), P.Body.z(a), P.Rot.q(P.Body.rot(a)), b), 1n, 0n), meets(a, rest))
+      Nat.add(M.Pick.n(P.Geo.meets(W.W.size(), P.Body.x(a), P.Body.y(a), P.Body.z(a), b), 1n, 0n), meets(a, rest))
 
 def clash(xs: List<&2, P.Body>) -> Nat:
   match xs:
@@ -53,7 +53,7 @@ def body(+i: Nat, +j: Nat, +l: Nat) -> P.Body:
   +z = Nat.add(Nat.sub(o, 1572864n), Nat.mul(j, 275251n))
   +y = Nat.add(Nat.mul(Nat.add(l, 1n), 340000n), Nat.mul(Nat.mod(Nat.add(i, j), 3n), 26000n))
   +v = M.Pick.n(Nat.is_eq(l, 2n), Nat.mul(Nat.mod(i, 3n), 2048n), 0n)
-  P.Body{x, y, z, sgn(Nat.is_eq(Nat.mod(j, 2n), 0n), v), P.Pos{0n}, P.Pos{0n}, False{}, False{}, P.Rot.rest()}
+  P.Body{x, y, z, sgn(Nat.is_eq(Nat.mod(j, 2n), 0n), v), P.Pos{0n}, P.Pos{0n}, False{}, False{}}
 
 def col(+i: Nat, +j: Nat, l: Nat) -> List<&2, P.Body>:
   match l:
@@ -82,7 +82,7 @@ def clean(xs: List<&2, P.Body>, +w: W.World) -> List<&2, P.Body>:
     case []:
       []
     case +b <> rest:
-      W.W.take_if(P.Geo.free(W.W.size(), P.Body.x(b), P.Body.y(b), P.Body.z(b), P.Rot.q(P.Body.rot(b)), W.W.around(M.Knob.defaults(), cells(w), 12345, b)), b,
+      W.W.take_if(P.Geo.free(W.W.size(), P.Body.x(b), P.Body.y(b), P.Body.z(b), W.W.around(M.Knob.defaults(), cells(w), 12345, b)), b,
         clean(rest, w))
 
 def start2(+w: W.World) -> W.World:

@@ -49,8 +49,8 @@ static Term show_list(Env e, const u32* p, u64 n) {
   for (u64 i = n; i > 0;) {
     i -= 1;
     Loc l = heap_alloc(e, 1);
-    e.mem[l]     = io_seal(e, show_node(e, p + 5 * i), CID_CON);
-    e.mem[l + 1] = io_seal(e, list, CID_CON);
+    e.mem[l]     = io_seal(e, show_node(e, p + 5 * i), IO_HOTS & 16);
+    e.mem[l + 1] = io_seal(e, list, IO_HOTS & 16);
     list = term_ctr(CID_CON, l);
   }
   return list;

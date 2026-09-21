@@ -16,12 +16,6 @@
 set -e
 cd "$(dirname "$0")"
 export BEND_NO_TELEMETRY="${BEND_NO_TELEMETRY:-1}"
-# The checker walks the tick's whole term; with rotation in, that needs
-# more stack than the 8 MB a shell hands out. `unlimited` does not do it
-# (Linux keeps the main stack where it is), so ask for a big finite one,
-# and tell the engine behind bend to use it.
-ulimit -s 1000000 2>/dev/null || true
-export BUN_JSC_maxPerThreadStackUsage="${BUN_JSC_maxPerThreadStackUsage:-805306368}"
 if [ -z "${BEND:-}" ]; then
   if [ -x "$HOME/.bend/bin/bend" ]; then
     BEND="$HOME/.bend/bin/bend"
@@ -29,8 +23,7 @@ if [ -z "${BEND:-}" ]; then
     BEND=bend
   fi
 fi
-# `bend version` since 2.0.11; older ones only answer --version
-case "$("$BEND" version 2>/dev/null || "$BEND" --version 2>/dev/null)" in
+case "$("$BEND" --version 2>/dev/null)" in
   "bend 2."*) ;;
   *) echo "build.sh: $BEND is not Bend 2 (install it: curl -fsSL https://bend-lang.com/install.sh | sh)" >&2
      exit 1 ;;
