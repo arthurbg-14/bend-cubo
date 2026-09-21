@@ -73,6 +73,13 @@ def run(n: Nat, +bad: Nat, +w: W.World) -> String:
 # ficava pendurado para sempre, porque qualquer encostada segurava.
 # na pista, que o gerador deixa vazia, para nada mais entrar na conta:
 # um cubo no chao e outro em cima dele com o meio para fora do apoio
+def perch(+d: Nat) -> W.World:
+  +o = W.W.base(W.W.origin())
+  W.World{12345, W.CGen{},
+    [W.W.cube(Nat.add(o, 262144n), 0n, Nat.add(o, 2621440n)),
+     W.W.cube(Nat.add(Nat.add(o, 262144n), d), 262144n, Nat.add(o, 2621440n))],
+    [], W.W.cube(Nat.sub(o, 5242880n), 0n, o)}
+
 def perched() -> W.World:
   +o = W.W.base(W.W.origin())
   W.World{12345, W.CGen{},
@@ -208,3 +215,7 @@ def main() -> IO(Unit):
     b : Unit <- IO.print("rotacao no array: " ++ turn())
     c : Unit <- IO.print("quinze eixos x caixa: " ++ axes())
     IO.print("quina:          " ++ tip(200n, 0n, perched()))
+    IO.print("saliencia 0,50: " ++ tip(200n, 0n, perch(131072n)))
+    IO.print("saliencia 0,55: " ++ tip(200n, 0n, perch(144179n)))
+    IO.print("saliencia 0,60: " ++ tip(200n, 0n, perch(157286n)))
+    IO.print("saliencia 0,70: " ++ tip(200n, 0n, perch(183500n)))

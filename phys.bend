@@ -375,6 +375,15 @@ def Quat.ok(+q: Quat) -> Quat:
 def Rot.ok(+r: Rot) -> Rot:
   Rot{Quat.ok(Rot.q(r)), Rot.w(r)}
 
+# are two numbers the same number? (Neg{0} is 0 too)
+def Z.same(+a: Z, +b: Z) -> Bool:
+  Nat.is_eq(Nat.add(Z.pos(a), Z.neg(b)), Nat.add(Z.pos(b), Z.neg(a)))
+
+# are two orientations the same one, part by part?
+def Quat.same(+p: Quat, +q: Quat) -> Bool:
+  Bool.and(Bool.and(Z.same(Quat.a(p), Quat.a(q)), Z.same(Quat.b(p), Quat.b(q))),
+    Bool.and(Z.same(Quat.c(p), Quat.c(q)), Z.same(Quat.d(p), Quat.d(q))))
+
 # nothing turning, nothing turned: a cube like this is square to the world
 # and every box around it is the old one, to the unit
 def Wv.null(v: Wv) -> Bool:
@@ -892,6 +901,169 @@ def Geo.rests(+s: Nat, +x: Nat, +y: Nat, +z: Nat, obs: List<&2, Body>) -> Bool:
       Bool.or(Bool.and(Bool.and(Geo.ovl(s, x, ox), Geo.ovl(s, z, oz)), Nat.is_eq(Nat.add(oy, s), y)),
         Geo.rests(s, x, y, z, rest))
 
+# does the body stand clear at (x, y, z), turned by q? Clear of the
+# obstacles, and clear of the world's floor -- a turned cube reaches
+# below its own y by Geo.sag.
+#
+# The two are asked one inside the other, not side by side, so that a
+# proof can take the clearing back out of the answer without ever
+# working out the sag: the sag is a matrix in 2^-16 and the checker
+# counts a number that big out one by one.
+def Tick.fits2(free: Bool, +s: Nat, +y: Nat, +q: Quat) -> Bool:
+  match free:
+    case True{}:
+      Nat.is_le(Geo.sag(s, q), y)
+    case False{}:
+      False{}
+
+def Tick.fits(+s: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +q: Quat) -> Bool:
+  Tick.fits2(Geo.free(s, x, y, z, q, obs), s, y, q)
+
+# The room a turned cube keeps under it where it rests. A cube square
+# with the world rests exactly on what holds it: its box test is exact.
+# A turned one is judged by the fifteen axes, whose matrix is rounded,
+# and the smallest turn moves that rounding by a few units either way;
+# resting a hair above the contact -- an eighth of a millimetre -- is
+# what lets it turn at all without every turn looking like a push into
+# what holds it.
+def Geo.gap(+q: Quat) -> Nat:
+  Pick.n(Quat.flat(q), 0n, 32n)
+
+# Could the body go down -- one unit past the gap it keeps -- without
+# going into the floor or into a cube? A body that could is held by
+# nothing; one that could not is held, by the floor or by a cube. This
+# is what "standing" has to mean (LAWS.standing_is_held).
+def Tick.sinks(+s: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +q: Quat) -> Bool:
+  Bool.and(Nat.is_le(Nat.add(Geo.gap(q), 1n), y),
+    Tick.fits(s, obs, x, Nat.sub(y, Nat.add(Geo.gap(q), 1n)), z, q))
+
+# does the body stand on the world's floor -- its lowest point within
+# two millimetres of it?
+def Geo.onfloor(+s: Nat, +y: Nat, +q: Quat) -> Bool:
+  Nat.is_le(y, Nat.add(Geo.sag(s, q), Nat.div(s, 512n)))
+
+
+# Searching for a contact
+# -----------------------
+# Where a move is refused, the body still goes as far as it can: it comes
+# to rest against what stopped it -- not a whole tick's step short of it,
+# hanging in the air, and not a hair into it. Where that is, is found by
+# halving, with the same test that gates every move. Nothing a search
+# hands back is trusted: every place it finds is tested again, by the
+# gate, where it is used; the search only decides where to look.
+
+# x moved by d, never below 0 (a Nat taken below 0 is no number at all)
+def Z.slide(+x: Nat, d: Z) -> Nat:
+  match d:
+    case Pos{p}:
+      Nat.add(x, p)
+    case Neg{+q}:
+      Nat.sub(Pick.high(x, q), q)
+
+# does the body fit with its corner moved by d along one axis (0 x, 1 y,
+# 2 z)? Sideways the test is the obstacles' own (Geo.free): a slide does
+# not change how high the body is. Up and down it is Tick.fits, which
+# also asks for the floor.
+def Probe.at(axis: Nat, +s: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +q: Quat, +d: Z) -> Bool:
+  match axis:
+    case 0n:
+      Geo.free(s, Z.slide(x, d), y, z, q, obs)
+    case 1n:
+      Tick.fits(s, obs, x, Z.slide(y, d), z, q)
+    case _:
+      Geo.free(s, x, y, Z.slide(z, d), q, obs)
+
+# half way from a to b
+def Tick.half(+a: Nat, +b: Nat) -> Nat:
+  Nat.add(a, Nat.div(Nat.sub(Pick.high(b, a), a), 2n))
+
+# how many halvings bring a run of v units down to one
+def Tick.nbits(n: Nat, zero: Bool, +v: Nat) -> Nat:
+  match n zero:
+    case 0n _:
+      0n
+    case _ True{}:
+      0n
+    case 1n+m False{}:
+      Nat.add(1n, Tick.nbits(m, Nat.is_eq(Nat.div(v, 2n), 0n), Nat.div(v, 2n)))
+
+def Tick.bits(+v: Nat) -> Nat:
+  Tick.nbits(64n, Nat.is_eq(v, 0n), v)
+
+# the furthest whole step in [lo, hi) along dir at which the body fits:
+# lo is a step at which it does, hi one at which it does not, mid the
+# step being looked at and fit what the test said of it
+def Tick.bis(n: Nat, fit: Bool, +axis: Nat, +dir: Z, +s: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat,
+  +z: Nat, +q: Quat, +lo: Nat, +hi: Nat, +mid: Nat) -> Nat:
+  match n fit:
+    case 0n True{}:
+      mid
+    case 0n False{}:
+      lo
+    case 1n+m True{}:
+      Tick.bis(m, Probe.at(axis, s, obs, x, y, z, q, Z.like(dir, Tick.half(mid, hi))), axis, dir, s, obs, x, y,
+        z, q, mid, hi, Tick.half(mid, hi))
+    case 1n+m False{}:
+      Tick.bis(m, Probe.at(axis, s, obs, x, y, z, q, Z.like(dir, Tick.half(lo, mid))), axis, dir, s, obs, x, y,
+        z, q, lo, mid, Tick.half(lo, mid))
+
+def Tick.reach(+axis: Nat, +dir: Z, +s: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +q: Quat,
+  +lo: Nat, +hi: Nat) -> Nat:
+  Tick.bis(Tick.bits(Nat.sub(Pick.high(hi, lo), lo)),
+    Probe.at(axis, s, obs, x, y, z, q, Z.like(dir, Tick.half(lo, hi))), axis, dir, s, obs, x, y, z, q, lo, hi,
+    Tick.half(lo, hi))
+
+# Going down a cube at a time, and last by the whole drop q: the last drop
+# at which the body still fits (0 when not even the first does). A fall
+# of more than a cube in one tick could otherwise step over a cube.
+def Tick.block(n: Nat, fit: Bool, last: Bool, +s: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat,
+  +qr: Quat, +q: Nat, +lo: Nat, +d: Nat) -> Nat:
+  match n fit last:
+    case _ False{} _:
+      lo
+    case _ True{} True{}:
+      d
+    case 0n True{} False{}:
+      d
+    case 1n+m True{} False{}:
+      Tick.block(m, Tick.fits(s, obs, x, Nat.sub(y, Pick.low(Nat.add(d, s), q)), z, qr),
+        Nat.is_eq(Pick.low(Nat.add(d, s), q), q), s, obs, x, y, z, qr, q, d, Pick.low(Nat.add(d, s), q))
+
+# the whole drop fits, a cube at a time?
+def Tick.path(n: Nat, more: Bool, +s: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +qr: Quat,
+  +q: Nat, +d: Nat) -> Bool:
+  match n more:
+    case 0n _:
+      False{}
+    case _ False{}:
+      True{}
+    case 1n+m True{}:
+      Bool.and(Tick.fits(s, obs, x, Nat.sub(y, d), z, qr),
+        Tick.path(m, Nat.is_lt(Nat.add(d, s), q), s, obs, x, y, z, qr, q, Nat.add(d, s)))
+
+# How far the body can go down, at most q: down to where it touches, then
+# back up by the gap it keeps (Geo.gap). The answer is only a place to
+# look; the caller tests it.
+def Tick.drop(+s: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +qr: Quat, +q: Nat) -> Nat:
+  +qq = Pick.low(q, y)
+  +f = Pick.low(s, qq)
+  +lo = Tick.block(64n, Tick.fits(s, obs, x, Nat.sub(y, f), z, qr), Nat.is_eq(f, qq), s, obs, x, y, z, qr, qq,
+    0n, f)
+  +d0 = Tick.reach(1n, Neg{0n}, s, obs, x, y, z, qr, lo, Pick.low(Nat.add(lo, s), qq))
+  Nat.sub(Pick.high(d0, Geo.gap(qr)), Geo.gap(qr))
+
+# The same sideways: how far along d the body gets before it touches,
+# less than the whole of d (the whole of d is what was refused).
+def Tick.slide(+axis: Nat, +s: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +q: Quat, +d: Z) -> Nat:
+  Tick.reach(axis, d, s, obs, x, y, z, q, 0n, Z.mag(d))
+
+# is anything holding the body up right now? It is held when it cannot
+# go down (Tick.sinks): by the floor or by a cube, square with the world
+# or turned. (flat is not asked any more; it stays for the laws that
+# name this.)
+def Geo.held(flat: Bool, +s: Nat, +x: Nat, +y: Nat, +z: Nat, +q: Quat, obs: List<&2, Body>) -> Bool:
+  Bool.not(Tick.sinks(s, obs, x, y, z, q))
+
 # Contacts: the press and the turn it gives
 # ----------------------------------------
 # A contact presses a body along one direction, and where it presses
@@ -989,21 +1161,6 @@ def Geo.foot(+s: Nat, +x: Nat, +y: Nat, +z: Nat, obs: List<&2, Body>, f: Foot) -
     case o <> rest:
       Geo.foot(s, x, y, z, rest, Geo.foot1(s, x, y, z, o, f))
 
-# is anything holding the body up right now? A cube square with the world
-# rests when a top meets its base exactly; a turned cube rests when it
-# cannot go down by two millimetres -- the same thing, and it still says
-# it while a cube is going over an edge, when its base is no longer level
-# with anything. The two millimetres are the room the turn itself takes:
-# a turn about a contact lands on whole numbers, and the body is walked
-# back out of what it would otherwise be a unit or two inside.
-def Geo.held(flat: Bool, +s: Nat, +x: Nat, +y: Nat, +z: Nat, +q: Quat, obs: List<&2, Body>) -> Bool:
-  match flat:
-    case True{}:
-      Bool.or(Nat.is_eq(y, 0n), Geo.rests(s, x, y, z, obs))
-    case False{}:
-      Bool.or(Nat.is_le(y, Nat.add(Geo.sag(s, q), Nat.div(s, 512n))),
-        Bool.not(Geo.free(s, x, Nat.sub(y, Nat.div(s, 512n)), z, q, obs)))
-
 # the middle held down to the hold's reach, as an arm from the middle
 def Geo.lean(+c: Nat, +lo: Nat, +hi: Nat) -> Z:
   +p = Pick.high(Pick.low(c, hi), lo)
@@ -1015,9 +1172,17 @@ def Geo.lean(+c: Nat, +lo: Nat, +hi: Nat) -> Z:
 def Rot.about(+s: Nat, +rx: Z, +ry: Z, +rz: Z) -> Nat:
   Nat.add(8n, Nat.div(Nat.mul(48n, Nat.add(Nat.add(Z.sq(rx), Z.sq(ry)), Z.sq(rz))), Nat.mul(s, s)))
 
+# v / d rounded away from 0: a torque that is there never rounds away
+def Z.divc(v: Z, +d: Nat) -> Z:
+  match v:
+    case Pos{+n}:
+      Pos{Nat.div(Nat.add(n, Nat.sub(Pick.high(d, 1n), 1n)), Pick.high(d, 1n))}
+    case Neg{+n}:
+      Neg{Nat.div(Nat.add(n, Nat.sub(Pick.high(d, 1n), 1n)), Pick.high(d, 1n))}
+
 def Rot.kickd(+d: Nat, +rx: Z, +ry: Z, +rz: Z, +jx: Z, +jy: Z, +jz: Z) -> Wv:
-  Wv{Z.divn(Rot.crx(ry, rz, jy, jz), d), Z.divn(Rot.cry(rz, rx, jz, jx), d),
-    Z.divn(Rot.crz(rx, ry, jx, jy), d)}
+  Wv{Z.divc(Rot.crx(ry, rz, jy, jz), d), Z.divc(Rot.cry(rz, rx, jz, jx), d),
+    Z.divc(Rot.crz(rx, ry, jx, jy), d)}
 
 # the body after a press of j at the arm r, turning about that contact
 def Rot.press(+rt: Rot, +s: Nat, +rx: Z, +ry: Z, +rz: Z, +jx: Z, +jy: Z, +jz: Z) -> Rot:
@@ -1038,39 +1203,66 @@ def Z.sgnop(v: Z) -> Z:
     case Neg{+n}:
       Pick.z(Nat.is_eq(n, 0n), Pos{0n}, Pos{1n})
 
-# a hold from below on a cube that has not turned: the press comes up at
-# the height of its base, under the middle or at the hold's edge
-def Rot.stand(f: Foot, +rt: Rot, +s: Nat, +y: Nat, +j: Nat) -> Rot:
-  Foot{+n, +lx, +hx, +lz, +hz, +ty} = f
-  Rot.press(rt, s, Geo.lean(Nat.div(s, 2n), lx, hx),
-    Z.diff(Nat.is_lt(ty, Nat.add(y, Nat.div(s, 2n))), ty, Nat.add(y, Nat.div(s, 2n))),
-    Geo.lean(Nat.div(s, 2n), lz, hz), Pos{0n}, Pos{j}, Pos{0n})
+# -1, 0 or 1: the sign of v turned about, with a dead zone. Along an axis
+# of the cube that lies within half a degree of level, both of its ends
+# are as low as each other, and the body stands on both: the middle of
+# them. That is how a cube lying on a face stands on the middle of the
+# face, and one on an edge on the middle of the edge.
+def Z.dead(v: Z) -> Z:
+  match v:
+    case Pos{+n}:
+      Pick.z(Nat.is_lt(n, 512n), Pos{0n}, Neg{1n})
+    case Neg{+n}:
+      Pick.z(Nat.is_lt(n, 512n), Pos{0n}, Pos{1n})
 
-# a hold from below on a cube that has turned: it stands on the one
-# corner that lies lowest, and the press comes up through that corner
-def Rot.tip(m: Mat, +rt: Rot, +s: Nat, +j: Nat) -> Rot:
+# one coordinate of the arm from the middle to the body's lowest point:
+# half a side along each axis of the cube, the way that axis leans down
+def Tip.arm(+h: Nat, +sx: Z, +sy: Z, +sz: Z, +ax: Z, +ay: Z, +az: Z) -> Z:
+  Z.divn(Z.divn(Z.scale(h, Z.add(Z.add(Z.mul(sx, ax), Z.mul(sy, ay)), Z.mul(sz, az))), 256n), 256n)
+
+# the arm from the middle to the lowest point of the body: its lowest
+# corner, or the middle of its lowest edge or face
+def Hold.low(m: Mat, +s: Nat) -> Wv:
   Mat{+axx, +axy, +axz, +ayx, +ayy, +ayz, +azx, +azy, +azz} = m
   +h = Nat.div(s, 2n)
-  +sx = Z.sgnop(axy)
-  +sy = Z.sgnop(ayy)
-  +sz = Z.sgnop(azy)
-  Rot.press(rt, s,
-    Z.divn(Z.scale(h, Z.add(Z.add(Z.mul(sx, axx), Z.mul(sy, ayx)), Z.mul(sz, azx))), 65536n),
-    Z.divn(Z.scale(h, Z.add(Z.add(Z.mul(sx, axy), Z.mul(sy, ayy)), Z.mul(sz, azy))), 65536n),
-    Z.divn(Z.scale(h, Z.add(Z.add(Z.mul(sx, axz), Z.mul(sy, ayz)), Z.mul(sz, azz))), 65536n),
-    Pos{0n}, Pos{j}, Pos{0n})
+  +sx = Z.dead(axy)
+  +sy = Z.dead(ayy)
+  +sz = Z.dead(azy)
+  Wv{Tip.arm(h, sx, sy, sz, axx, ayx, azx), Tip.arm(h, sx, sy, sz, axy, ayy, azy), Tip.arm(h, sx, sy, sz, axz, ayz, azz)}
 
-# the hold of a tick, whichever kind it is
-# the floor holds a turned cube on the one corner that lies lowest; a
-# cube holds it where its top reaches, which is what tips a body over a
-# ledge -- the press moves out to the ledge as the middle goes past it
+# a point a held inside [lo, hi], as an arm from the middle c
+def Geo.leanf(+c: Nat, +a: Nat, +lo: Nat, +hi: Nat) -> Z:
+  +p = Pick.high(Pick.low(a, hi), lo)
+  Z.diff(Nat.is_lt(p, c), p, c)
+
+# Where a cube holds a body up: at the body's lowest point, held inside
+# what holds it. The foot is how far the tops under the body reach, as
+# steps from the body's corner; the lowest point, pushed inside the foot
+# sideways, is where the press lands. While the lowest point is over the
+# foot the press lands right on it; the moment it is past the foot's
+# edge the press lands on that edge -- off to one side of the middle,
+# which is what tips a cube over a ledge, square with the world or on a
+# corner. A cube square with the world has its lowest point in the middle
+# of its base, so this is the middle held inside the foot, as it was.
+def Hold.arm(f: Foot, m: Mat, +s: Nat) -> Wv:
+  Foot{+n, +lx, +hx, +lz, +hz, +ty} = f
+  +h = Nat.div(s, 2n)
+  +lw = Hold.low(m, s)
+  Wv{Geo.leanf(h, Z.slide(h, Wv.x(lw)), lx, hx), Wv.y(lw), Geo.leanf(h, Z.slide(h, Wv.z(lw)), lz, hz)}
+
+# the body after a press j straight up at the arm a
+def Rot.pressw(+rt: Rot, +s: Nat, +a: Wv, +j: Nat) -> Rot:
+  Rot.press(rt, s, Wv.x(a), Wv.y(a), Wv.z(a), Pos{0n}, Pos{j}, Pos{0n})
+
+# the hold of a tick: the floor presses at the body's lowest point, which
+# is as wide as the floor; a cube presses at that point held inside it
 def Rot.held(floor: Bool, +rt: Rot, +s: Nat, +x: Nat, +y: Nat, +z: Nat, +j: Nat,
   obs: List<&2, Body>) -> Rot:
   match floor:
     case True{}:
-      Rot.tip(Rot.mat(Rot.q(rt)), rt, s, j)
+      Rot.pressw(rt, s, Hold.low(Rot.mat(Rot.q(rt)), s), j)
     case False{}:
-      Rot.stand(Geo.foot(s, x, y, z, obs, Foot.none()), rt, s, y, j)
+      Rot.pressw(rt, s, Hold.arm(Geo.foot(s, x, y, z, obs, Foot.none()), Rot.mat(Rot.q(rt)), s), j)
 
 # Friction
 # --------
@@ -1320,31 +1512,48 @@ def Move.xput(ok: Bool, +obs: List<&2, Body>, +cx: Nat, +x: Nat, +y: Nat, +z: Na
     case False{}:
       (Body{x, y, z, v, vy, vz, gr, True{}, rt}, obs)
 
-def Move.xat(+s: Nat, at: Maybe<&2, Nat>, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +tx: Nat, +v: Z,
-  +vy: Z, +vz: Z, +gr: Bool, +rt: Rot) -> Body & List<&2, Body>:
-  match at:
-    case None{}:
-      (Body{x, y, z, v, vy, vz, gr, True{}, rt}, obs)
-    case Some{+cx}:
-      Move.xput(Bool.and(Geo.step(x, tx, cx), Geo.free(s, cx, y, z, Rot.q(rt), obs)), obs, cx, x, y, z, v, vy,
-        vz, gr, rt)
-
-def Move.xhit(+s: Nat, r: Pushed, +x: Nat, +y: Nat, +z: Nat, +tx: Nat, +vy: Z, +vz: Z, +gr: Bool,
-  +rt: Rot) -> Body & List<&2, Body>:
-  Pushed{v, obs, at} = r
-  Move.xat(s, at, obs, x, y, z, tx, v, vy, vz, gr, rt)
-
-# The gate takes the body whole. A body the checker cannot work out is
-# copied once for every field named, and a tick names them fifteen times
-# over on the way through.
 def Move.xok(+obs: List<&2, Body>, +cx: Nat, b: Body) -> Body & List<&2, Body>:
   Body{x, +y, +z, +vx, +vy, +vz, +gr, +hit, +rt} = b
   (Body{cx, y, z, vx, vy, vz, gr, hit, rt}, obs)
 
+# after a push: the pusher stops where it reached, with the velocity the
+# push left it
+def Move.xpushed(r: Pushed, +cx: Nat, +y: Nat, +z: Nat, +vy: Z, +vz: Z, +gr: Bool, +rt: Rot)
+  -> Body & List<&2, Body>:
+  Pushed{v, obs, at} = r
+  (Body{cx, y, z, v, vy, vz, gr, True{}, rt}, obs)
+
+# A move along x that does not fit goes as far as it can (Tick.slide),
+# to cx, and stops there. It pushes only if it got somewhere clear and,
+# one unit further on (pr), would be in something: then it is touching
+# that, and the first body in the way takes its share of the velocity.
+# Anything else pushes nothing -- a body is never shoved by one that has
+# not reached it (LAWS.a_push_is_a_touch_x).
+def Move.xtouch(touch: Bool, +s: Nat, +obs: List<&2, Body>, +d: Z, +cx: Nat, +pr: Nat, +x: Nat, +y: Nat, +z: Nat,
+  +vx: Z, +vy: Z, +vz: Z, +gr: Bool, +rt: Rot) -> Body & List<&2, Body>:
+  match touch:
+    case True{}:
+      Move.xpushed(Push.x(s, obs, d, pr, y, z, vx, Rot.q(rt), Geo.head(s, pr, y, z, Rot.q(rt), obs)), cx, y, z,
+        vy, vz, gr, rt)
+    case False{}:
+      Move.xput(Geo.free(s, cx, y, z, Rot.q(rt), obs), obs, cx, x, y, z, vx, vy, vz, gr, rt)
+
+# how far along x a refused move gets: as far as the body fits
+def Move.xto(+s: Nat, +obs: List<&2, Body>, +d: Z, +x: Nat, +y: Nat, +z: Nat, +q: Quat) -> Nat:
+  Z.slide(x, Z.like(d, Tick.slide(0n, s, obs, x, y, z, q, d)))
+
+# does the body at cx touch something one unit on, along d?
+def Move.xtouches(+s: Nat, +obs: List<&2, Body>, +d: Z, +cx: Nat, +y: Nat, +z: Nat, +q: Quat) -> Bool:
+  Bool.and(Geo.free(s, cx, y, z, q, obs), Bool.not(Geo.free(s, Z.shift(cx, Z.like(d, 1n)), y, z, q, obs)))
+
+def Move.xreach(+s: Nat, +obs: List<&2, Body>, +d: Z, +cx: Nat, +x: Nat, +y: Nat, +z: Nat, +vx: Z, +vy: Z,
+  +vz: Z, +gr: Bool, +rt: Rot) -> Body & List<&2, Body>:
+  Move.xtouch(Move.xtouches(s, obs, d, cx, y, z, Rot.q(rt)), s, obs, d, cx, Z.shift(cx, Z.like(d, 1n)), x, y, z,
+    vx, vy, vz, gr, rt)
+
 def Move.xno(+s: Nat, +obs: List<&2, Body>, +d: Z, +cx: Nat, b: Body) -> Body & List<&2, Body>:
   Body{+x, +y, +z, +vx, +vy, +vz, +gr, hit, +rt} = b
-  Move.xhit(s, Push.x(s, obs, d, cx, y, z, vx, Rot.q(rt), Geo.head(s, cx, y, z, Rot.q(rt), obs)), x, y, z,
-    cx, vy, vz, gr, rt)
+  Move.xreach(s, obs, d, Move.xto(s, obs, d, x, y, z, Rot.q(rt)), x, y, z, vx, vy, vz, gr, rt)
 
 def Move.xgo(+s: Nat, ok: Bool, +obs: List<&2, Body>, +d: Z, +cx: Nat, b: Body) -> Body & List<&2, Body>:
   match ok:
@@ -1367,28 +1576,39 @@ def Move.zput(ok: Bool, +obs: List<&2, Body>, +cz: Nat, +x: Nat, +y: Nat, +z: Na
     case False{}:
       (Body{x, y, z, vx, vy, v, gr, True{}, rt}, obs)
 
-def Move.zat(+s: Nat, at: Maybe<&2, Nat>, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +tz: Nat, +vx: Z,
-  +vy: Z, +v: Z, +gr: Bool, +rt: Rot) -> Body & List<&2, Body>:
-  match at:
-    case None{}:
-      (Body{x, y, z, vx, vy, v, gr, True{}, rt}, obs)
-    case Some{+cz}:
-      Move.zput(Bool.and(Geo.step(z, tz, cz), Geo.free(s, x, y, cz, Rot.q(rt), obs)), obs, cz, x, y, z, vx, vy,
-        v, gr, rt)
-
-def Move.zhit(+s: Nat, r: Pushed, +x: Nat, +y: Nat, +z: Nat, +tz: Nat, +vx: Z, +vy: Z, +gr: Bool,
-  +rt: Rot) -> Body & List<&2, Body>:
-  Pushed{v, obs, at} = r
-  Move.zat(s, at, obs, x, y, z, tz, vx, vy, v, gr, rt)
-
 def Move.zok(+obs: List<&2, Body>, +cz: Nat, b: Body) -> Body & List<&2, Body>:
   Body{+x, +y, z, +vx, +vy, +vz, +gr, +hit, +rt} = b
   (Body{x, y, cz, vx, vy, vz, gr, hit, rt}, obs)
 
+def Move.zpushed(r: Pushed, +x: Nat, +y: Nat, +cz: Nat, +vx: Z, +vy: Z, +gr: Bool, +rt: Rot)
+  -> Body & List<&2, Body>:
+  Pushed{v, obs, at} = r
+  (Body{x, y, cz, vx, vy, v, gr, True{}, rt}, obs)
+
+# the same along z (LAWS.a_push_is_a_touch_z)
+def Move.ztouch(touch: Bool, +s: Nat, +obs: List<&2, Body>, +d: Z, +cz: Nat, +pr: Nat, +x: Nat, +y: Nat, +z: Nat,
+  +vx: Z, +vy: Z, +vz: Z, +gr: Bool, +rt: Rot) -> Body & List<&2, Body>:
+  match touch:
+    case True{}:
+      Move.zpushed(Push.z(s, obs, d, x, y, pr, vz, Rot.q(rt), Geo.head(s, x, y, pr, Rot.q(rt), obs)), x, y, cz,
+        vx, vy, gr, rt)
+    case False{}:
+      Move.zput(Geo.free(s, x, y, cz, Rot.q(rt), obs), obs, cz, x, y, z, vx, vy, vz, gr, rt)
+
+def Move.zto(+s: Nat, +obs: List<&2, Body>, +d: Z, +x: Nat, +y: Nat, +z: Nat, +q: Quat) -> Nat:
+  Z.slide(z, Z.like(d, Tick.slide(2n, s, obs, x, y, z, q, d)))
+
+def Move.ztouches(+s: Nat, +obs: List<&2, Body>, +d: Z, +x: Nat, +y: Nat, +cz: Nat, +q: Quat) -> Bool:
+  Bool.and(Geo.free(s, x, y, cz, q, obs), Bool.not(Geo.free(s, x, y, Z.shift(cz, Z.like(d, 1n)), q, obs)))
+
+def Move.zreach(+s: Nat, +obs: List<&2, Body>, +d: Z, +cz: Nat, +x: Nat, +y: Nat, +z: Nat, +vx: Z, +vy: Z,
+  +vz: Z, +gr: Bool, +rt: Rot) -> Body & List<&2, Body>:
+  Move.ztouch(Move.ztouches(s, obs, d, x, y, cz, Rot.q(rt)), s, obs, d, cz, Z.shift(cz, Z.like(d, 1n)), x, y, z,
+    vx, vy, vz, gr, rt)
+
 def Move.zno(+s: Nat, +obs: List<&2, Body>, +d: Z, +cz: Nat, b: Body) -> Body & List<&2, Body>:
   Body{+x, +y, +z, +vx, +vy, +vz, +gr, hit, +rt} = b
-  Move.zhit(s, Push.z(s, obs, d, x, y, cz, vz, Rot.q(rt), Geo.head(s, x, y, cz, Rot.q(rt), obs)), x, y, z,
-    cz, vx, vy, gr, rt)
+  Move.zreach(s, obs, d, Move.zto(s, obs, d, x, y, z, Rot.q(rt)), x, y, z, vx, vy, vz, gr, rt)
 
 def Move.zgo(+s: Nat, ok: Bool, +obs: List<&2, Body>, +d: Z, +cz: Nat, b: Body) -> Body & List<&2, Body>:
   match ok:
@@ -1426,33 +1646,54 @@ def Move.rise(ok: Bool, +x: Nat, +y: Nat, +z: Nat, +p: Nat, +vx: Z, +v: Z, +vz: 
     case False{}:
       Body{x, y, z, vx, Pos{0n}, vz, False{}, True{}, rt}
 
-def Move.land(ok: Bool, +x: Nat, +y: Nat, +z: Nat, +fl: Nat, +vx: Z, +vz: Z, +rt: Rot) -> Body:
+# A fall that is refused is a landing: the body goes down as far as it
+# can (Tick.drop) and stops there, standing -- but only if it really is
+# held there, which is asked again here, with the very test the laws use.
+# Where it is not (a search that found nothing to stand on), it is not
+# stood anywhere: it stays where it was, still falling as fast as it was
+# at the start of the tick, and falls again the next. Nothing is ever
+# left standing in mid-air, and nothing is ever let down into the floor.
+def Move.land(ok: Bool, +x: Nat, +y: Nat, +z: Nat, +ny: Nat, +vx: Z, +vz: Z, +v0: Z, +rt: Rot) -> Body:
   match ok:
     case True{}:
-      Body{x, fl, z, vx, Pos{0n}, vz, True{}, True{}, rt}
+      Body{x, ny, z, vx, Pos{0n}, vz, True{}, True{}, rt}
     case False{}:
-      Body{x, y, z, vx, Pos{0n}, vz, False{}, True{}, rt}
+      Body{x, y, z, vx, v0, vz, False{}, True{}, rt}
 
-def Move.fall(+s: Nat, ok: Bool, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +q: Nat, +fl: Nat, +vx: Z, +v: Z, +vz: Z,
-  +hit: Bool, +rt: Rot) -> Body:
+# the whole drop q is free: above the floor, clear of every cube, and
+# clear at every whole cube on the way
+def Move.fallok(+s: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +q: Nat, +qr: Quat) -> Bool:
+  Bool.and(Nat.is_le(q, y), Bool.and(Tick.fits(s, obs, x, Nat.sub(y, q), z, qr),
+    Tick.path(64n, Nat.is_lt(s, q), s, obs, x, y, z, qr, q, s)))
+
+# where a refused fall looks to land
+def Move.landy(+s: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +qr: Quat, +q: Nat) -> Nat:
+  Nat.sub(y, Tick.drop(s, obs, x, y, z, qr, q))
+
+# and whether it may: it fits there, and there it is held
+def Move.landok(+s: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +qr: Quat) -> Bool:
+  Bool.and(Tick.fits(s, obs, x, y, z, qr), Bool.not(Tick.sinks(s, obs, x, y, z, qr)))
+
+def Move.fall(+s: Nat, ok: Bool, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +q: Nat, +vx: Z, +v: Z, +vz: Z,
+  +v0: Z, +hit: Bool, +rt: Rot) -> Body:
   match ok:
     case True{}:
       Body{x, Nat.sub(y, q), z, vx, v, vz, False{}, hit, rt}
     case False{}:
-      Move.land(Bool.and(Bool.and(Nat.is_le(Nat.add(fl, Geo.sag(s, Rot.q(rt))), y),
-          Nat.is_le(y, Nat.add(Nat.add(fl, Geo.sag(s, Rot.q(rt))), q))),
-        Geo.free(s, x, Nat.add(fl, Geo.sag(s, Rot.q(rt))), z, Rot.q(rt), obs)), x, y, z,
-        Nat.add(fl, Geo.sag(s, Rot.q(rt))), vx, vz, rt)
+      +ny = Move.landy(s, obs, x, y, z, Rot.q(rt), q)
+      Move.land(Move.landok(s, obs, x, ny, z, Rot.q(rt)), x, y, z, ny, vx, vz, v0, rt)
 
-def Move.fly(+s: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +vx: Z, +vz: Z, +hit: Bool, st: Z & Z, +rt: Rot) -> Body:
+# the vertical move of a body in the air: up if the way up is clear; down
+# the whole drop if the body fits there -- above the floor, clear of every
+# cube, and clear at every whole cube on the way -- else a landing
+def Move.fly(+s: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +vx: Z, +vy0: Z, +vz: Z, +hit: Bool,
+  st: Z & Z, +rt: Rot) -> Body:
   (v, d) = st
   match d:
     case Pos{+p}:
       Move.rise(Geo.free(s, x, Nat.add(y, p), z, Rot.q(rt), obs), x, y, z, p, vx, v, vz, hit, rt)
     case Neg{+q}:
-      +fl = Geo.floor(s, x, y, z, obs, 0n)
-      Move.fall(s, Bool.and(Nat.is_le(Nat.add(fl, q), y), Geo.free(s, x, Nat.sub(y, q), z, Rot.q(rt), obs)), obs, x, y, z, q, fl,
-        vx, v, vz, hit, rt)
+      Move.fall(s, Move.fallok(s, obs, x, y, z, q, Rot.q(rt)), obs, x, y, z, q, vx, v, vz, vy0, hit, rt)
 
 # a body that is held up is pressed up by what holds it, every tick, by
 # just what gravity would have taken: that press is what keeps it there,
@@ -1461,8 +1702,7 @@ def Move.stay(rest: Bool, +s: Nat, +g: Nat, +obs: List<&2, Body>, +x: Nat, +y: N
   +vz: Z, +hit: Bool, +rt: Rot) -> Body:
   match rest:
     case True{}:
-      Body{x, y, z, vx, vy, vz, True{}, hit,
-        Rot.held(Nat.is_le(y, Nat.add(Geo.sag(s, Rot.q(rt)), Nat.div(s, 512n))), rt, s, x, y, z, g, obs)}
+      Body{x, y, z, vx, vy, vz, True{}, hit, Rot.held(Geo.onfloor(s, y, Rot.q(rt)), rt, s, x, y, z, g, obs)}
     case False{}:
       Body{x, y, z, vx, vy, vz, False{}, hit, rt}
 
@@ -1472,7 +1712,7 @@ def Move.ystay(+s: Nat, +g: Nat, +obs: List<&2, Body>, b: Body) -> Body:
 
 def Move.yfly(+s: Nat, +g: Nat, +obs: List<&2, Body>, b: Body) -> Body:
   Body{+x, +y, +z, +vx, +vy, +vz, gr, +hit, +rt} = b
-  Move.fly(s, obs, x, y, z, vx, vz, hit, Fly.step(g, vy), rt)
+  Move.fly(s, obs, x, y, z, vx, vy, vz, hit, Fly.step(g, vy), rt)
 
 # the fall, with the body kept whole until the ground is known
 def Move.ygo(+s: Nat, gr: Bool, +g: Nat, +obs: List<&2, Body>, b: Body) -> Body:
@@ -1482,18 +1722,8 @@ def Move.ygo(+s: Nat, gr: Bool, +g: Nat, +obs: List<&2, Body>, b: Body) -> Body:
     case False{}:
       Move.yfly(s, g, obs, b)
 
-# A body never falls further in a tick than its speed takes it. Without
-# turning this was true by itself: a fall is only stopped by what lies
-# straight below, and that is where the body lands. A turned cube is wider
-# than its box, so its fall can be stopped by something beside it -- and
-# then the highest top under its column may be metres below, or the floor
-# of the world. Landing there would be falling through everything in one
-# tick, so a landing that far is no landing at all: the body stops where
-# it is and falls again next tick, with the neighbours looked up afresh.
-
-# the vertical move: standing, whether still on something; else a tick of
-# gravity, a free fall or rise, or a landing (on the highest top under the
-# body, the ground at 0) or a bump
+# the vertical move: standing, whether still held; else a tick of
+# gravity, a free fall or rise, or a landing or a bump
 def Move.y(+s: Nat, +g: Nat, +obs: List<&2, Body>, +b: Body) -> Body:
   Move.ygo(s, Body.ground(b), g, obs, b)
 
@@ -1514,74 +1744,67 @@ def Tick.z(+s: Nat, +g: Nat, +vz0: Z, r: Body & List<&2, Body>) -> Body & List<&
 # The turn of a tick
 # ------------------
 # A body that touches nothing turns about its own middle. A body that is
-# held turns about what holds it: its middle swings round the contact,
-# which is how a cube goes over an edge -- the middle rises as the cube
-# tips, exactly as it does when a real cube goes over. Either way the
-# turn is taken only where it leaves the body clear of everything: a cube
-# can no more turn into a neighbour than walk into one. A turn that does
-# not fit is a turn the contact stopped, and the turning stops with it.
-
-def Tick.put(ok: Bool, +x: Nat, +y: Nat, +z: Nat, +nx: Nat, +ny: Nat, +nz: Nat, +vx: Z, +vy: Z, +vz: Z,
-  +gr: Bool, +hit: Bool, +rt: Rot, +r2: Rot) -> Body:
-  match ok:
-    case True{}:
-      Body{nx, ny, nz, vx, vy, vz, gr, hit, r2}
-    case False{}:
-      Body{x, y, z, vx, vy, vz, gr, True{}, Rot{Rot.q(rt), Wv.zero()}}
-
-# A turn about a contact keeps the contact still, but the numbers are
-# whole: the body can end up a unit or two into what holds it. This
-# walks it back out, a little at a time and never more than a millimetre,
-# and every step is tested like any other move.
-# room enough for the turn, and above the world's floor: the floor is no
-# body, so the test for bodies never sees it, and a cube that turns while
-# it lies on the ground would sink into it.
-# does the body stand clear at (x, y, z), turned by q? Clear of the
-# obstacles, and clear of the world's floor -- a turned cube reaches
-# below its own y by Geo.sag.
+# held turns about where it is held: its middle swings round that point,
+# which is how a cube goes over an edge. Either way the turn is taken
+# only where it leaves the body clear of everything and of the floor, and
+# never where it would lift the body -- nothing lifts itself.
 #
-# The two are asked one inside the other, not side by side, so that a
-# proof can take the clearing back out of the answer without ever
-# working out the sag: the sag is a matrix in 2^-16 and the checker
-# counts a number that big out one by one.
-def Tick.fits2(free: Bool, +s: Nat, +y: Nat, +q: Quat) -> Bool:
-  match free:
+# A refused turn is a knock: the body stays where it was, and what stopped
+# the turn stops the turning -- all of it, as a contact that gives nothing
+# back does. Keeping it instead left cubes lying still with a turning
+# they could never take, and a body that is turning claims the room its
+# turn sweeps: its neighbours hung in the air beside it or were shoved
+# from across the room.
+#
+# A body that stood, and that the turn carried off what held it, stands
+# no more: standing is asked again wherever the body ends up.
+def Tick.stands(gr: Bool, +s: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +q: Quat) -> Bool:
+  match gr:
     case True{}:
-      Nat.is_le(Geo.sag(s, q), y)
+      Bool.not(Tick.sinks(s, obs, x, y, z, q))
     case False{}:
       False{}
 
-def Tick.fits(+s: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +q: Quat) -> Bool:
-  Tick.fits2(Geo.free(s, x, y, z, q, obs), s, y, q)
+# A body that stood, and that the turn carried off what held it, is let
+# go: its middle went down d this tick, and it goes on down as fast as
+# that drop pays for -- min(g, d) squared is at most g d, the energy the
+# drop gave up, so letting go makes none.
+def Tick.letv(gr: Bool, held: Bool, +g: Nat, +d: Nat, +vy: Z) -> Z:
+  match gr held:
+    case True{} True{}:
+      vy
+    case True{} False{}:
+      Neg{Pick.low(g, d)}
+    case False{} _:
+      vy
 
-def Tick.up(n: Nat, ok: Bool, +s: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +q: Quat,
-  +d: Nat) -> Nat:
-  match n ok:
-    case 0n _:
-      d
-    case _ True{}:
-      d
-    case 1n+m False{}:
-      Tick.up(m, Tick.fits(s, obs, x, Nat.add(y, Nat.add(Nat.mul(d, 4n), 1n)), z, q), s, obs, x, y, z, q,
-        Nat.add(Nat.mul(d, 4n), 1n))
+# a turn may carry a standing body off what held it only by letting it
+# down: one that would come off it without going down at all is not
+# turning about anything that holds it, and is refused
+def Tick.keeps(gr: Bool, +s: Nat, +obs: List<&2, Body>, +y: Nat, +nx: Nat, +ny: Nat, +nz: Nat, +q: Quat) -> Bool:
+  match gr:
+    case True{}:
+      Bool.or(Nat.is_lt(ny, y), Bool.not(Tick.sinks(s, obs, nx, ny, nz, q)))
+    case False{}:
+      True{}
 
-# where the middle goes when the body turns about a contact an arm away:
-# the arm turns with it, so the middle moves by r - M r
-# The push back out of what holds it, as far as it takes and never more
-# than a millimetre -- and never past the height the body already had:
-# the push is there to undo a unit or two of rounding, not to lift a
-# cube. Capping it there is what lets Tick.place keep its promise.
-def Tick.lift(+s: Nat, +obs: List<&2, Body>, +y: Nat, +nx: Nat, +ny: Nat, +nz: Nat, +q: Quat) -> Nat:
-  Pick.low(y, Nat.add(ny, Tick.up(6n, Tick.fits(s, obs, nx, ny, nz, q), s, obs, nx, ny, nz, q, 0n)))
-
-# A turn is taken only where it fits and only where it lets the body
-# down: a turn cannot lift a cube, because nothing lifts itself. That is
-# what keeps a tick from making energy out of a turn, and it is the
-# reason energy_never_grows still holds with turning in. A refused turn
-# is a knock: the body stays where it was and its turning is spent.
-def Tick.place(+s: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +nx: Nat, +ny: Nat,
+def Tick.put(ok: Bool, +s: Nat, +g: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +nx: Nat, +ny: Nat,
   +nz: Nat, +vx: Z, +vy: Z, +vz: Z, +gr: Bool, +hit: Bool, +rt: Rot, +r2: Rot) -> Body:
-  Tick.put(Bool.and(Nat.is_le(ny, y), Tick.fits(s, obs, nx, ny, nz, Rot.q(r2))),
+  match ok:
+    case True{}:
+      +st = Tick.stands(gr, s, obs, nx, ny, nz, Rot.q(r2))
+      Body{nx, ny, nz, vx, Tick.letv(gr, st, g, Nat.sub(y, ny), vy), vz, st, hit, r2}
+    case False{}:
+      Body{x, y, z, vx, vy, vz, gr, True{}, Rot{Rot.q(rt), Wv.zero()}}
+
+# the gate of a turn: no higher than the body was, clear of everything
+# and of the floor, and not carried off its hold without going down
+def Tick.turnok(+s: Nat, +obs: List<&2, Body>, +y: Nat, +nx: Nat, +ny: Nat, +nz: Nat, +q: Quat, +gr: Bool) -> Bool:
+  Bool.and(Nat.is_le(ny, y), Bool.and(Tick.fits(s, obs, nx, ny, nz, q), Tick.keeps(gr, s, obs, y, nx, ny, nz, q)))
+
+def Tick.place(+s: Nat, +g: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +nx: Nat, +ny: Nat,
+  +nz: Nat, +vx: Z, +vy: Z, +vz: Z, +gr: Bool, +hit: Bool, +rt: Rot, +r2: Rot) -> Body:
+  Tick.put(Tick.turnok(s, obs, y, nx, ny, nz, Rot.q(r2), gr), s, g, obs,
     x, y, z, nx, ny, nz, vx, vy, vz, gr, hit, rt, r2)
 
 # where one coordinate of the middle lands when the body turns about an
@@ -1589,84 +1812,112 @@ def Tick.place(+s: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +nx: Na
 def Pivot.c(+c: Nat, +r: Z, +ax: Z, +ay: Z, +az: Z, +rx: Z, +ry: Z, +rz: Z) -> Nat:
   Z.shift(c, Z.sub(r, Z.divn(Z.divn(V3.dot(ax, ay, az, rx, ry, rz), 256n), 256n)))
 
-def Tick.pivot(m: Mat, +s: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +vx: Z, +vy: Z, +vz: Z,
+# The turn about a contact: the middle swings round the arm to it, which
+# is where it goes sideways. How high it ends up is not worked out from
+# the arm -- a turned cube's numbers are rounded, and a unit of rounding
+# into what holds it would refuse every small turn, so a cube could never
+# begin to tip. It is let down onto what holds it instead, from no higher
+# than it was, and comes to rest the gap above it (Geo.gap), as a landing
+# does.
+def Tick.pivot(m: Mat, +s: Nat, +g: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +vx: Z, +vy: Z, +vz: Z,
   +gr: Bool, +hit: Bool, +rt: Rot, +r2: Rot, +rx: Z, +ry: Z, +rz: Z) -> Body:
   Mat{+axx, +axy, +axz, +ayx, +ayy, +ayz, +azx, +azy, +azz} = m
   +nx = Pivot.c(x, rx, axx, ayx, azx, rx, ry, rz)
   +ny = Pivot.c(y, ry, axy, ayy, azy, rx, ry, rz)
   +nz = Pivot.c(z, rz, axz, ayz, azz, rx, ry, rz)
-  Tick.place(s, obs, x, y, z, nx, Tick.lift(s, obs, y, nx, ny, nz, Rot.q(r2)), nz, vx, vy, vz, gr, hit, rt, r2)
+  +d = Tick.drop(s, obs, nx, y, nz, Rot.q(r2), Nat.add(Nat.sub(y, Pick.low(ny, y)), Nat.div(s, 256n)))
+  Tick.place(s, g, obs, x, y, z, nx, Nat.sub(y, d), nz, vx, vy, vz, gr, hit, rt, r2)
 
-# the arm from the middle of a turned cube to the corner it stands on
-# one coordinate of that arm: half a side along the corner the cube leans on
-def Tip.arm(+h: Nat, +sx: Z, +sy: Z, +sz: Z, +ax: Z, +ay: Z, +az: Z) -> Z:
-  Z.divn(Z.divn(Z.scale(h, Z.add(Z.add(Z.mul(sx, ax), Z.mul(sy, ay)), Z.mul(sz, az))), 256n), 256n)
+# The least turn a held body takes in a tick, when what holds it is well
+# off its middle: a fiftieth of a radian. A cube resting square on
+# another touches it exactly, and a turned cube is judged by the fifteen
+# axes with a hair of room around it; a turn too small to lift the body
+# off that hair is refused, the turning it had is spent, and the next
+# tick's is as small again -- so a cube hanging off an edge never began
+# to tip. Held off its middle by more than three centimetres, it takes its
+# turn at least this big, which clears the hair at once.
+def Tick.least() -> Nat:
+  13671000n
 
-def Tick.tipv(m: Mat, +s: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +vx: Z, +vy: Z, +vz: Z,
-  +gr: Bool, +hit: Bool, +rt: Rot, +r2: Rot, md: Mat) -> Body:
-  Mat{+axx, +axy, +axz, +ayx, +ayy, +ayz, +azx, +azy, +azz} = m
-  +h = Nat.div(s, 2n)
-  +sx = Z.sgnop(axy)
-  +sy = Z.sgnop(ayy)
-  +sz = Z.sgnop(azy)
-  Tick.pivot(md, s, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2,
-    Tip.arm(h, sx, sy, sz, axx, ayx, azx),
-    Tip.arm(h, sx, sy, sz, axy, ayy, azy),
-    Tip.arm(h, sx, sy, sz, axz, ayz, azz))
+def Z.stretch(v: Z, +m: Nat, +t: Nat) -> Z:
+  match v:
+    case Pos{+n}:
+      Pos{Nat.div(Nat.mul(n, t), Pick.high(m, 1n))}
+    case Neg{+n}:
+      Neg{Nat.div(Nat.mul(n, t), Pick.high(m, 1n))}
 
-# the arm from the middle of a cube that has not turned to the middle of
-# what holds it up
-def Tick.footv(f: Foot, +s: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +vx: Z, +vy: Z, +vz: Z,
-  +gr: Bool, +hit: Bool, +rt: Rot, +r2: Rot, md: Mat) -> Body:
-  Foot{+n, +lx, +hx, +lz, +hz, +ty} = f
-  Tick.pivot(md, s, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, Geo.lean(Nat.div(s, 2n), lx, hx),
-    Z.diff(Nat.is_lt(ty, Nat.add(y, Nat.div(s, 2n))), ty, Nat.add(y, Nat.div(s, 2n))),
-    Geo.lean(Nat.div(s, 2n), lz, hz))
+def Wv.stretch(w: Wv, +m: Nat, +t: Nat) -> Wv:
+  Wv{+a, +b, +c} = w
+  Wv{Z.stretch(a, m, t), Z.stretch(b, m, t), Z.stretch(c, m, t)}
+
+def Tick.boost2(small: Bool, +w: Wv, +m: Nat) -> Wv:
+  match small:
+    case True{}:
+      Wv.stretch(w, m, Tick.least())
+    case False{}:
+      w
+
+def Tick.boost(big: Bool, +w: Wv) -> Wv:
+  match big:
+    case True{}:
+      Tick.boost2(Nat.is_lt(Wv.mag(w), Tick.least()), w, Wv.mag(w))
+    case False{}:
+      w
+
+# the turn about the point a: the turning the body carries, taken at
+# least at the size above when a is far off its middle
+def Tick.pivota(md: Mat, +s: Nat, +g: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +vx: Z, +vy: Z, +vz: Z,
+  +gr: Bool, +hit: Bool, +rt: Rot, +r2: Rot, a: Wv) -> Body:
+  Wv{+ax, +ay, +az} = a
+  +w2 = Tick.boost(Nat.is_le(Nat.div(s, 32n), Nat.add(Z.mag(ax), Z.mag(az))), Rot.w(rt))
+  Tick.pivot(Rot.mat(Quat.half(Quat.step(w2, Wv.mag(w2)))), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt,
+    Rot{Rot.turn(Rot.q(rt), w2), Rot.w(rt)}, ax, ay, az)
 
 # Turning about a contact is a knock: the cube is leaning on something,
 # and that is what hit says. Marking it is not bookkeeping -- it is what
 # lets every law that speaks of a tick without a knock go on speaking of
-# a body that neither walked nor was turned about anything.
-def Tick.turn2(held: Bool, floor: Bool, +s: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +vx: Z, +vy: Z,
+# a body that neither walked nor was turned about anything. The point it
+# turns about is the very point the hold pressed on (Rot.held).
+def Tick.turn2(held: Bool, floor: Bool, +s: Nat, +g: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +vx: Z, +vy: Z,
   +vz: Z, +gr: Bool, +hit: Bool, +rt: Rot, +r2: Rot, +md: Mat) -> Body:
   match held floor:
     case False{} _:
-      Tick.place(s, obs, x, y, z, x, y, z, vx, vy, vz, gr, hit, rt, r2)
+      Tick.place(s, g, obs, x, y, z, x, y, z, vx, vy, vz, gr, hit, rt, r2)
     case True{} False{}:
-      Tick.footv(Geo.foot(s, x, y, z, obs, Foot.none()), s, obs, x, y, z, vx, vy, vz,
-        gr, True{}, rt, r2, md)
+      Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, r2,
+        Hold.arm(Geo.foot(s, x, y, z, obs, Foot.none()), Rot.mat(Rot.q(rt)), s))
     case True{} True{}:
-      Tick.tipv(Rot.mat(Rot.q(rt)), s, obs, x, y, z, vx, vy, vz, gr, True{}, rt, r2, md)
+      Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, r2, Hold.low(Rot.mat(Rot.q(rt)), s))
 
 # The turn takes the body whole and only opens it once it knows there is
 # a turn to take. A body the checker cannot work out is copied once per
 # field when it is opened, and the turn sits on top of a whole tick.
-def Tick.turn1b(+s: Nat, +obs: List<&2, Body>, b: Body) -> Body:
+def Tick.turn1b(+s: Nat, +g: Nat, +obs: List<&2, Body>, b: Body) -> Body:
   Body{+x, +y, +z, +vx, +vy, +vz, +gr, +hit, +rt} = b
-  Tick.turn2(gr, Nat.is_le(y, Nat.add(Geo.sag(s, Rot.q(rt)), Nat.div(s, 512n))), s, obs, x, y, z, vx, vy,
+  Tick.turn2(gr, Geo.onfloor(s, y, Rot.q(rt)), s, g, obs, x, y, z, vx, vy,
     vz, gr, hit, rt, Rot.free(rt),
     Rot.mat(Quat.half(Quat.step(Rot.w(rt), Wv.mag(Rot.w(rt))))))
 
-def Tick.turn1(still: Bool, +s: Nat, +obs: List<&2, Body>, b: Body) -> Body:
+def Tick.turn1(still: Bool, +s: Nat, +g: Nat, +obs: List<&2, Body>, b: Body) -> Body:
   match still:
     case True{}:
       b
     case False{}:
-      Tick.turn1b(s, obs, b)
+      Tick.turn1b(s, g, obs, b)
 
-def Tick.turn0(+s: Nat, +obs: List<&2, Body>, +b: Body) -> Body:
-  Tick.turn1(Wv.null(Rot.w(Body.rot(b))), s, obs, b)
+def Tick.turn0(+s: Nat, +g: Nat, +obs: List<&2, Body>, +b: Body) -> Body:
+  Tick.turn1(Wv.null(Rot.w(Body.rot(b))), s, g, obs, b)
 
 # The same turn, written out once for each shape the obstacles can have.
 # That is for the checker and not for the machine: asked this way the turn
 # cannot be unfolded until the obstacles are known, and the whole geometry
 # behind it -- the fit, the sag, the matrices -- stays folded up with it.
-def Tick.turn(+s: Nat, +obs: List<&2, Body>, +b: Body) -> Body:
+def Tick.turn(+s: Nat, +g: Nat, +obs: List<&2, Body>, +b: Body) -> Body:
   match obs:
     case []:
-      Tick.turn0(s, [], b)
+      Tick.turn0(s, g, [], b)
     case o <> rest:
-      Tick.turn0(s, o <> rest, b)
+      Tick.turn0(s, g, o <> rest, b)
 
 def Tick.body(r: Body & List<&2, Body>) -> Body:
   (b, obs) = r
@@ -1676,9 +1927,9 @@ def Tick.obs(r: Body & List<&2, Body>) -> List<&2, Body>:
   (b, obs) = r
   obs
 
-def Tick.spin(+s: Nat, r: Body & List<&2, Body>) -> Body & List<&2, Body>:
+def Tick.spin(+s: Nat, +g: Nat, r: Body & List<&2, Body>) -> Body & List<&2, Body>:
   (b, +obs) = r
-  (Tick.turn(s, obs, b), obs)
+  (Tick.turn(s, g, obs, b), obs)
 
 # the tick without the turning: the drive, the push along x, the push
 # along z and the fall. A tick is this and then the turn.
@@ -1697,7 +1948,7 @@ def Body.step(+k: K, obs: List<&2, Body>, inp: In, b: Body) -> Body & List<&2, B
   Body.step1(k, obs, inp, b)
 
 def Body.tick(+k: K, +obs: List<&2, Body>, inp: In, b: Body) -> Body & List<&2, Body>:
-  Tick.spin(K.size(k), Body.step(k, obs, inp, b))
+  Tick.spin(K.size(k), K.g(k), Body.step(k, obs, inp, b))
 
 # the same body, turned another way: what a tick without a knock does to
 # a cube, and nothing else

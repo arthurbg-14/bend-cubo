@@ -412,8 +412,8 @@ def Laws.push_energy(a, b):
 def flo(+s: Nat, +fl: Nat, +rt: P.Rot) -> Nat:
   Nat.add(fl, P.Geo.sag(s, P.Rot.q(rt)))
 
-def hit_land(ok: Bool, +x: Nat, +y: Nat, +z: Nat, +fl: Nat, +vx: P.Z, +vz: P.Z, +rt: P.Rot)
-  -> {P.Body.hit(P.Move.land(ok, x, y, z, fl, vx, vz, rt)) == True{} : Bool}:
+def hit_land(ok: Bool, +x: Nat, +y: Nat, +z: Nat, +ny: Nat, +vx: P.Z, +vz: P.Z, +v0: P.Z, +rt: P.Rot)
+  -> {P.Body.hit(P.Move.land(ok, x, y, z, ny, vx, vz, v0, rt)) == True{} : Bool}:
   match ok:
     case True{}:
       {==}
@@ -428,23 +428,30 @@ def hit_rise(ok: Bool, +x: Nat, +y: Nat, +z: Nat, +p: Nat, +vx: P.Z, +v: P.Z, +v
     case False{}:
       {==}
 
-def hit_fall(+s: Nat, ok: Bool, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +q: Nat, +fl: Nat, +vx: P.Z, +v: P.Z, +vz: P.Z, +rt: P.Rot)
-  -> {P.Body.hit(P.Move.fall(s, ok, obs, x, y, z, q, fl, vx, v, vz, True{}, rt)) == True{} : Bool}:
+# a refused fall is a landing, and a landing is a knock whatever came in
+def hit_fall_no(+s: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +q: Nat, +vx: P.Z, +v: P.Z, +vz: P.Z,
+  +v0: P.Z, +hit: Bool, +rt: P.Rot)
+  -> {P.Body.hit(P.Move.fall(s, False{}, obs, x, y, z, q, vx, v, vz, v0, hit, rt)) == True{} : Bool}:
+  hit_land(P.Move.landok(s, obs, x, P.Move.landy(s, obs, x, y, z, P.Rot.q(rt), q), z, P.Rot.q(rt)), x, y, z,
+    P.Move.landy(s, obs, x, y, z, P.Rot.q(rt), q), vx, vz, v0, rt)
+
+def hit_fall(+s: Nat, ok: Bool, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +q: Nat, +vx: P.Z, +v: P.Z, +vz: P.Z,
+  +v0: P.Z, +rt: P.Rot)
+  -> {P.Body.hit(P.Move.fall(s, ok, obs, x, y, z, q, vx, v, vz, v0, True{}, rt)) == True{} : Bool}:
   match ok:
     case True{}:
       {==}
     case False{}:
-      hit_land(Bool.and(Bool.and(Nat.is_le(flo(s, fl, rt), y), Nat.is_le(y, Nat.add(flo(s, fl, rt), q))), P.Geo.free(s, x, flo(s, fl, rt), z, P.Rot.q(rt), obs)), x, y, z, flo(s, fl, rt), vx, vz, rt)
+      hit_fall_no(s, obs, x, y, z, q, vx, v, vz, v0, True{}, rt)
 
-def hit_fly(+s: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vz: P.Z, st: P.Z & P.Z, +rt: P.Rot)
-  -> {P.Body.hit(P.Move.fly(s, obs, x, y, z, vx, vz, True{}, st, rt)) == True{} : Bool}:
+def hit_fly(+s: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy0: P.Z, +vz: P.Z, st: P.Z & P.Z, +rt: P.Rot)
+  -> {P.Body.hit(P.Move.fly(s, obs, x, y, z, vx, vy0, vz, True{}, st, rt)) == True{} : Bool}:
   (v, d) = st
   match d:
     case P.Pos{+p}:
       hit_rise(P.Geo.free(s, x, Nat.add(y, p), z, P.Rot.q(rt), obs), x, y, z, p, vx, v, vz, rt)
     case P.Neg{+q}:
-      hit_fall(s, Bool.and(Nat.is_le(Nat.add(P.Geo.floor(s, x, y, z, obs, 0n), q), y), P.Geo.free(s, x, Nat.sub(y, q), z, P.Rot.q(rt), obs)),
-        obs, x, y, z, q, P.Geo.floor(s, x, y, z, obs, 0n), vx, v, vz, rt)
+      hit_fall(s, P.Move.fallok(s, obs, x, y, z, q, P.Rot.q(rt)), obs, x, y, z, q, vx, v, vz, vy0, rt)
 
 # a body that is held up keeps whatever knock it came in with: the press
 # of the hold changes how it turns, never that
@@ -463,7 +470,7 @@ def hit_y(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +
     case True{}:
       hit_stay(P.Geo.held(P.Quat.flat(P.Rot.q(rt)), s, x, y, z, P.Rot.q(rt), obs), s, g, obs, x, y, z, vx, vy, vz, rt)
     case False{}:
-      hit_fly(s, obs, x, y, z, vx, vz, P.Fly.step(g, vy), rt)
+      hit_fly(s, obs, x, y, z, vx, vy, vz, P.Fly.step(g, vy), rt)
 
 def hit_ty(+s: Nat, +g: Nat, r: P.Body & List<&2, P.Body>, h: {P.Body.hit(P.Tick.body(r)) == True{} : Bool})
   -> {P.Body.hit(P.Tick.body(P.Tick.y(s, g, r))) == True{} : Bool}:
@@ -484,14 +491,28 @@ def hit_zput(ok: Bool, +obs: List<&2, P.Body>, +cz: Nat, +x: Nat, +y: Nat, +z: N
     case False{}:
       {==}
 
-def hit_zhit(+s: Nat, r: P.Pushed, +x: Nat, +y: Nat, +z: Nat, +tz: Nat, +vx: P.Z, +vy: P.Z, +gr: Bool, +rt: P.Rot)
-  -> {P.Body.hit(P.Tick.body(P.Move.zhit(s, r, x, y, z, tz, vx, vy, gr, rt))) == True{} : Bool}:
+def hit_zpushed(r: P.Pushed, +x: Nat, +y: Nat, +cz: Nat, +vx: P.Z, +vy: P.Z, +gr: Bool, +rt: P.Rot)
+  -> {P.Body.hit(P.Tick.body(P.Move.zpushed(r, x, y, cz, vx, vy, gr, rt))) == True{} : Bool}:
   P.Pushed{+v, +obs, at} = r
-  match at:
-    case None{}:
-      {==}
-    case Some{+cz}:
-      hit_zput(Bool.and(P.Geo.step(z, tz, cz), P.Geo.free(s, x, y, cz, P.Rot.q(rt), obs)), obs, cz, x, y, z, vx, vy, v, gr, rt)
+  {==}
+
+def hit_ztouch(touch: Bool, +s: Nat, +obs: List<&2, P.Body>, +d: P.Z, +cz: Nat, +pr: Nat, +x: Nat, +y: Nat, +z: Nat,
+  +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +rt: P.Rot)
+  -> {P.Body.hit(P.Tick.body(P.Move.ztouch(touch, s, obs, d, cz, pr, x, y, z, vx, vy, vz, gr, rt))) == True{} : Bool}:
+  match touch:
+    case True{}:
+      hit_zpushed(P.Push.z(s, obs, d, x, y, pr, vz, P.Rot.q(rt), P.Geo.head(s, x, y, pr, P.Rot.q(rt), obs)), x, y, cz,
+        vx, vy, gr, rt)
+    case False{}:
+      hit_zput(P.Geo.free(s, x, y, cz, P.Rot.q(rt), obs), obs, cz, x, y, z, vx, vy, vz, gr, rt)
+
+# a refused move along z, however it ends, is a knock
+def hit_zno(+s: Nat, +obs: List<&2, P.Body>, +d: P.Z, +cz: Nat, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z,
+  +gr: Bool, +hit: Bool, +rt: P.Rot)
+  -> {P.Body.hit(P.Tick.body(P.Move.zno(s, obs, d, cz, P.Body{x, y, z, vx, vy, vz, gr, hit, rt}))) == True{} : Bool}:
+  hit_ztouch(P.Move.ztouches(s, obs, d, x, y, P.Move.zto(s, obs, d, x, y, z, P.Rot.q(rt)), P.Rot.q(rt)), s, obs, d,
+    P.Move.zto(s, obs, d, x, y, z, P.Rot.q(rt)), P.Z.shift(P.Move.zto(s, obs, d, x, y, z, P.Rot.q(rt)), P.Z.like(d, 1n)),
+    x, y, z, vx, vy, vz, gr, rt)
 
 def hit_xput(ok: Bool, +obs: List<&2, P.Body>, +cx: Nat, +x: Nat, +y: Nat, +z: Nat, +v: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +rt: P.Rot)
   -> {P.Body.hit(P.Tick.body(P.Move.xput(ok, obs, cx, x, y, z, v, vy, vz, gr, rt))) == True{} : Bool}:
@@ -501,14 +522,28 @@ def hit_xput(ok: Bool, +obs: List<&2, P.Body>, +cx: Nat, +x: Nat, +y: Nat, +z: N
     case False{}:
       {==}
 
-def hit_xhit(+s: Nat, r: P.Pushed, +x: Nat, +y: Nat, +z: Nat, +tx: Nat, +vy: P.Z, +vz: P.Z, +gr: Bool, +rt: P.Rot)
-  -> {P.Body.hit(P.Tick.body(P.Move.xhit(s, r, x, y, z, tx, vy, vz, gr, rt))) == True{} : Bool}:
+def hit_xpushed(r: P.Pushed, +cx: Nat, +y: Nat, +z: Nat, +vy: P.Z, +vz: P.Z, +gr: Bool, +rt: P.Rot)
+  -> {P.Body.hit(P.Tick.body(P.Move.xpushed(r, cx, y, z, vy, vz, gr, rt))) == True{} : Bool}:
   P.Pushed{+v, +obs, at} = r
-  match at:
-    case None{}:
-      {==}
-    case Some{+cx}:
-      hit_xput(Bool.and(P.Geo.step(x, tx, cx), P.Geo.free(s, cx, y, z, P.Rot.q(rt), obs)), obs, cx, x, y, z, v, vy, vz, gr, rt)
+  {==}
+
+def hit_xtouch(touch: Bool, +s: Nat, +obs: List<&2, P.Body>, +d: P.Z, +cx: Nat, +pr: Nat, +x: Nat, +y: Nat, +z: Nat,
+  +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +rt: P.Rot)
+  -> {P.Body.hit(P.Tick.body(P.Move.xtouch(touch, s, obs, d, cx, pr, x, y, z, vx, vy, vz, gr, rt))) == True{} : Bool}:
+  match touch:
+    case True{}:
+      hit_xpushed(P.Push.x(s, obs, d, pr, y, z, vx, P.Rot.q(rt), P.Geo.head(s, pr, y, z, P.Rot.q(rt), obs)), cx, y, z,
+        vy, vz, gr, rt)
+    case False{}:
+      hit_xput(P.Geo.free(s, cx, y, z, P.Rot.q(rt), obs), obs, cx, x, y, z, vx, vy, vz, gr, rt)
+
+# a refused move along x, however it ends, is a knock
+def hit_xno(+s: Nat, +obs: List<&2, P.Body>, +d: P.Z, +cx: Nat, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z,
+  +gr: Bool, +hit: Bool, +rt: P.Rot)
+  -> {P.Body.hit(P.Tick.body(P.Move.xno(s, obs, d, cx, P.Body{x, y, z, vx, vy, vz, gr, hit, rt}))) == True{} : Bool}:
+  hit_xtouch(P.Move.xtouches(s, obs, d, P.Move.xto(s, obs, d, x, y, z, P.Rot.q(rt)), y, z, P.Rot.q(rt)), s, obs, d,
+    P.Move.xto(s, obs, d, x, y, z, P.Rot.q(rt)), P.Z.shift(P.Move.xto(s, obs, d, x, y, z, P.Rot.q(rt)), P.Z.like(d, 1n)),
+    x, y, z, vx, vy, vz, gr, rt)
 
 def hit_zgo(+s: Nat, ok: Bool, +obs: List<&2, P.Body>, +d: P.Z, +cz: Nat, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z,
   +gr: Bool, +rt: P.Rot) -> {P.Body.hit(P.Tick.body(P.Move.zgo(s, ok, obs, d, cz, P.Body{x,y,z,vx,vy,vz,gr,True{},rt}))) == True{} : Bool}:
@@ -516,7 +551,7 @@ def hit_zgo(+s: Nat, ok: Bool, +obs: List<&2, P.Body>, +d: P.Z, +cz: Nat, +x: Na
     case True{}:
       {==}
     case False{}:
-      hit_zhit(s, P.Push.z(s, obs, d, x, y, cz, vz, P.Rot.q(rt), P.Geo.head(s, x, y, cz, P.Rot.q(rt), obs)), x, y, z, cz, vx, vy, gr, rt)
+      hit_zno(s, obs, d, cz, x, y, z, vx, vy, vz, gr, True{}, rt)
 
 def hit_tz(+s: Nat, +g: Nat, +v0: P.Z, r: P.Body & List<&2, P.Body>, h: {P.Body.hit(P.Tick.body(r)) == True{} : Bool})
   -> {P.Body.hit(P.Tick.body(P.Tick.z(s, g, v0, r))) == True{} : Bool}:
@@ -561,52 +596,51 @@ def y_rise_eq(+rt: P.Rot, ok: Bool, +x: Nat, +y: Nat, +z: Nat, +p: Nat, +vx: P.Z
       Empty.absurd({P.Body{x, Nat.add(y, p), z, vx, v, vz, False{}, False{}, rt} == P.Body{x, y, z, vx, P.Pos{0n}, vz, False{}, True{}, rt} : P.Body},
         clash(free))
 
-def y_fall_eq(+rt: P.Rot, +s: Nat, ok: Bool, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +q: Nat, +fl: Nat, +vx: P.Z, +v: P.Z, +vz: P.Z,
-  free: {P.Body.hit(P.Move.fall(s, ok, obs, x, y, z, q, fl, vx, v, vz, False{}, rt)) == False{} : Bool})
-  -> {P.Body{x, Nat.sub(y, q), z, vx, v, vz, False{}, False{}, rt} == P.Move.fall(s, ok, obs, x, y, z, q, fl, vx, v, vz, False{}, rt) : P.Body}:
+def y_fall_eq(+rt: P.Rot, +s: Nat, ok: Bool, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +q: Nat, +vx: P.Z, +v: P.Z, +vz: P.Z,
+  +v0: P.Z, free: {P.Body.hit(P.Move.fall(s, ok, obs, x, y, z, q, vx, v, vz, v0, False{}, rt)) == False{} : Bool})
+  -> {P.Body{x, Nat.sub(y, q), z, vx, v, vz, False{}, False{}, rt} == P.Move.fall(s, ok, obs, x, y, z, q, vx, v, vz, v0, False{}, rt) : P.Body}:
   match ok:
     case True{}:
       {==}
     case False{}:
       Empty.absurd({P.Body{x, Nat.sub(y, q), z, vx, v, vz, False{}, False{}, rt}
-          == P.Move.land(Bool.and(Bool.and(Nat.is_le(flo(s, fl, rt), y), Nat.is_le(y, Nat.add(flo(s, fl, rt), q))), P.Geo.free(s, x, flo(s, fl, rt), z, P.Rot.q(rt), obs)), x, y, z, flo(s, fl, rt), vx, vz, rt) : P.Body},
-        unhit(P.Body.hit(P.Move.land(Bool.and(Bool.and(Nat.is_le(flo(s, fl, rt), y), Nat.is_le(y, Nat.add(flo(s, fl, rt), q))), P.Geo.free(s, x, flo(s, fl, rt), z, P.Rot.q(rt), obs)), x, y, z, flo(s, fl, rt), vx, vz, rt)),
-          hit_land(Bool.and(Bool.and(Nat.is_le(flo(s, fl, rt), y), Nat.is_le(y, Nat.add(flo(s, fl, rt), q))), P.Geo.free(s, x, flo(s, fl, rt), z, P.Rot.q(rt), obs)), x, y, z, flo(s, fl, rt), vx, vz, rt), free))
+          == P.Move.fall(s, False{}, obs, x, y, z, q, vx, v, vz, v0, False{}, rt) : P.Body},
+        unhit(P.Body.hit(P.Move.fall(s, False{}, obs, x, y, z, q, vx, v, vz, v0, False{}, rt)),
+          hit_fall_no(s, obs, x, y, z, q, vx, v, vz, v0, False{}, rt), free))
 
-def y_eq(+rt: P.Rot, +s: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vz: P.Z, st: P.Z & P.Z,
-  free: {P.Body.hit(P.Move.fly(s, obs, x, y, z, vx, vz, False{}, st, rt)) == False{} : Bool})
+def y_eq(+rt: P.Rot, +s: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy0: P.Z, +vz: P.Z, st: P.Z & P.Z,
+  free: {P.Body.hit(P.Move.fly(s, obs, x, y, z, vx, vy0, vz, False{}, st, rt)) == False{} : Bool})
   -> {P.Body{x, P.Z.shift(y, P.Share.snd(st)), z, vx, P.Share.fst(st), vz, False{}, False{}, rt}
-      == P.Move.fly(s, obs, x, y, z, vx, vz, False{}, st, rt) : P.Body}:
+      == P.Move.fly(s, obs, x, y, z, vx, vy0, vz, False{}, st, rt) : P.Body}:
   (+v, d) = st
   match d:
     case P.Pos{+p}:
       y_rise_eq(rt, P.Geo.free(s, x, Nat.add(y, p), z, P.Rot.q(rt), obs), x, y, z, p, vx, v, vz, free)
     case P.Neg{+q}:
-      y_fall_eq(rt, s, Bool.and(Nat.is_le(Nat.add(P.Geo.floor(s, x, y, z, obs, 0n), q), y), P.Geo.free(s, x, Nat.sub(y, q), z, P.Rot.q(rt), obs)),
-        obs, x, y, z, q, P.Geo.floor(s, x, y, z, obs, 0n), vx, v, vz, free)
+      y_fall_eq(rt, s, P.Move.fallok(s, obs, x, y, z, q, P.Rot.q(rt)), obs, x, y, z, q, vx, v, vz, vy0, free)
 
-def y_fall_ok(+rt: P.Rot, +s: Nat, ok: Bool, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +q: Nat, +fl: Nat, +vx: P.Z, +v: P.Z, +vz: P.Z,
-  eok: {Bool.and(Nat.is_le(Nat.add(fl, q), y), P.Geo.free(s, x, Nat.sub(y, q), z, P.Rot.q(rt), obs)) == ok : Bool},
-  free: {P.Body.hit(P.Move.fall(s, ok, obs, x, y, z, q, fl, vx, v, vz, False{}, rt)) == False{} : Bool})
+def y_fall_ok(+rt: P.Rot, +s: Nat, ok: Bool, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +q: Nat, +vx: P.Z, +v: P.Z, +vz: P.Z,
+  +v0: P.Z, eok: {P.Move.fallok(s, obs, x, y, z, q, P.Rot.q(rt)) == ok : Bool},
+  free: {P.Body.hit(P.Move.fall(s, ok, obs, x, y, z, q, vx, v, vz, v0, False{}, rt)) == False{} : Bool})
   -> {Nat.is_le(q, y) == True{} : Bool}:
   match ok:
     case True{}:
-      le_addl(fl, q, y, and_l(Nat.is_le(Nat.add(fl, q), y), P.Geo.free(s, x, Nat.sub(y, q), z, P.Rot.q(rt), obs), eok))
+      and_l(Nat.is_le(q, y), Bool.and(P.Tick.fits(s, obs, x, Nat.sub(y, q), z, P.Rot.q(rt)),
+        P.Tick.path(64n, Nat.is_lt(s, q), s, obs, x, y, z, P.Rot.q(rt), q, s)), eok)
     case False{}:
       Empty.absurd({Nat.is_le(q, y) == True{} : Bool},
-        unhit(P.Body.hit(P.Move.land(Bool.and(Bool.and(Nat.is_le(flo(s, fl, rt), y), Nat.is_le(y, Nat.add(flo(s, fl, rt), q))), P.Geo.free(s, x, flo(s, fl, rt), z, P.Rot.q(rt), obs)), x, y, z, flo(s, fl, rt), vx, vz, rt)),
-          hit_land(Bool.and(Bool.and(Nat.is_le(flo(s, fl, rt), y), Nat.is_le(y, Nat.add(flo(s, fl, rt), q))), P.Geo.free(s, x, flo(s, fl, rt), z, P.Rot.q(rt), obs)), x, y, z, flo(s, fl, rt), vx, vz, rt), free))
+        unhit(P.Body.hit(P.Move.fall(s, False{}, obs, x, y, z, q, vx, v, vz, v0, False{}, rt)),
+          hit_fall_no(s, obs, x, y, z, q, vx, v, vz, v0, False{}, rt), free))
 
-def y_ok(+rt: P.Rot, +s: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vz: P.Z, st: P.Z & P.Z,
-  free: {P.Body.hit(P.Move.fly(s, obs, x, y, z, vx, vz, False{}, st, rt)) == False{} : Bool})
+def y_ok(+rt: P.Rot, +s: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy0: P.Z, +vz: P.Z, st: P.Z & P.Z,
+  free: {P.Body.hit(P.Move.fly(s, obs, x, y, z, vx, vy0, vz, False{}, st, rt)) == False{} : Bool})
   -> {P.Z.fits(y, P.Share.snd(st)) == True{} : Bool}:
   (+v, d) = st
   match d:
     case P.Pos{+p}:
       {==}
     case P.Neg{+q}:
-      y_fall_ok(rt, s, Bool.and(Nat.is_le(Nat.add(P.Geo.floor(s, x, y, z, obs, 0n), q), y), P.Geo.free(s, x, Nat.sub(y, q), z, P.Rot.q(rt), obs)),
-        obs, x, y, z, q, P.Geo.floor(s, x, y, z, obs, 0n), vx, v, vz, {==}, free)
+      y_fall_ok(rt, s, P.Move.fallok(s, obs, x, y, z, q, P.Rot.q(rt)), obs, x, y, z, q, vx, v, vz, vy0, {==}, free)
 
 # the z move, untouched
 def Fz(+g: Nat, +x: Nat, +y: Nat, +z: Nat, +dz: P.Z, +vx: P.Z, +vy: P.Z, +vz: P.Z, +rt: P.Rot) -> P.Body:
@@ -619,15 +653,13 @@ def z_air_eq(+rt: P.Rot, +s: Nat, ok: Bool, +g: Nat, +obs: List<&2, P.Body>, +dz
       == P.Tick.body(P.Tick.y(s, g, P.Move.zgo(s, ok, obs, dz, P.Z.shift(z, dz), P.Body{x,y,z,vx,vy,vz,False{},False{},rt}))) : P.Body}:
   match ok:
     case True{}:
-      y_eq(rt, s, obs, x, y, P.Z.shift(z, dz), vx, vz, P.Fly.step(g, vy), free)
+      y_eq(rt, s, obs, x, y, P.Z.shift(z, dz), vx, vy, vz, P.Fly.step(g, vy), free)
     case False{}:
       Empty.absurd({Fz(g, x, y, z, dz, vx, vy, vz, rt)
           == P.Tick.body(P.Tick.y(s, g, P.Move.zgo(s, False{}, obs, dz, P.Z.shift(z, dz), P.Body{x,y,z,vx,vy,vz,False{},False{},rt}))) : P.Body},
-        unhit(P.Body.hit(P.Tick.body(P.Tick.y(s, g, P.Move.zhit(s, P.Push.z(s, obs, dz, x, y, P.Z.shift(z, dz), vz, P.Rot.q(rt),
-              P.Geo.head(s, x, y, P.Z.shift(z, dz), P.Rot.q(rt), obs)), x, y, z, P.Z.shift(z, dz), vx, vy, False{}, rt)))),
-          hit_ty(s, g, P.Move.zhit(s, P.Push.z(s, obs, dz, x, y, P.Z.shift(z, dz), vz, P.Rot.q(rt), P.Geo.head(s, x, y, P.Z.shift(z, dz), P.Rot.q(rt), obs)),
-              x, y, z, P.Z.shift(z, dz), vx, vy, False{}, rt),
-            hit_zhit(s, P.Push.z(s, obs, dz, x, y, P.Z.shift(z, dz), vz, P.Rot.q(rt), P.Geo.head(s, x, y, P.Z.shift(z, dz), P.Rot.q(rt), obs)), x, y, z, P.Z.shift(z, dz), vx, vy, False{}, rt)),
+        unhit(P.Body.hit(P.Tick.body(P.Tick.y(s, g, P.Move.zno(s, obs, dz, P.Z.shift(z, dz), P.Body{x,y,z,vx,vy,vz,False{},False{},rt})))),
+          hit_ty(s, g, P.Move.zno(s, obs, dz, P.Z.shift(z, dz), P.Body{x,y,z,vx,vy,vz,False{},False{},rt}),
+            hit_zno(s, obs, dz, P.Z.shift(z, dz), x, y, z, vx, vy, vz, False{}, False{}, rt)),
           free))
 
 # the x move, untouched
@@ -644,11 +676,9 @@ def x_air_eq(+rt: P.Rot, +s: Nat, ok: Bool, +g: Nat, +obs: List<&2, P.Body>, +v0
     case False{}:
       Empty.absurd({Fz(g, P.Z.shift(x, dx), y, z, P.Z.add(v0z, vz), vx, vy, vz, rt)
           == P.Tick.body(P.Tick.z(s, g, v0z, P.Move.xgo(s, False{}, obs, dx, P.Z.shift(x, dx), P.Body{x,y,z,vx,vy,vz,False{},False{},rt}))) : P.Body},
-        unhit(P.Body.hit(P.Tick.body(P.Tick.z(s, g, v0z, P.Move.xhit(s, P.Push.x(s, obs, dx, P.Z.shift(x, dx), y, z, vx, P.Rot.q(rt),
-              P.Geo.head(s, P.Z.shift(x, dx), y, z, P.Rot.q(rt), obs)), x, y, z, P.Z.shift(x, dx), vy, vz, False{}, rt)))),
-          hit_tz(s, g, v0z, P.Move.xhit(s, P.Push.x(s, obs, dx, P.Z.shift(x, dx), y, z, vx, P.Rot.q(rt), P.Geo.head(s, P.Z.shift(x, dx), y, z, P.Rot.q(rt), obs)),
-              x, y, z, P.Z.shift(x, dx), vy, vz, False{}, rt),
-            hit_xhit(s, P.Push.x(s, obs, dx, P.Z.shift(x, dx), y, z, vx, P.Rot.q(rt), P.Geo.head(s, P.Z.shift(x, dx), y, z, P.Rot.q(rt), obs)), x, y, z, P.Z.shift(x, dx), vy, vz, False{}, rt)),
+        unhit(P.Body.hit(P.Tick.body(P.Tick.z(s, g, v0z, P.Move.xno(s, obs, dx, P.Z.shift(x, dx), P.Body{x,y,z,vx,vy,vz,False{},False{},rt})))),
+          hit_tz(s, g, v0z, P.Move.xno(s, obs, dx, P.Z.shift(x, dx), P.Body{x,y,z,vx,vy,vz,False{},False{},rt}),
+            hit_xno(s, obs, dx, P.Z.shift(x, dx), x, y, z, vx, vy, vz, False{}, False{}, rt)),
           free))
 
 def z_air_ok(+rt: P.Rot, +s: Nat, ok: Bool, +g: Nat, +obs: List<&2, P.Body>, +dz: P.Z, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z,
@@ -660,14 +690,12 @@ def z_air_ok(+rt: P.Rot, +s: Nat, ok: Bool, +g: Nat, +obs: List<&2, P.Body>, +dz
     case True{}:
       %Equal.sym(Bool, P.Z.fits(z, dz), True{}, and_l(P.Z.fits(z, dz), P.Geo.free(s, x, y, P.Z.shift(z, dz), P.Rot.q(rt), obs), eok))
         : {Bool.and(_, P.Z.fits(y, P.Share.snd(P.Fly.step(g, vy)))) == True{} : Bool}
-      y_ok(rt, s, obs, x, y, P.Z.shift(z, dz), vx, vz, P.Fly.step(g, vy), free)
+      y_ok(rt, s, obs, x, y, P.Z.shift(z, dz), vx, vy, vz, P.Fly.step(g, vy), free)
     case False{}:
       Empty.absurd({Bool.and(P.Z.fits(z, dz), P.Z.fits(y, P.Share.snd(P.Fly.step(g, vy)))) == True{} : Bool},
-        unhit(P.Body.hit(P.Tick.body(P.Tick.y(s, g, P.Move.zhit(s, P.Push.z(s, obs, dz, x, y, P.Z.shift(z, dz), vz, P.Rot.q(rt),
-              P.Geo.head(s, x, y, P.Z.shift(z, dz), P.Rot.q(rt), obs)), x, y, z, P.Z.shift(z, dz), vx, vy, False{}, rt)))),
-          hit_ty(s, g, P.Move.zhit(s, P.Push.z(s, obs, dz, x, y, P.Z.shift(z, dz), vz, P.Rot.q(rt), P.Geo.head(s, x, y, P.Z.shift(z, dz), P.Rot.q(rt), obs)),
-              x, y, z, P.Z.shift(z, dz), vx, vy, False{}, rt),
-            hit_zhit(s, P.Push.z(s, obs, dz, x, y, P.Z.shift(z, dz), vz, P.Rot.q(rt), P.Geo.head(s, x, y, P.Z.shift(z, dz), P.Rot.q(rt), obs)), x, y, z, P.Z.shift(z, dz), vx, vy, False{}, rt)),
+        unhit(P.Body.hit(P.Tick.body(P.Tick.y(s, g, P.Move.zno(s, obs, dz, P.Z.shift(z, dz), P.Body{x,y,z,vx,vy,vz,False{},False{},rt})))),
+          hit_ty(s, g, P.Move.zno(s, obs, dz, P.Z.shift(z, dz), P.Body{x,y,z,vx,vy,vz,False{},False{},rt}),
+            hit_zno(s, obs, dz, P.Z.shift(z, dz), x, y, z, vx, vy, vz, False{}, False{}, rt)),
           free))
 
 def x_air_ok(+rt: P.Rot, +s: Nat, ok: Bool, +g: Nat, +obs: List<&2, P.Body>, +v0z: P.Z, +dx: P.Z, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
@@ -685,11 +713,9 @@ def x_air_ok(+rt: P.Rot, +s: Nat, ok: Bool, +g: Nat, +obs: List<&2, P.Body>, +v0
     case False{}:
       Empty.absurd({Bool.and(P.Z.fits(x, dx), Bool.and(P.Z.fits(z, P.Z.add(v0z, vz)), P.Z.fits(y, P.Share.snd(P.Fly.step(g, vy)))))
           == True{} : Bool},
-        unhit(P.Body.hit(P.Tick.body(P.Tick.z(s, g, v0z, P.Move.xhit(s, P.Push.x(s, obs, dx, P.Z.shift(x, dx), y, z, vx, P.Rot.q(rt),
-              P.Geo.head(s, P.Z.shift(x, dx), y, z, P.Rot.q(rt), obs)), x, y, z, P.Z.shift(x, dx), vy, vz, False{}, rt)))),
-          hit_tz(s, g, v0z, P.Move.xhit(s, P.Push.x(s, obs, dx, P.Z.shift(x, dx), y, z, vx, P.Rot.q(rt), P.Geo.head(s, P.Z.shift(x, dx), y, z, P.Rot.q(rt), obs)),
-              x, y, z, P.Z.shift(x, dx), vy, vz, False{}, rt),
-            hit_xhit(s, P.Push.x(s, obs, dx, P.Z.shift(x, dx), y, z, vx, P.Rot.q(rt), P.Geo.head(s, P.Z.shift(x, dx), y, z, P.Rot.q(rt), obs)), x, y, z, P.Z.shift(x, dx), vy, vz, False{}, rt)),
+        unhit(P.Body.hit(P.Tick.body(P.Tick.z(s, g, v0z, P.Move.xno(s, obs, dx, P.Z.shift(x, dx), P.Body{x,y,z,vx,vy,vz,False{},False{},rt})))),
+          hit_tz(s, g, v0z, P.Move.xno(s, obs, dx, P.Z.shift(x, dx), P.Body{x,y,z,vx,vy,vz,False{},False{},rt}),
+            hit_xno(s, obs, dx, P.Z.shift(x, dx), x, y, z, vx, vy, vz, False{}, False{}, rt)),
           free))
 
 # Energy in flight
@@ -802,142 +828,123 @@ def Ok1(+s: Nat, +obs: List<&2, P.Body>, +v0: P.Z, +x: Nat, +y: Nat, +z: Nat, +v
 # the body that comes out is the body that went in, turned another way,
 # which is what every law about a tick without a knock needs.
 
-def put_hit(ok: Bool, +x: Nat, +y: Nat, +z: Nat, +nx: Nat, +ny: Nat, +nz: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z,
-  +gr: Bool, +rt: P.Rot, +r2: P.Rot)
-  -> {P.Body.hit(P.Tick.put(ok, x, y, z, nx, ny, nz, vx, vy, vz, gr, True{}, rt, r2)) == True{} : Bool}:
+def put_hit(ok: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +nx: Nat, +ny: Nat,
+  +nz: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +rt: P.Rot, +r2: P.Rot)
+  -> {P.Body.hit(P.Tick.put(ok, s, g, obs, x, y, z, nx, ny, nz, vx, vy, vz, gr, True{}, rt, r2)) == True{} : Bool}:
   match ok:
     case True{}:
       {==}
     case False{}:
       {==}
 
-def place_hit(+s: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +nx: Nat, +ny: Nat, +nz: Nat,
+def place_hit(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +nx: Nat, +ny: Nat, +nz: Nat,
   +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +rt: P.Rot, +r2: P.Rot)
-  -> {P.Body.hit(P.Tick.place(s, obs, x, y, z, nx, ny, nz, vx, vy, vz, gr, True{}, rt, r2)) == True{} : Bool}:
-  put_hit(Bool.and(Nat.is_le(ny, y), P.Tick.fits(s, obs, nx, ny, nz, P.Rot.q(r2))), x, y, z, nx, ny, nz,
+  -> {P.Body.hit(P.Tick.place(s, g, obs, x, y, z, nx, ny, nz, vx, vy, vz, gr, True{}, rt, r2)) == True{} : Bool}:
+  put_hit(P.Tick.turnok(s, obs, y, nx, ny, nz, P.Rot.q(r2), gr), s, g, obs, x, y, z, nx, ny, nz,
     vx, vy, vz, gr, rt, r2)
 
-def pivot_hit(m: P.Mat, +s: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
+def pivot_hit(m: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
   +vz: P.Z, +gr: Bool, +rt: P.Rot, +r2: P.Rot, +rx: P.Z, +ry: P.Z, +rz: P.Z)
-  -> {P.Body.hit(P.Tick.pivot(m, s, obs, x, y, z, vx, vy, vz, gr, True{}, rt, r2, rx, ry, rz)) == True{} : Bool}:
+  -> {P.Body.hit(P.Tick.pivot(m, s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, r2, rx, ry, rz)) == True{} : Bool}:
   P.Mat{+axx, +axy, +axz, +ayx, +ayy, +ayz, +azx, +azy, +azz} = m
-  place_hit(s, obs, x, y, z, P.Pivot.c(x, rx, axx, ayx, azx, rx, ry, rz),
-    P.Tick.lift(s, obs, y, P.Pivot.c(x, rx, axx, ayx, azx, rx, ry, rz),
-      P.Pivot.c(y, ry, axy, ayy, azy, rx, ry, rz), P.Pivot.c(z, rz, axz, ayz, azz, rx, ry, rz), P.Rot.q(r2)),
-    P.Pivot.c(z, rz, axz, ayz, azz, rx, ry, rz), vx, vy, vz, gr, rt, r2)
+  +nx = P.Pivot.c(x, rx, axx, ayx, azx, rx, ry, rz)
+  +ny = P.Pivot.c(y, ry, axy, ayy, azy, rx, ry, rz)
+  +nz = P.Pivot.c(z, rz, axz, ayz, azz, rx, ry, rz)
+  +d = P.Tick.drop(s, obs, nx, y, nz, P.Rot.q(r2), Nat.add(Nat.sub(y, P.Pick.low(ny, y)), Nat.div(s, 256n)))
+  place_hit(s, g, obs, x, y, z, nx, Nat.sub(y, d), nz, vx, vy, vz, gr, rt, r2)
 
-def tipv_hit(m: P.Mat, +s: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
-  +vz: P.Z, +gr: Bool, +rt: P.Rot, +r2: P.Rot, md: P.Mat)
-  -> {P.Body.hit(P.Tick.tipv(m, s, obs, x, y, z, vx, vy, vz, gr, True{}, rt, r2, md)) == True{} : Bool}:
-  P.Mat{+axx, +axy, +axz, +ayx, +ayy, +ayz, +azx, +azy, +azz} = m
-  pivot_hit(md, s, obs, x, y, z, vx, vy, vz, gr, rt, r2,
-    P.Tip.arm(Nat.div(s, 2n), P.Z.sgnop(axy), P.Z.sgnop(ayy), P.Z.sgnop(azy), axx, ayx, azx),
-    P.Tip.arm(Nat.div(s, 2n), P.Z.sgnop(axy), P.Z.sgnop(ayy), P.Z.sgnop(azy), axy, ayy, azy),
-    P.Tip.arm(Nat.div(s, 2n), P.Z.sgnop(axy), P.Z.sgnop(ayy), P.Z.sgnop(azy), axz, ayz, azz))
+def pivota_hit(md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
+  +vz: P.Z, +gr: Bool, +rt: P.Rot, +r2: P.Rot, a: P.Wv)
+  -> {P.Body.hit(P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, r2, a)) == True{} : Bool}:
+  P.Wv{+ax, +ay, +az} = a
+  pivot_hit(md, s, g, obs, x, y, z, vx, vy, vz, gr, rt, r2, ax, ay, az)
 
-def footv_hit(f: P.Foot, +s: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
-  +vz: P.Z, +gr: Bool, +rt: P.Rot, +r2: P.Rot, md: P.Mat)
-  -> {P.Body.hit(P.Tick.footv(f, s, obs, x, y, z, vx, vy, vz, gr, True{}, rt, r2, md)) == True{} : Bool}:
-  P.Foot{+n, +lx, +hx, +lz, +hz, +ty} = f
-  pivot_hit(md, s, obs, x, y, z, vx, vy, vz, gr, rt, r2, P.Geo.lean(Nat.div(s, 2n), lx, hx),
-    P.Z.diff(Nat.is_lt(ty, Nat.add(y, Nat.div(s, 2n))), ty, Nat.add(y, Nat.div(s, 2n))),
-    P.Geo.lean(Nat.div(s, 2n), lz, hz))
-
-def put_eq(ok: Bool, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool,
-  +rt: P.Rot, +r2: P.Rot,
-  free: {P.Body.hit(P.Tick.put(ok, x, y, z, x, y, z, vx, vy, vz, gr, hit, rt, r2)) == False{} : Bool})
-  -> {P.Tick.put(ok, x, y, z, x, y, z, vx, vy, vz, gr, hit, rt, r2)
-      == P.Body.setrot(P.Body{x, y, z, vx, vy, vz, gr, hit, rt},
-           P.Body.rot(P.Tick.put(ok, x, y, z, x, y, z, vx, vy, vz, gr, hit, rt, r2))) : P.Body}:
+def put_eq(ok: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
+  +vz: P.Z, +hit: Bool, +rt: P.Rot, +r2: P.Rot,
+  free: {P.Body.hit(P.Tick.put(ok, s, g, obs, x, y, z, x, y, z, vx, vy, vz, False{}, hit, rt, r2)) == False{} : Bool})
+  -> {P.Tick.put(ok, s, g, obs, x, y, z, x, y, z, vx, vy, vz, False{}, hit, rt, r2)
+      == P.Body.setrot(P.Body{x, y, z, vx, vy, vz, False{}, hit, rt},
+           P.Body.rot(P.Tick.put(ok, s, g, obs, x, y, z, x, y, z, vx, vy, vz, False{}, hit, rt, r2))) : P.Body}:
   match ok:
     case True{}:
       {==}
     case False{}:
-      Empty.absurd({P.Body{x, y, z, vx, vy, vz, gr, True{}, P.Rot{P.Rot.q(rt), P.Wv.zero()}}
-          == P.Body.setrot(P.Body{x, y, z, vx, vy, vz, gr, hit, rt}, P.Rot{P.Rot.q(rt), P.Wv.zero()}) : P.Body},
+      Empty.absurd({P.Body{x, y, z, vx, vy, vz, False{}, True{}, P.Rot{P.Rot.q(rt), P.Wv.zero()}}
+          == P.Body.setrot(P.Body{x, y, z, vx, vy, vz, False{}, hit, rt}, P.Rot{P.Rot.q(rt), P.Wv.zero()}) : P.Body},
         clash(free))
 
-def turn2_eq(held: Bool, floor: Bool, +s: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z,
+def turn2_eq(held: Bool, floor: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z,
   +vy: P.Z, +vz: P.Z, +hit: Bool, +rt: P.Rot, +r2: P.Rot, +md: P.Mat,
-  free: {P.Body.hit(P.Tick.turn2(held, floor, s, obs, x, y, z, vx, vy, vz, held, hit, rt, r2, md)) == False{} : Bool})
-  -> {P.Tick.turn2(held, floor, s, obs, x, y, z, vx, vy, vz, held, hit, rt, r2, md)
+  free: {P.Body.hit(P.Tick.turn2(held, floor, s, g, obs, x, y, z, vx, vy, vz, held, hit, rt, r2, md)) == False{} : Bool})
+  -> {P.Tick.turn2(held, floor, s, g, obs, x, y, z, vx, vy, vz, held, hit, rt, r2, md)
       == P.Body.setrot(P.Body{x, y, z, vx, vy, vz, held, hit, rt},
-           P.Body.rot(P.Tick.turn2(held, floor, s, obs, x, y, z, vx, vy, vz, held, hit, rt, r2, md))) : P.Body}:
+           P.Body.rot(P.Tick.turn2(held, floor, s, g, obs, x, y, z, vx, vy, vz, held, hit, rt, r2, md))) : P.Body}:
   match held floor:
     case False{} _:
-      put_eq(Bool.and(Nat.is_le(y, y), P.Tick.fits(s, obs, x, y, z, P.Rot.q(r2))), x, y, z, vx, vy, vz,
-        False{}, hit, rt, r2, free)
+      put_eq(P.Tick.turnok(s, obs, y, x, y, z, P.Rot.q(r2), False{}), s, g, obs, x, y, z, vx, vy, vz, hit, rt, r2, free)
     case True{} False{}:
-      Empty.absurd({P.Tick.footv(P.Geo.foot(s, x, y, z, obs, P.Foot.none()), s, obs, x, y, z, vx, vy, vz,
-            True{}, True{}, rt, r2, md)
-          == P.Body.setrot(P.Body{x, y, z, vx, vy, vz, True{}, hit, rt},
-               P.Body.rot(P.Tick.footv(P.Geo.foot(s, x, y, z, obs, P.Foot.none()), s, obs, x, y, z, vx, vy, vz,
-                 True{}, True{}, rt, r2, md))) : P.Body},
+      Empty.absurd({P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s)) == P.Body.setrot(P.Body{x, y, z, vx, vy, vz, True{}, hit, rt}, P.Body.rot(P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s)))) : P.Body},
         clash(Equal.trans(Bool, True{},
-          P.Body.hit(P.Tick.footv(P.Geo.foot(s, x, y, z, obs, P.Foot.none()), s, obs, x, y, z, vx, vy, vz,
-            True{}, True{}, rt, r2, md)), False{},
-          Equal.sym(Bool, P.Body.hit(P.Tick.footv(P.Geo.foot(s, x, y, z, obs, P.Foot.none()), s, obs, x, y, z,
-            vx, vy, vz, True{}, True{}, rt, r2, md)), True{},
-            footv_hit(P.Geo.foot(s, x, y, z, obs, P.Foot.none()), s, obs, x, y, z, vx, vy, vz, True{}, rt, r2, md)),
+          P.Body.hit(P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s))), False{},
+          Equal.sym(Bool, P.Body.hit(P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s))), True{},
+            pivota_hit(md, s, g, obs, x, y, z, vx, vy, vz, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s))),
           free)))
     case True{} True{}:
-      Empty.absurd({P.Tick.tipv(P.Rot.mat(P.Rot.q(rt)), s, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, md)
-          == P.Body.setrot(P.Body{x, y, z, vx, vy, vz, True{}, hit, rt},
-               P.Body.rot(P.Tick.tipv(P.Rot.mat(P.Rot.q(rt)), s, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, md))) : P.Body},
+      Empty.absurd({P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, P.Hold.low(P.Rot.mat(P.Rot.q(rt)), s)) == P.Body.setrot(P.Body{x, y, z, vx, vy, vz, True{}, hit, rt}, P.Body.rot(P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, P.Hold.low(P.Rot.mat(P.Rot.q(rt)), s)))) : P.Body},
         clash(Equal.trans(Bool, True{},
-          P.Body.hit(P.Tick.tipv(P.Rot.mat(P.Rot.q(rt)), s, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, md)), False{},
-          Equal.sym(Bool, P.Body.hit(P.Tick.tipv(P.Rot.mat(P.Rot.q(rt)), s, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, md)), True{},
-            tipv_hit(P.Rot.mat(P.Rot.q(rt)), s, obs, x, y, z, vx, vy, vz, True{}, rt, r2, md)),
+          P.Body.hit(P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, P.Hold.low(P.Rot.mat(P.Rot.q(rt)), s))), False{},
+          Equal.sym(Bool, P.Body.hit(P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, P.Hold.low(P.Rot.mat(P.Rot.q(rt)), s))), True{},
+            pivota_hit(md, s, g, obs, x, y, z, vx, vy, vz, True{}, rt, r2, P.Hold.low(P.Rot.mat(P.Rot.q(rt)), s))),
           free)))
 
-def turn1_eq(still: Bool, +s: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
+def turn1_eq(still: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
   +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot,
-  free: {P.Body.hit(P.Tick.turn1(still, s, obs, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == False{} : Bool})
-  -> {P.Tick.turn1(still, s, obs, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})
+  free: {P.Body.hit(P.Tick.turn1(still, s, g, obs, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == False{} : Bool})
+  -> {P.Tick.turn1(still, s, g, obs, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})
       == P.Body.setrot(P.Body{x, y, z, vx, vy, vz, gr, hit, rt},
-           P.Body.rot(P.Tick.turn1(still, s, obs, P.Body{x, y, z, vx, vy, vz, gr, hit, rt}))) : P.Body}:
+           P.Body.rot(P.Tick.turn1(still, s, g, obs, P.Body{x, y, z, vx, vy, vz, gr, hit, rt}))) : P.Body}:
   match still:
     case True{}:
       {==}
     case False{}:
-      turn2_eq(gr, Nat.is_le(y, Nat.add(P.Geo.sag(s, P.Rot.q(rt)), Nat.div(s, 512n))), s, obs, x, y, z, vx, vy,
+      turn2_eq(gr, P.Geo.onfloor(s, y, P.Rot.q(rt)), s, g, obs, x, y, z, vx, vy,
         vz, hit, rt, P.Rot.free(rt),
         P.Rot.mat(P.Quat.half(P.Quat.step(P.Rot.w(rt), P.Wv.mag(P.Rot.w(rt))))), free)
 
 # the turn left whole is the turn written out, read both ways
-def turn_is(+s: Nat, obs: List<&2, P.Body>, +b: P.Body)
-  -> {P.Tick.turn(s, obs, b) == P.Tick.turn0(s, obs, b) : P.Body}:
+def turn_is(+s: Nat, +g: Nat, obs: List<&2, P.Body>, +b: P.Body)
+  -> {P.Tick.turn(s, g, obs, b) == P.Tick.turn0(s, g, obs, b) : P.Body}:
   match obs:
     case []:
       {==}
     case o <> rest:
       {==}
 
-def turn_sym(+s: Nat, obs: List<&2, P.Body>, +b: P.Body)
-  -> {P.Tick.turn0(s, obs, b) == P.Tick.turn(s, obs, b) : P.Body}:
+def turn_sym(+s: Nat, +g: Nat, obs: List<&2, P.Body>, +b: P.Body)
+  -> {P.Tick.turn0(s, g, obs, b) == P.Tick.turn(s, g, obs, b) : P.Body}:
   match obs:
     case []:
       {==}
     case o <> rest:
       {==}
 
-def turn_free(+s: Nat, +obs: List<&2, P.Body>, +b: P.Body,
-  h: {P.Body.hit(P.Tick.turn(s, obs, b)) == False{} : Bool})
-  -> {P.Body.hit(P.Tick.turn0(s, obs, b)) == False{} : Bool}:
-  %turn_is(s, obs, b) : {P.Body.hit(_) == False{} : Bool}
+def turn_free(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +b: P.Body,
+  h: {P.Body.hit(P.Tick.turn(s, g, obs, b)) == False{} : Bool})
+  -> {P.Body.hit(P.Tick.turn0(s, g, obs, b)) == False{} : Bool}:
+  %turn_is(s, g, obs, b) : {P.Body.hit(_) == False{} : Bool}
   h
 
-def turn_eq0(+s: Nat, +obs: List<&2, P.Body>, +b: P.Body,
-  free: {P.Body.hit(P.Tick.turn0(s, obs, b)) == False{} : Bool})
-  -> {P.Tick.turn0(s, obs, b) == P.Body.setrot(b, P.Body.rot(P.Tick.turn0(s, obs, b))) : P.Body}:
+def turn_eq0(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +b: P.Body,
+  free: {P.Body.hit(P.Tick.turn0(s, g, obs, b)) == False{} : Bool})
+  -> {P.Tick.turn0(s, g, obs, b) == P.Body.setrot(b, P.Body.rot(P.Tick.turn0(s, g, obs, b))) : P.Body}:
   P.Body{+x, +y, +z, +vx, +vy, +vz, +gr, +hit, +rt} = b
-  turn1_eq(P.Wv.null(P.Rot.w(rt)), s, obs, x, y, z, vx, vy, vz, gr, hit, rt, free)
+  turn1_eq(P.Wv.null(P.Rot.w(rt)), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, free)
 
-def turn_eq(+s: Nat, +obs: List<&2, P.Body>, +b: P.Body,
-  free: {P.Body.hit(P.Tick.turn(s, obs, b)) == False{} : Bool})
-  -> {P.Tick.turn(s, obs, b) == P.Body.setrot(b, P.Body.rot(P.Tick.turn(s, obs, b))) : P.Body}:
-  %turn_sym(s, obs, b) : {_ == P.Body.setrot(b, P.Body.rot(_)) : P.Body}
-  turn_eq0(s, obs, b, turn_free(s, obs, b, free))
+def turn_eq(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +b: P.Body,
+  free: {P.Body.hit(P.Tick.turn(s, g, obs, b)) == False{} : Bool})
+  -> {P.Tick.turn(s, g, obs, b) == P.Body.setrot(b, P.Body.rot(P.Tick.turn(s, g, obs, b))) : P.Body}:
+  %turn_sym(s, g, obs, b) : {_ == P.Body.setrot(b, P.Body.rot(_)) : P.Body}
+  turn_eq0(s, g, obs, b, turn_free(s, g, obs, b, free))
 
 def hit_setrot(+b: P.Body, +r: P.Rot) -> {P.Body.hit(P.Body.setrot(b, r)) == P.Body.hit(b) : Bool}:
   {==}
@@ -953,40 +960,544 @@ def vx_setrot(+b: P.Body, +r: P.Rot) -> {P.Body.vx(P.Body.setrot(b, r)) == P.Bod
 def vz_setrot(+b: P.Body, +r: P.Rot) -> {P.Body.vz(P.Body.setrot(b, r)) == P.Body.vz(b) : P.Z}:
   {==}
 
-def energy_turn_eq(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +b: P.Body,
-  free: {P.Body.hit(P.Tick.turn(s, obs, b)) == False{} : Bool})
-  -> {P.Body.energy(g, P.Tick.turn(s, obs, b)) == P.Body.energy(g, b) : Nat}:
-  %Equal.sym(P.Body, P.Tick.turn(s, obs, b), P.Body.setrot(b, P.Body.rot(P.Tick.turn(s, obs, b))),
-    turn_eq(s, obs, b, free)) : {P.Body.energy(g, _) == P.Body.energy(g, b) : Nat}
-  energy_setrot(g, b, P.Body.rot(P.Tick.turn(s, obs, b)))
+# What a turn leaves the body turned as: the spin taken up. The contact
+# branches are not here because they mark the body knocked, which the
+# no-knock hypothesis leaves out -- a turn about a contact is a knock.
+def put_q(ok: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
+  +vz: P.Z, +hit: Bool, +rt: P.Rot, +r2: P.Rot,
+  free: {P.Body.hit(P.Tick.put(ok, s, g, obs, x, y, z, x, y, z, vx, vy, vz, False{}, hit, rt, r2)) == False{} : Bool})
+  -> {P.Rot.q(P.Body.rot(P.Tick.put(ok, s, g, obs, x, y, z, x, y, z, vx, vy, vz, False{}, hit, rt, r2))) == P.Rot.q(r2) : P.Quat}:
+  match ok:
+    case True{}:
+      {==}
+    case False{}:
+      Empty.absurd({P.Rot.q(rt) == P.Rot.q(r2) : P.Quat}, clash(free))
 
-def vx_turn_eq(+s: Nat, +obs: List<&2, P.Body>, +b: P.Body,
-  free: {P.Body.hit(P.Tick.turn(s, obs, b)) == False{} : Bool})
-  -> {P.Body.vx(P.Tick.turn(s, obs, b)) == P.Body.vx(b) : P.Z}:
-  %Equal.sym(P.Body, P.Tick.turn(s, obs, b), P.Body.setrot(b, P.Body.rot(P.Tick.turn(s, obs, b))),
-    turn_eq(s, obs, b, free)) : {P.Body.vx(_) == P.Body.vx(b) : P.Z}
-  vx_setrot(b, P.Body.rot(P.Tick.turn(s, obs, b)))
+def turn2_q(held: Bool, floor: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z,
+  +vy: P.Z, +vz: P.Z, +hit: Bool, +rt: P.Rot, +r2: P.Rot, +md: P.Mat,
+  free: {P.Body.hit(P.Tick.turn2(held, floor, s, g, obs, x, y, z, vx, vy, vz, held, hit, rt, r2, md)) == False{} : Bool})
+  -> {P.Rot.q(P.Body.rot(P.Tick.turn2(held, floor, s, g, obs, x, y, z, vx, vy, vz, held, hit, rt, r2, md)))
+      == P.Rot.q(r2) : P.Quat}:
+  match held floor:
+    case False{} _:
+      put_q(P.Tick.turnok(s, obs, y, x, y, z, P.Rot.q(r2), False{}), s, g, obs, x, y, z, vx, vy, vz, hit, rt, r2, free)
+    case True{} False{}:
+      Empty.absurd({P.Rot.q(P.Body.rot(P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s)))) == P.Rot.q(r2) : P.Quat},
+        clash(Equal.trans(Bool, True{},
+          P.Body.hit(P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s))), False{},
+          Equal.sym(Bool, P.Body.hit(P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s))), True{},
+            pivota_hit(md, s, g, obs, x, y, z, vx, vy, vz, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s))),
+          free)))
+    case True{} True{}:
+      Empty.absurd({P.Rot.q(P.Body.rot(P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, P.Hold.low(P.Rot.mat(P.Rot.q(rt)), s)))) == P.Rot.q(r2) : P.Quat},
+        clash(Equal.trans(Bool, True{},
+          P.Body.hit(P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, P.Hold.low(P.Rot.mat(P.Rot.q(rt)), s))), False{},
+          Equal.sym(Bool, P.Body.hit(P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, P.Hold.low(P.Rot.mat(P.Rot.q(rt)), s))), True{},
+            pivota_hit(md, s, g, obs, x, y, z, vx, vy, vz, True{}, rt, r2, P.Hold.low(P.Rot.mat(P.Rot.q(rt)), s))),
+          free)))
 
-def vz_turn_eq(+s: Nat, +obs: List<&2, P.Body>, +b: P.Body,
-  free: {P.Body.hit(P.Tick.turn(s, obs, b)) == False{} : Bool})
-  -> {P.Body.vz(P.Tick.turn(s, obs, b)) == P.Body.vz(b) : P.Z}:
-  %Equal.sym(P.Body, P.Tick.turn(s, obs, b), P.Body.setrot(b, P.Body.rot(P.Tick.turn(s, obs, b))),
-    turn_eq(s, obs, b, free)) : {P.Body.vz(_) == P.Body.vz(b) : P.Z}
-  vz_setrot(b, P.Body.rot(P.Tick.turn(s, obs, b)))
+def turn1_q(still: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
+  +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot,
+  nn: {still == False{} : Bool},
+  free: {P.Body.hit(P.Tick.turn1(still, s, g, obs, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == False{} : Bool})
+  -> {P.Rot.q(P.Body.rot(P.Tick.turn1(still, s, g, obs, P.Body{x, y, z, vx, vy, vz, gr, hit, rt}))) == P.Rot.q(P.Rot.free(rt)) : P.Quat}:
+  match still:
+    case True{}:
+      Empty.absurd({P.Rot.q(P.Body.rot(P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == P.Rot.q(P.Rot.free(rt)) : P.Quat}, clash(nn))
+    case False{}:
+      turn2_q(gr, P.Geo.onfloor(s, y, P.Rot.q(rt)), s, g, obs, x, y, z, vx, vy,
+        vz, hit, rt, P.Rot.free(rt),
+        P.Rot.mat(P.Quat.half(P.Quat.step(P.Rot.w(rt), P.Wv.mag(P.Rot.w(rt))))), free)
 
-def hit_turn_eq(+s: Nat, +obs: List<&2, P.Body>, +b: P.Body,
-  free: {P.Body.hit(P.Tick.turn(s, obs, b)) == False{} : Bool})
-  -> {P.Body.hit(P.Tick.turn(s, obs, b)) == P.Body.hit(b) : Bool}:
-  %Equal.sym(P.Body, P.Tick.turn(s, obs, b), P.Body.setrot(b, P.Body.rot(P.Tick.turn(s, obs, b))),
-    turn_eq(s, obs, b, free)) : {P.Body.hit(_) == P.Body.hit(b) : Bool}
-  hit_setrot(b, P.Body.rot(P.Tick.turn(s, obs, b)))
+# the free turn's orientation is the spin taken up
+def free_q(rt: P.Rot) -> {P.Rot.q(P.Rot.free(rt)) == P.Rot.turn(P.Rot.q(rt), P.Rot.w(rt)) : P.Quat}:
+  P.Rot{+q, +w} = rt
+  {==}
 
-def spin_eq(+s: Nat, r: P.Body & List<&2, P.Body>,
-  free: {P.Body.hit(P.Tick.body(P.Tick.spin(s, r))) == False{} : Bool})
-  -> {P.Tick.body(P.Tick.spin(s, r))
-      == P.Body.setrot(P.Tick.body(r), P.Body.rot(P.Tick.body(P.Tick.spin(s, r)))) : P.Body}:
+def turn_q0(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +b: P.Body,
+  spin: {P.Wv.null(P.Rot.w(P.Body.rot(b))) == False{} : Bool},
+  free: {P.Body.hit(P.Tick.turn0(s, g, obs, b)) == False{} : Bool})
+  -> {P.Rot.q(P.Body.rot(P.Tick.turn0(s, g, obs, b)))
+      == P.Rot.turn(P.Rot.q(P.Body.rot(b)), P.Rot.w(P.Body.rot(b))) : P.Quat}:
+  P.Body{+x, +y, +z, +vx, +vy, +vz, +gr, +hit, +rt} = b
+  Equal.trans(P.Quat,
+    P.Rot.q(P.Body.rot(P.Tick.turn1(P.Wv.null(P.Rot.w(rt)), s, g, obs, P.Body{x, y, z, vx, vy, vz, gr, hit, rt}))),
+    P.Rot.q(P.Rot.free(rt)), P.Rot.turn(P.Rot.q(rt), P.Rot.w(rt)),
+    turn1_q(P.Wv.null(P.Rot.w(rt)), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, spin, free),
+    free_q(rt))
+
+def turn_q(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +b: P.Body,
+  spin: {P.Wv.null(P.Rot.w(P.Body.rot(b))) == False{} : Bool},
+  free: {P.Body.hit(P.Tick.turn(s, g, obs, b)) == False{} : Bool})
+  -> {P.Rot.q(P.Body.rot(P.Tick.turn(s, g, obs, b)))
+      == P.Rot.turn(P.Rot.q(P.Body.rot(b)), P.Rot.w(P.Body.rot(b))) : P.Quat}:
+  %turn_sym(s, g, obs, b)
+    : {P.Rot.q(P.Body.rot(_)) == P.Rot.turn(P.Rot.q(P.Body.rot(b)), P.Rot.w(P.Body.rot(b))) : P.Quat}
+  turn_q0(s, g, obs, b, spin, turn_free(s, g, obs, b, free))
+
+def spin_q(+s: Nat, +g: Nat, r: P.Body & List<&2, P.Body>,
+  spin: {P.Wv.null(P.Rot.w(P.Body.rot(P.Tick.body(r)))) == False{} : Bool},
+  free: {P.Body.hit(P.Tick.body(P.Tick.spin(s, g, r))) == False{} : Bool})
+  -> {P.Rot.q(P.Body.rot(P.Tick.body(P.Tick.spin(s, g, r))))
+      == P.Rot.turn(P.Rot.q(P.Body.rot(P.Tick.body(r))), P.Rot.w(P.Body.rot(P.Tick.body(r)))) : P.Quat}:
   (+b, +obs) = r
-  turn_eq(s, obs, b, free)
+  turn_q(s, g, obs, b, spin, free)
+
+# What a turn leaves the body spinning as: a turn taken freely carries
+# the spin through untouched. A refused turn spends it, but a refused
+# turn is a knock, which the no-knock hypothesis leaves out.
+def free_w(rt: P.Rot) -> {P.Rot.w(P.Rot.free(rt)) == P.Rot.w(rt) : P.Wv}:
+  P.Rot{+q, +w} = rt
+  {==}
+
+def put_w(ok: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
+  +vz: P.Z, +hit: Bool, +rt: P.Rot, +r2: P.Rot,
+  free: {P.Body.hit(P.Tick.put(ok, s, g, obs, x, y, z, x, y, z, vx, vy, vz, False{}, hit, rt, r2)) == False{} : Bool})
+  -> {P.Rot.w(P.Body.rot(P.Tick.put(ok, s, g, obs, x, y, z, x, y, z, vx, vy, vz, False{}, hit, rt, r2))) == P.Rot.w(r2) : P.Wv}:
+  match ok:
+    case True{}:
+      {==}
+    case False{}:
+      Empty.absurd({P.Wv.zero() == P.Rot.w(r2) : P.Wv}, clash(free))
+
+def turn2_w(held: Bool, floor: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z,
+  +vy: P.Z, +vz: P.Z, +hit: Bool, +rt: P.Rot, +r2: P.Rot, +md: P.Mat,
+  free: {P.Body.hit(P.Tick.turn2(held, floor, s, g, obs, x, y, z, vx, vy, vz, held, hit, rt, r2, md)) == False{} : Bool})
+  -> {P.Rot.w(P.Body.rot(P.Tick.turn2(held, floor, s, g, obs, x, y, z, vx, vy, vz, held, hit, rt, r2, md)))
+      == P.Rot.w(r2) : P.Wv}:
+  match held floor:
+    case False{} _:
+      put_w(P.Tick.turnok(s, obs, y, x, y, z, P.Rot.q(r2), False{}), s, g, obs, x, y, z, vx, vy, vz, hit, rt, r2, free)
+    case True{} False{}:
+      Empty.absurd({P.Rot.w(P.Body.rot(P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s)))) == P.Rot.w(r2) : P.Wv},
+        clash(Equal.trans(Bool, True{},
+          P.Body.hit(P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s))), False{},
+          Equal.sym(Bool, P.Body.hit(P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s))), True{},
+            pivota_hit(md, s, g, obs, x, y, z, vx, vy, vz, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s))),
+          free)))
+    case True{} True{}:
+      Empty.absurd({P.Rot.w(P.Body.rot(P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, P.Hold.low(P.Rot.mat(P.Rot.q(rt)), s)))) == P.Rot.w(r2) : P.Wv},
+        clash(Equal.trans(Bool, True{},
+          P.Body.hit(P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, P.Hold.low(P.Rot.mat(P.Rot.q(rt)), s))), False{},
+          Equal.sym(Bool, P.Body.hit(P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, P.Hold.low(P.Rot.mat(P.Rot.q(rt)), s))), True{},
+            pivota_hit(md, s, g, obs, x, y, z, vx, vy, vz, True{}, rt, r2, P.Hold.low(P.Rot.mat(P.Rot.q(rt)), s))),
+          free)))
+
+def turn1_w(still: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
+  +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot,
+  free: {P.Body.hit(P.Tick.turn1(still, s, g, obs, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == False{} : Bool})
+  -> {P.Rot.w(P.Body.rot(P.Tick.turn1(still, s, g, obs, P.Body{x, y, z, vx, vy, vz, gr, hit, rt}))) == P.Rot.w(rt) : P.Wv}:
+  match still:
+    case True{}:
+      {==}
+    case False{}:
+      Equal.trans(P.Wv,
+        P.Rot.w(P.Body.rot(P.Tick.turn2(gr, P.Geo.onfloor(s, y, P.Rot.q(rt)),
+          s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Rot.free(rt),
+        P.Rot.mat(P.Quat.half(P.Quat.step(P.Rot.w(rt), P.Wv.mag(P.Rot.w(rt)))))))),
+        P.Rot.w(P.Rot.free(rt)), P.Rot.w(rt),
+        turn2_w(gr, P.Geo.onfloor(s, y, P.Rot.q(rt)), s, g, obs, x, y, z, vx, vy,
+          vz, hit, rt, P.Rot.free(rt),
+        P.Rot.mat(P.Quat.half(P.Quat.step(P.Rot.w(rt), P.Wv.mag(P.Rot.w(rt))))), free),
+        free_w(rt))
+
+def turn_w0(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +b: P.Body,
+  free: {P.Body.hit(P.Tick.turn0(s, g, obs, b)) == False{} : Bool})
+  -> {P.Rot.w(P.Body.rot(P.Tick.turn0(s, g, obs, b))) == P.Rot.w(P.Body.rot(b)) : P.Wv}:
+  P.Body{+x, +y, +z, +vx, +vy, +vz, +gr, +hit, +rt} = b
+  turn1_w(P.Wv.null(P.Rot.w(rt)), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, free)
+
+def turn_w(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +b: P.Body,
+  free: {P.Body.hit(P.Tick.turn(s, g, obs, b)) == False{} : Bool})
+  -> {P.Rot.w(P.Body.rot(P.Tick.turn(s, g, obs, b))) == P.Rot.w(P.Body.rot(b)) : P.Wv}:
+  %turn_sym(s, g, obs, b) : {P.Rot.w(P.Body.rot(_)) == P.Rot.w(P.Body.rot(b)) : P.Wv}
+  turn_w0(s, g, obs, b, turn_free(s, g, obs, b, free))
+
+def spin_w(+s: Nat, +g: Nat, r: P.Body & List<&2, P.Body>,
+  free: {P.Body.hit(P.Tick.body(P.Tick.spin(s, g, r))) == False{} : Bool})
+  -> {P.Rot.w(P.Body.rot(P.Tick.body(P.Tick.spin(s, g, r))))
+      == P.Rot.w(P.Body.rot(P.Tick.body(r))) : P.Wv}:
+  (+b, +obs) = r
+  turn_w(s, g, obs, b, free)
+
+# What the sideways moves leave alone: the height, the fall's speed and
+# whether the body is standing. Every way through them carries those
+# three untouched, the pushes included -- which is what lets the fall
+# stage have the last word on all three.
+def SAME(+vy: P.Z, +gr: Bool, -b2: P.Body) -> Type:
+  {P.Body.vy(b2) == vy : P.Z}
+  & {P.Body.ground(b2) == gr : Bool}
+
+def xput_same(ok: Bool, +obs: List<&2, P.Body>, +cx: Nat, +x: Nat, +y: Nat, +z: Nat, +v: P.Z, +vy: P.Z,
+  +vz: P.Z, +gr: Bool, +rt: P.Rot)
+  -> SAME(vy, gr, P.Tick.body(P.Move.xput(ok, obs, cx, x, y, z, v, vy, vz, gr, rt))):
+  match ok:
+    case True{}:
+      ({==}, {==})
+    case False{}:
+      ({==}, {==})
+
+def xpushed_same(r: P.Pushed, +cx: Nat, +y: Nat, +z: Nat, +vy: P.Z, +vz: P.Z, +gr: Bool, +rt: P.Rot)
+  -> SAME(vy, gr, P.Tick.body(P.Move.xpushed(r, cx, y, z, vy, vz, gr, rt))):
+  P.Pushed{+v, +obs, at} = r
+  ({==}, {==})
+
+def xtouch_same(touch: Bool, +s: Nat, +obs: List<&2, P.Body>, +d: P.Z, +cx: Nat, +pr: Nat, +x: Nat, +y: Nat, +z: Nat,
+  +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +rt: P.Rot)
+  -> SAME(vy, gr, P.Tick.body(P.Move.xtouch(touch, s, obs, d, cx, pr, x, y, z, vx, vy, vz, gr, rt))):
+  match touch:
+    case True{}:
+      xpushed_same(P.Push.x(s, obs, d, pr, y, z, vx, P.Rot.q(rt), P.Geo.head(s, pr, y, z, P.Rot.q(rt), obs)), cx, y, z,
+        vy, vz, gr, rt)
+    case False{}:
+      xput_same(P.Geo.free(s, cx, y, z, P.Rot.q(rt), obs), obs, cx, x, y, z, vx, vy, vz, gr, rt)
+
+def zput_same(ok: Bool, +obs: List<&2, P.Body>, +cz: Nat, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
+  +v: P.Z, +gr: Bool, +rt: P.Rot)
+  -> SAME(vy, gr, P.Tick.body(P.Move.zput(ok, obs, cz, x, y, z, vx, vy, v, gr, rt))):
+  match ok:
+    case True{}:
+      ({==}, {==})
+    case False{}:
+      ({==}, {==})
+
+def zpushed_same(r: P.Pushed, +x: Nat, +y: Nat, +cz: Nat, +vx: P.Z, +vy: P.Z, +gr: Bool, +rt: P.Rot)
+  -> SAME(vy, gr, P.Tick.body(P.Move.zpushed(r, x, y, cz, vx, vy, gr, rt))):
+  P.Pushed{+v, +obs, at} = r
+  ({==}, {==})
+
+def ztouch_same(touch: Bool, +s: Nat, +obs: List<&2, P.Body>, +d: P.Z, +cz: Nat, +pr: Nat, +x: Nat, +y: Nat, +z: Nat,
+  +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +rt: P.Rot)
+  -> SAME(vy, gr, P.Tick.body(P.Move.ztouch(touch, s, obs, d, cz, pr, x, y, z, vx, vy, vz, gr, rt))):
+  match touch:
+    case True{}:
+      zpushed_same(P.Push.z(s, obs, d, x, y, pr, vz, P.Rot.q(rt), P.Geo.head(s, x, y, pr, P.Rot.q(rt), obs)), x, y, cz,
+        vx, vy, gr, rt)
+    case False{}:
+      zput_same(P.Geo.free(s, x, y, cz, P.Rot.q(rt), obs), obs, cz, x, y, z, vx, vy, vz, gr, rt)
+
+def same_v(+vy: P.Z, +gr: Bool, +b2: P.Body, t: SAME(vy, gr, b2))
+  -> {P.Body.vy(b2) == vy : P.Z}:
+  (+b, +c) = t
+  b
+
+def same_g(+vy: P.Z, +gr: Bool, +b2: P.Body, t: SAME(vy, gr, b2))
+  -> {P.Body.ground(b2) == gr : Bool}:
+  (+b, +c) = t
+  c
+
+def xok_same(+obs: List<&2, P.Body>, +cx: Nat, +b: P.Body)
+  -> SAME(P.Body.vy(b), P.Body.ground(b), P.Tick.body(P.Move.xok(obs, cx, b))):
+  P.Body{+x, +y, +z, +vx, +vy, +vz, +gr, +hit, +rt} = b
+  ({==}, {==})
+
+def xno_same(+s: Nat, +obs: List<&2, P.Body>, +d: P.Z, +cx: Nat, +b: P.Body)
+  -> SAME(P.Body.vy(b), P.Body.ground(b), P.Tick.body(P.Move.xno(s, obs, d, cx, b))):
+  P.Body{+x, +y, +z, +vx, +vy, +vz, +gr, +hit, +rt} = b
+  xtouch_same(P.Move.xtouches(s, obs, d, P.Move.xto(s, obs, d, x, y, z, P.Rot.q(rt)), y, z, P.Rot.q(rt)), s, obs, d,
+    P.Move.xto(s, obs, d, x, y, z, P.Rot.q(rt)), P.Z.shift(P.Move.xto(s, obs, d, x, y, z, P.Rot.q(rt)), P.Z.like(d, 1n)),
+    x, y, z, vx, vy, vz, gr, rt)
+
+def xgo_same(ok: Bool, +s: Nat, +obs: List<&2, P.Body>, +d: P.Z, +cx: Nat, +b: P.Body)
+  -> SAME(P.Body.vy(b), P.Body.ground(b), P.Tick.body(P.Move.xgo(s, ok, obs, d, cx, b))):
+  match ok:
+    case True{}:
+      xok_same(obs, cx, b)
+    case False{}:
+      xno_same(s, obs, d, cx, b)
+
+def mx_same(+s: Nat, +obs: List<&2, P.Body>, +v0: P.Z, +b: P.Body)
+  -> SAME(P.Body.vy(b), P.Body.ground(b), P.Tick.body(P.Move.x(s, obs, v0, b))):
+  xgo_same(Bool.and(P.Z.fits(P.Body.x(b), P.Z.add(v0, P.Body.vx(b))),
+      P.Geo.free(s, P.Z.shift(P.Body.x(b), P.Z.add(v0, P.Body.vx(b))), P.Body.y(b), P.Body.z(b),
+        P.Rot.q(P.Body.rot(b)), obs)),
+    s, obs, P.Z.add(v0, P.Body.vx(b)), P.Z.shift(P.Body.x(b), P.Z.add(v0, P.Body.vx(b))), b)
+
+def zok_same(+obs: List<&2, P.Body>, +cz: Nat, +b: P.Body)
+  -> SAME(P.Body.vy(b), P.Body.ground(b), P.Tick.body(P.Move.zok(obs, cz, b))):
+  P.Body{+x, +y, +z, +vx, +vy, +vz, +gr, +hit, +rt} = b
+  ({==}, {==})
+
+def zno_same(+s: Nat, +obs: List<&2, P.Body>, +d: P.Z, +cz: Nat, +b: P.Body)
+  -> SAME(P.Body.vy(b), P.Body.ground(b), P.Tick.body(P.Move.zno(s, obs, d, cz, b))):
+  P.Body{+x, +y, +z, +vx, +vy, +vz, +gr, +hit, +rt} = b
+  ztouch_same(P.Move.ztouches(s, obs, d, x, y, P.Move.zto(s, obs, d, x, y, z, P.Rot.q(rt)), P.Rot.q(rt)), s, obs, d,
+    P.Move.zto(s, obs, d, x, y, z, P.Rot.q(rt)), P.Z.shift(P.Move.zto(s, obs, d, x, y, z, P.Rot.q(rt)), P.Z.like(d, 1n)),
+    x, y, z, vx, vy, vz, gr, rt)
+
+def zgo_same(ok: Bool, +s: Nat, +obs: List<&2, P.Body>, +d: P.Z, +cz: Nat, +b: P.Body)
+  -> SAME(P.Body.vy(b), P.Body.ground(b), P.Tick.body(P.Move.zgo(s, ok, obs, d, cz, b))):
+  match ok:
+    case True{}:
+      zok_same(obs, cz, b)
+    case False{}:
+      zno_same(s, obs, d, cz, b)
+
+def mz_same(+s: Nat, +obs: List<&2, P.Body>, +v0: P.Z, +b: P.Body)
+  -> SAME(P.Body.vy(b), P.Body.ground(b), P.Tick.body(P.Move.z(s, obs, v0, b))):
+  zgo_same(Bool.and(P.Z.fits(P.Body.z(b), P.Z.add(v0, P.Body.vz(b))),
+      P.Geo.free(s, P.Body.x(b), P.Body.y(b), P.Z.shift(P.Body.z(b), P.Z.add(v0, P.Body.vz(b))),
+        P.Rot.q(P.Body.rot(b)), obs)),
+    s, obs, P.Z.add(v0, P.Body.vz(b)), P.Z.shift(P.Body.z(b), P.Z.add(v0, P.Body.vz(b))), b)
+
+# Still going down, or standing on something -- never stopped in mid-air
+def FS(-b2: P.Body) -> Type:
+  {Bool.or(Nat.is_lt(0n, P.Z.neg(P.Body.vy(b2))), P.Body.ground(b2)) == True{} : Bool}
+
+def lt_add(q: Nat, +g: Nat, h: {Nat.is_lt(0n, q) == True{} : Bool})
+  -> {Nat.is_lt(0n, Nat.add(q, g)) == True{} : Bool}:
+  match q:
+    case 0n:
+      Empty.absurd({Nat.is_lt(0n, Nat.add(0n, g)) == True{} : Bool}, clash(Equal.sym(Bool, False{}, True{}, h)))
+    case 1n+p:
+      {==}
+
+def or_here(+a: Bool, +b: Bool, h: {a == True{} : Bool}) -> {Bool.or(a, b) == True{} : Bool}:
+  %Equal.sym(Bool, a, True{}, h) : {Bool.or(_, b) == True{} : Bool}
+  {==}
+
+def or_there(a: Bool, +b: Bool, h: {b == True{} : Bool}) -> {Bool.or(a, b) == True{} : Bool}:
+  match a:
+    case True{}:
+      {==}
+    case False{}:
+      h
+
+# A fall that is refused is a landing: either way the body stands
+# A refused fall is a landing where the body is held, and nothing at all
+# where it is not: it stays, going down as fast as it came in
+def land_fs(ok: Bool, +x: Nat, +y: Nat, +z: Nat, +ny: Nat, +vx: P.Z, +vz: P.Z, +vd: Nat, +rt: P.Rot,
+  hv: {Nat.is_lt(0n, vd) == True{} : Bool})
+  -> FS(P.Move.land(ok, x, y, z, ny, vx, vz, P.Neg{vd}, rt)):
+  match ok:
+    case True{}:
+      or_there(Nat.is_lt(0n, P.Z.neg(P.Pos{0n})), True{}, {==})
+    case False{}:
+      or_here(Nat.is_lt(0n, vd), False{}, hv)
+
+def fall_fs(ok: Bool, +s: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +qd: Nat,
+  +vx: P.Z, +vd: Nat, +vz: P.Z, +v0d: Nat, +hit: Bool, +rt: P.Rot,
+  hv: {Nat.is_lt(0n, vd) == True{} : Bool}, hv0: {Nat.is_lt(0n, v0d) == True{} : Bool})
+  -> FS(P.Move.fall(s, ok, obs, x, y, z, qd, vx, P.Neg{vd}, vz, P.Neg{v0d}, hit, rt)):
+  match ok:
+    case True{}:
+      or_here(Nat.is_lt(0n, vd), False{}, hv)
+    case False{}:
+      land_fs(P.Move.landok(s, obs, x, P.Move.landy(s, obs, x, y, z, P.Rot.q(rt), qd), z, P.Rot.q(rt)), x, y, z,
+        P.Move.landy(s, obs, x, y, z, P.Rot.q(rt), qd), vx, vz, v0d, rt, hv0)
+
+def fly_fs(+s: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vz: P.Z, +hit: Bool,
+  +g: Nat, +q: Nat, +rt: P.Rot, +going: {Nat.is_lt(0n, q) == True{} : Bool})
+  -> FS(P.Move.fly(s, obs, x, y, z, vx, P.Neg{q}, vz, hit, P.Fly.step(g, P.Neg{q}), rt)):
+  fall_fs(P.Move.fallok(s, obs, x, y, z, Nat.add(Nat.add(q, q), g), P.Rot.q(rt)),
+    s, obs, x, y, z, Nat.add(Nat.add(q, q), g), vx, Nat.add(q, g), vz, q, hit, rt, lt_add(q, g, going), going)
+
+# What the turn leaves alone: the fall's speed and whether the body is
+# standing. Every way through it carries both untouched, contact turns
+# included, so the fall stage has the last word on both.
+def VG(+vy: P.Z, +gr: Bool, -b2: P.Body) -> Type:
+  {P.Body.vy(b2) == vy : P.Z} & {P.Body.ground(b2) == gr : Bool}
+
+# What the turn does to a falling body. A turn that is refused, or taken
+# in the air, leaves its fall alone. One that carries a standing body off
+# what held it lets it go -- going down, as fast as its drop pays for,
+# and a turn that would lift it off without letting it down at all is
+# refused. So, gravity on, a body going down or standing comes out of the
+# turn going down or standing.
+
+# a < b gives 0 < b - a
+def lt_sub(+a: Nat, +b: Nat, h: {Nat.is_lt(a, b) == True{} : Bool}) -> {Nat.is_lt(0n, Nat.sub(b, a)) == True{} : Bool}:
+  match a b:
+    case 0n 0n:
+      Empty.absurd({Nat.is_lt(0n, 0n) == True{} : Bool}, clash2(h))
+    case 0n 1n+q:
+      {==}
+    case 1n+p 0n:
+      Empty.absurd({Nat.is_lt(0n, Nat.sub(0n, 1n+p)) == True{} : Bool}, clash2(h))
+    case 1n+p 1n+q:
+      lt_sub(p, q, h)
+
+# the smaller of two numbers above 0 is above 0
+def low_pos(le: Bool, +a: Nat, +b: Nat, ha: {Nat.is_lt(0n, a) == True{} : Bool}, hb: {Nat.is_lt(0n, b) == True{} : Bool})
+  -> {Nat.is_lt(0n, P.Pick.n(le, a, b)) == True{} : Bool}:
+  match le:
+    case True{}:
+      ha
+    case False{}:
+      hb
+
+# a or b, and not b: a
+def or_left(a: Bool, -b: Bool, h: {Bool.or(a, b) == True{} : Bool}, hb: {b == False{} : Bool}) -> {a == True{} : Bool}:
+  match a:
+    case True{}:
+      {==}
+    case False{}:
+      Empty.absurd({False{} == True{} : Bool}, clash(Equal.trans(Bool, True{}, b, False{}, Equal.sym(Bool, b, True{}, h), hb)))
+
+def putt_fs(gr: Bool, st: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +y: Nat, +nx: Nat, +ny: Nat, +nz: Nat,
+  +vy: P.Z, +q: P.Quat,
+  est: {P.Tick.stands(gr, s, obs, nx, ny, nz, q) == st : Bool},
+  keep: {P.Tick.keeps(gr, s, obs, y, nx, ny, nz, q) == True{} : Bool},
+  heavy: {Nat.is_lt(0n, g) == True{} : Bool},
+  f: {Bool.or(Nat.is_lt(0n, P.Z.neg(vy)), gr) == True{} : Bool})
+  -> {Bool.or(Nat.is_lt(0n, P.Z.neg(P.Tick.letv(gr, st, g, Nat.sub(y, ny), vy))), st) == True{} : Bool}:
+  match gr st:
+    case True{} True{}:
+      or_there(Nat.is_lt(0n, P.Z.neg(vy)), True{}, {==})
+    case True{} False{}:
+      or_here(Nat.is_lt(0n, P.Pick.low(g, Nat.sub(y, ny))), False{},
+        low_pos(Nat.is_le(g, Nat.sub(y, ny)), g, Nat.sub(y, ny), heavy,
+          lt_sub(ny, y, or_left(Nat.is_lt(ny, y), Bool.not(P.Tick.sinks(s, obs, nx, ny, nz, q)), keep, est))))
+    case False{} True{}:
+      Empty.absurd({Bool.or(Nat.is_lt(0n, P.Z.neg(vy)), True{}) == True{} : Bool}, clash2(est))
+    case False{} False{}:
+      f
+
+def put_fs(ok: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +nx: Nat, +ny: Nat,
+  +nz: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot,
+  eok: {P.Tick.turnok(s, obs, y, nx, ny, nz, P.Rot.q(r2), gr) == ok : Bool},
+  heavy: {Nat.is_lt(0n, g) == True{} : Bool},
+  f: FS(P.Body{x, y, z, vx, vy, vz, gr, hit, rt}))
+  -> FS(P.Tick.put(ok, s, g, obs, x, y, z, nx, ny, nz, vx, vy, vz, gr, hit, rt, r2)):
+  match ok:
+    case True{}:
+      putt_fs(gr, P.Tick.stands(gr, s, obs, nx, ny, nz, P.Rot.q(r2)), s, g, obs, y, nx, ny, nz, vy, P.Rot.q(r2), {==},
+        and_r(P.Tick.fits(s, obs, nx, ny, nz, P.Rot.q(r2)), P.Tick.keeps(gr, s, obs, y, nx, ny, nz, P.Rot.q(r2)),
+          and_r(Nat.is_le(ny, y), Bool.and(P.Tick.fits(s, obs, nx, ny, nz, P.Rot.q(r2)),
+            P.Tick.keeps(gr, s, obs, y, nx, ny, nz, P.Rot.q(r2))), eok)),
+        heavy, f)
+    case False{}:
+      f
+
+def place_fs(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +nx: Nat, +ny: Nat, +nz: Nat,
+  +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot,
+  heavy: {Nat.is_lt(0n, g) == True{} : Bool}, f: FS(P.Body{x, y, z, vx, vy, vz, gr, hit, rt}))
+  -> FS(P.Tick.place(s, g, obs, x, y, z, nx, ny, nz, vx, vy, vz, gr, hit, rt, r2)):
+  put_fs(P.Tick.turnok(s, obs, y, nx, ny, nz, P.Rot.q(r2), gr), s, g, obs, x, y, z, nx, ny, nz,
+    vx, vy, vz, gr, hit, rt, r2, {==}, heavy, f)
+
+def pivot_fs(m: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
+  +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, +rx: P.Z, +ry: P.Z, +rz: P.Z,
+  heavy: {Nat.is_lt(0n, g) == True{} : Bool}, f: FS(P.Body{x, y, z, vx, vy, vz, gr, hit, rt}))
+  -> FS(P.Tick.pivot(m, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, rx, ry, rz)):
+  P.Mat{+axx, +axy, +axz, +ayx, +ayy, +ayz, +azx, +azy, +azz} = m
+  +nx = P.Pivot.c(x, rx, axx, ayx, azx, rx, ry, rz)
+  +ny = P.Pivot.c(y, ry, axy, ayy, azy, rx, ry, rz)
+  +nz = P.Pivot.c(z, rz, axz, ayz, azz, rx, ry, rz)
+  +d = P.Tick.drop(s, obs, nx, y, nz, P.Rot.q(r2), Nat.add(Nat.sub(y, P.Pick.low(ny, y)), Nat.div(s, 256n)))
+  place_fs(s, g, obs, x, y, z, nx, Nat.sub(y, d), nz, vx, vy, vz, gr, hit, rt, r2, heavy, f)
+
+def pivota_fs(md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
+  +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, a: P.Wv,
+  heavy: {Nat.is_lt(0n, g) == True{} : Bool}, f: FS(P.Body{x, y, z, vx, vy, vz, gr, hit, rt}))
+  -> FS(P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, a)):
+  P.Wv{+ax, +ay, +az} = a
+  pivot_fs(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, ax, ay, az, heavy, f)
+
+def turn2_fs(held: Bool, floor: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z,
+  +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, +md: P.Mat,
+  heavy: {Nat.is_lt(0n, g) == True{} : Bool}, f: FS(P.Body{x, y, z, vx, vy, vz, gr, hit, rt}))
+  -> FS(P.Tick.turn2(held, floor, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, md)):
+  match held floor:
+    case False{} _:
+      place_fs(s, g, obs, x, y, z, x, y, z, vx, vy, vz, gr, hit, rt, r2, heavy, f)
+    case True{} False{}:
+      pivota_fs(md, s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s), heavy, f)
+    case True{} True{}:
+      pivota_fs(md, s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, r2, P.Hold.low(P.Rot.mat(P.Rot.q(rt)), s), heavy, f)
+
+def turn1b_fs(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +b: P.Body,
+  heavy: {Nat.is_lt(0n, g) == True{} : Bool}, f: FS(b))
+  -> FS(P.Tick.turn1b(s, g, obs, b)):
+  P.Body{+x, +y, +z, +vx, +vy, +vz, +gr, +hit, +rt} = b
+  turn2_fs(gr, P.Geo.onfloor(s, y, P.Rot.q(rt)), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Rot.free(rt),
+    P.Rot.mat(P.Quat.half(P.Quat.step(P.Rot.w(rt), P.Wv.mag(P.Rot.w(rt))))), heavy, f)
+
+def turn1_fs(still: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +b: P.Body,
+  heavy: {Nat.is_lt(0n, g) == True{} : Bool}, f: FS(b))
+  -> FS(P.Tick.turn1(still, s, g, obs, b)):
+  match still:
+    case True{}:
+      f
+    case False{}:
+      turn1b_fs(s, g, obs, b, heavy, f)
+
+def turn_fs(+s: Nat, +g: Nat, obs: List<&2, P.Body>, +b: P.Body,
+  heavy: {Nat.is_lt(0n, g) == True{} : Bool}, f: FS(b))
+  -> FS(P.Tick.turn(s, g, obs, b)):
+  match obs:
+    case []:
+      turn1_fs(P.Wv.null(P.Rot.w(P.Body.rot(b))), s, g, [], b, heavy, f)
+    case o <> rest:
+      turn1_fs(P.Wv.null(P.Rot.w(P.Body.rot(b))), s, g, o <> rest, b, heavy, f)
+
+def spin_fs(+s: Nat, +g: Nat, r: P.Body & List<&2, P.Body>,
+  heavy: {Nat.is_lt(0n, g) == True{} : Bool}, f: FS(P.Tick.body(r)))
+  -> FS(P.Tick.body(P.Tick.spin(s, g, r))):
+  (+b, +obs) = r
+  turn_fs(s, g, obs, b, heavy, f)
+
+def yfly_fs(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +b: P.Body, +q: Nat,
+  hv: {P.Body.vy(b) == P.Neg{q} : P.Z},
+  going: {Nat.is_lt(0n, q) == True{} : Bool})
+  -> FS(P.Move.yfly(s, g, obs, b)):
+  P.Body{+x, +y, +z, +vx, +vy, +vz, gr, +hit, +rt} = b
+  %Equal.sym(P.Z, vy, P.Neg{q}, hv)
+    : FS(P.Move.fly(s, obs, x, y, z, vx, _, vz, hit, P.Fly.step(g, _), rt))
+  fly_fs(s, obs, x, y, z, vx, vz, hit, g, q, rt, going)
+
+def ygo_fs(gr: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +b: P.Body, +q: Nat,
+  hg: {gr == False{} : Bool},
+  hv: {P.Body.vy(b) == P.Neg{q} : P.Z},
+  going: {Nat.is_lt(0n, q) == True{} : Bool})
+  -> FS(P.Move.ygo(s, gr, g, obs, b)):
+  match gr:
+    case True{}:
+      Empty.absurd(FS(P.Move.ystay(s, g, obs, b)), clash(hg))
+    case False{}:
+      yfly_fs(s, g, obs, b, q, hv, going)
+
+def my_fs(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +b: P.Body, +q: Nat,
+  hg: {P.Body.ground(b) == False{} : Bool},
+  hv: {P.Body.vy(b) == P.Neg{q} : P.Z},
+  going: {Nat.is_lt(0n, q) == True{} : Bool})
+  -> FS(P.Move.y(s, g, obs, b)):
+  ygo_fs(P.Body.ground(b), s, g, obs, b, q, hg, hv, going)
+
+def energy_turn_eq(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +b: P.Body,
+  free: {P.Body.hit(P.Tick.turn(s, g, obs, b)) == False{} : Bool})
+  -> {P.Body.energy(g, P.Tick.turn(s, g, obs, b)) == P.Body.energy(g, b) : Nat}:
+  %Equal.sym(P.Body, P.Tick.turn(s, g, obs, b), P.Body.setrot(b, P.Body.rot(P.Tick.turn(s, g, obs, b))),
+    turn_eq(s, g, obs, b, free)) : {P.Body.energy(g, _) == P.Body.energy(g, b) : Nat}
+  energy_setrot(g, b, P.Body.rot(P.Tick.turn(s, g, obs, b)))
+
+def vx_turn_eq(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +b: P.Body,
+  free: {P.Body.hit(P.Tick.turn(s, g, obs, b)) == False{} : Bool})
+  -> {P.Body.vx(P.Tick.turn(s, g, obs, b)) == P.Body.vx(b) : P.Z}:
+  %Equal.sym(P.Body, P.Tick.turn(s, g, obs, b), P.Body.setrot(b, P.Body.rot(P.Tick.turn(s, g, obs, b))),
+    turn_eq(s, g, obs, b, free)) : {P.Body.vx(_) == P.Body.vx(b) : P.Z}
+  vx_setrot(b, P.Body.rot(P.Tick.turn(s, g, obs, b)))
+
+def vz_turn_eq(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +b: P.Body,
+  free: {P.Body.hit(P.Tick.turn(s, g, obs, b)) == False{} : Bool})
+  -> {P.Body.vz(P.Tick.turn(s, g, obs, b)) == P.Body.vz(b) : P.Z}:
+  %Equal.sym(P.Body, P.Tick.turn(s, g, obs, b), P.Body.setrot(b, P.Body.rot(P.Tick.turn(s, g, obs, b))),
+    turn_eq(s, g, obs, b, free)) : {P.Body.vz(_) == P.Body.vz(b) : P.Z}
+  vz_setrot(b, P.Body.rot(P.Tick.turn(s, g, obs, b)))
+
+def hit_turn_eq(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +b: P.Body,
+  free: {P.Body.hit(P.Tick.turn(s, g, obs, b)) == False{} : Bool})
+  -> {P.Body.hit(P.Tick.turn(s, g, obs, b)) == P.Body.hit(b) : Bool}:
+  %Equal.sym(P.Body, P.Tick.turn(s, g, obs, b), P.Body.setrot(b, P.Body.rot(P.Tick.turn(s, g, obs, b))),
+    turn_eq(s, g, obs, b, free)) : {P.Body.hit(_) == P.Body.hit(b) : Bool}
+  hit_setrot(b, P.Body.rot(P.Tick.turn(s, g, obs, b)))
+
+def spin_eq(+s: Nat, +g: Nat, r: P.Body & List<&2, P.Body>,
+  free: {P.Body.hit(P.Tick.body(P.Tick.spin(s, g, r))) == False{} : Bool})
+  -> {P.Tick.body(P.Tick.spin(s, g, r))
+      == P.Body.setrot(P.Tick.body(r), P.Body.rot(P.Tick.body(P.Tick.spin(s, g, r)))) : P.Body}:
+  (+b, +obs) = r
+  turn_eq(s, g, obs, b, free)
 
 # the tick's linear part, as the laws name it
 # The tick's linear part is asked for in a shape the checker can carry
@@ -1030,37 +1541,37 @@ def STEP(+g: Nat, +mu: Nat, +j: Nat, +acc: Nat, +s: Nat, +obs: List<&2, P.Body>,
   +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, inp: P.In) -> P.Body & List<&2, P.Body>:
   P.Body.step(P.K{g, mu, j, acc, s}, obs, inp, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})
 
-def spin_sym(+s: Nat, r: P.Body & List<&2, P.Body>,
-  +free: {P.Body.hit(P.Tick.body(P.Tick.spin(s, r))) == False{} : Bool})
-  -> {P.Body.setrot(P.Tick.body(r), P.Body.rot(P.Tick.body(P.Tick.spin(s, r))))
-      == P.Tick.body(P.Tick.spin(s, r)) : P.Body}:
-  Equal.sym(P.Body, P.Tick.body(P.Tick.spin(s, r)),
-    P.Body.setrot(P.Tick.body(r), P.Body.rot(P.Tick.body(P.Tick.spin(s, r)))), spin_eq(s, r, free))
+def spin_sym(+s: Nat, +g: Nat, r: P.Body & List<&2, P.Body>,
+  +free: {P.Body.hit(P.Tick.body(P.Tick.spin(s, g, r))) == False{} : Bool})
+  -> {P.Body.setrot(P.Tick.body(r), P.Body.rot(P.Tick.body(P.Tick.spin(s, g, r))))
+      == P.Tick.body(P.Tick.spin(s, g, r)) : P.Body}:
+  Equal.sym(P.Body, P.Tick.body(P.Tick.spin(s, g, r)),
+    P.Body.setrot(P.Tick.body(r), P.Body.rot(P.Tick.body(P.Tick.spin(s, g, r)))), spin_eq(s, g, r, free))
 
 def spin_energy(+s: Nat, +g: Nat, r: P.Body & List<&2, P.Body>,
-  free: {P.Body.hit(P.Tick.body(P.Tick.spin(s, r))) == False{} : Bool})
-  -> {P.Body.energy(g, P.Tick.body(P.Tick.spin(s, r))) == P.Body.energy(g, P.Tick.body(r)) : Nat}:
+  free: {P.Body.hit(P.Tick.body(P.Tick.spin(s, g, r))) == False{} : Bool})
+  -> {P.Body.energy(g, P.Tick.body(P.Tick.spin(s, g, r))) == P.Body.energy(g, P.Tick.body(r)) : Nat}:
   (+b, +obs) = r
   energy_turn_eq(s, g, obs, b, free)
 
-def spin_vx(+s: Nat, r: P.Body & List<&2, P.Body>,
-  free: {P.Body.hit(P.Tick.body(P.Tick.spin(s, r))) == False{} : Bool})
-  -> {P.Body.vx(P.Tick.body(P.Tick.spin(s, r))) == P.Body.vx(P.Tick.body(r)) : P.Z}:
+def spin_vx(+s: Nat, +g: Nat, r: P.Body & List<&2, P.Body>,
+  free: {P.Body.hit(P.Tick.body(P.Tick.spin(s, g, r))) == False{} : Bool})
+  -> {P.Body.vx(P.Tick.body(P.Tick.spin(s, g, r))) == P.Body.vx(P.Tick.body(r)) : P.Z}:
   (+b, +obs) = r
-  vx_turn_eq(s, obs, b, free)
+  vx_turn_eq(s, g, obs, b, free)
 
-def spin_vz(+s: Nat, r: P.Body & List<&2, P.Body>,
-  free: {P.Body.hit(P.Tick.body(P.Tick.spin(s, r))) == False{} : Bool})
-  -> {P.Body.vz(P.Tick.body(P.Tick.spin(s, r))) == P.Body.vz(P.Tick.body(r)) : P.Z}:
+def spin_vz(+s: Nat, +g: Nat, r: P.Body & List<&2, P.Body>,
+  free: {P.Body.hit(P.Tick.body(P.Tick.spin(s, g, r))) == False{} : Bool})
+  -> {P.Body.vz(P.Tick.body(P.Tick.spin(s, g, r))) == P.Body.vz(P.Tick.body(r)) : P.Z}:
   (+b, +obs) = r
-  vz_turn_eq(s, obs, b, free)
+  vz_turn_eq(s, g, obs, b, free)
 
-def spin_unhit(+s: Nat, r: P.Body & List<&2, P.Body>,
-  +free: {P.Body.hit(P.Tick.body(P.Tick.spin(s, r))) == False{} : Bool})
+def spin_unhit(+s: Nat, +g: Nat, r: P.Body & List<&2, P.Body>,
+  +free: {P.Body.hit(P.Tick.body(P.Tick.spin(s, g, r))) == False{} : Bool})
   -> {P.Body.hit(P.Tick.body(r)) == False{} : Bool}:
   (+b, +obs) = r
-  Equal.trans(Bool, P.Body.hit(b), P.Body.hit(P.Tick.turn(s, obs, b)), False{},
-    Equal.sym(Bool, P.Body.hit(P.Tick.turn(s, obs, b)), P.Body.hit(b), hit_turn_eq(s, obs, b, free)), free)
+  Equal.trans(Bool, P.Body.hit(b), P.Body.hit(P.Tick.turn(s, g, obs, b)), False{},
+    Equal.sym(Bool, P.Body.hit(P.Tick.turn(s, g, obs, b)), P.Body.hit(b), hit_turn_eq(s, g, obs, b, free)), free)
 
 def FF(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +rt: P.Rot) -> Data:
   {P.Body.hit(P.Tick.body(P.Tick.z(s, g, vz, P.Move.xgo(s, Ok1(s, obs, vx, x, y, z, vx, rt), obs, P.Z.add(vx, vx),
@@ -1091,23 +1602,23 @@ def Laws.free_flight_energy(k, obs, b, air, free):
               P.Body{x, y, z, vx, vy, vz, True{}, hit, rt}))) == P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, True{}, hit, rt}) : Nat},
             clash(air))
         case False{}:
-          %Equal.sym(P.Body, P.Tick.body(P.Tick.spin(s, P.Body.step(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, False{}, hit, rt}))),
+          %Equal.sym(P.Body, P.Tick.body(P.Tick.spin(s, g, P.Body.step(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, False{}, hit, rt}))),
             P.Body.setrot(P.Tick.body(P.Body.step(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, False{}, hit, rt})),
-              P.Body.rot(P.Tick.body(P.Tick.spin(s, P.Body.step(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, False{}, hit, rt}))))),
-            spin_eq(s, P.Body.step(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, False{}, hit, rt}), free))
+              P.Body.rot(P.Tick.body(P.Tick.spin(s, g, P.Body.step(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, False{}, hit, rt}))))),
+            spin_eq(s, g, P.Body.step(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, False{}, hit, rt}), free))
             : {P.Body.energy(g, _) == P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, False{}, hit, rt}) : Nat}
           Equal.trans(Nat,
             P.Body.energy(g, P.Body.setrot(P.Tick.body(P.Body.step(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, False{}, hit, rt})),
-              P.Body.rot(P.Tick.body(P.Tick.spin(s, P.Body.step(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, False{}, hit, rt})))))),
+              P.Body.rot(P.Tick.body(P.Tick.spin(s, g, P.Body.step(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, False{}, hit, rt})))))),
             P.Body.energy(g, P.Tick.body(P.Body.step(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, False{}, hit, rt}))),
             P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, False{}, hit, rt}),
             energy_setrot(g, P.Tick.body(P.Body.step(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, False{}, hit, rt})),
-              P.Body.rot(P.Tick.body(P.Tick.spin(s, P.Body.step(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, False{}, hit, rt}))))),
+              P.Body.rot(P.Tick.body(P.Tick.spin(s, g, P.Body.step(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, False{}, hit, rt}))))),
             energy_step(g, P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, False{}, hit, rt},
               P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, False{}, hit, rt}),
               ffe(rt, s, g, obs, x, y, z, vx, vy, vz, hit,
                 unhit_step(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, False{}, hit, rt},
-                  spin_unhit(s, P.Body.step(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, False{}, hit, rt}), free)))))
+                  spin_unhit(s, g, P.Body.step(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, False{}, hit, rt}), free)))))
 
 # Kinematics in flight
 # --------------------
@@ -1247,12 +1758,12 @@ def Laws.free_flight_kinematics(k, obs, b, air, free):
           Empty.absurd(Kin(g, P.Body{x, y, z, vx, vy, vz, True{}, hit, rt}, P.Tick.body(P.Body.tick(P.K{g, mu, j, acc, s}, obs,
               P.In.idle(), P.Body{x, y, z, vx, vy, vz, True{}, hit, rt}))), clash(air))
         case False{}:
-          %spin_sym(s, STEP(g, mu, j, acc, s, obs, x, y, z, vx, vy, vz, False{}, hit, rt, P.In.idle()), free)
+          %spin_sym(s, g, STEP(g, mu, j, acc, s, obs, x, y, z, vx, vy, vz, False{}, hit, rt, P.In.idle()), free)
             : Kin(g, P.Body{x, y, z, vx, vy, vz, False{}, hit, rt}, _)
           kin_step(g, P.Body{x, y, z, vx, vy, vz, False{}, hit, rt}, P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, False{}, hit, rt},
             ffk(rt, s, g, obs, x, y, z, vx, vy, vz, hit,
               unhit_step(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, False{}, hit, rt},
-                spin_unhit(s, STEP(g, mu, j, acc, s, obs, x, y, z, vx, vy, vz, False{}, hit, rt, P.In.idle()), free))))
+                spin_unhit(s, g, STEP(g, mu, j, acc, s, obs, x, y, z, vx, vy, vz, False{}, hit, rt, P.In.idle()), free))))
 
 # A whole flight
 # --------------
@@ -1441,12 +1952,12 @@ def Laws.no_air_control(k, obs, w, b, air):
           %Equal.sym(P.Body & List<&2, P.Body>, P.Body.step(P.K{g, mu, j, acc, s}, obs, P.In{w, False{}}, P.Body{x, y, z, vx, vy, vz, False{}, hit, rt}),
             P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In{w, False{}}, P.Body{x, y, z, vx, vy, vz, False{}, hit, rt}),
             step_is(P.K{g, mu, j, acc, s}, obs, P.In{w, False{}}, P.Body{x, y, z, vx, vy, vz, False{}, hit, rt}))
-            : {P.Tick.spin(s, _) == P.Body.tick(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, False{}, hit, rt}) : P.Body & List<&2, P.Body>}
+            : {P.Tick.spin(s, g, _) == P.Body.tick(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, False{}, hit, rt}) : P.Body & List<&2, P.Body>}
           %Equal.sym(P.Body & List<&2, P.Body>, P.Body.step(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, False{}, hit, rt}),
             P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, False{}, hit, rt}),
             step_is(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, False{}, hit, rt}))
-            : {P.Tick.spin(s, P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In{w, False{}}, P.Body{x, y, z, vx, vy, vz, False{}, hit, rt}))
-               == P.Tick.spin(s, _) : P.Body & List<&2, P.Body>}
+            : {P.Tick.spin(s, g, P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In{w, False{}}, P.Body{x, y, z, vx, vy, vz, False{}, hit, rt}))
+               == P.Tick.spin(s, g, _) : P.Body & List<&2, P.Body>}
           {==}
 
 # on the ground the motor adds acc along the wish to whatever friction left
@@ -1479,12 +1990,12 @@ def Laws.no_air_jump(k, obs, w, b, air):
           %Equal.sym(P.Body & List<&2, P.Body>, P.Body.step(P.K{g, mu, j, acc, s}, obs, P.In{w, True{}}, P.Body{x, y, z, vx, vy, vz, False{}, hit, rt}),
             P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In{w, True{}}, P.Body{x, y, z, vx, vy, vz, False{}, hit, rt}),
             step_is(P.K{g, mu, j, acc, s}, obs, P.In{w, True{}}, P.Body{x, y, z, vx, vy, vz, False{}, hit, rt}))
-            : {P.Tick.spin(s, _) == P.Body.tick(P.K{g, mu, j, acc, s}, obs, P.In{w, False{}}, P.Body{x, y, z, vx, vy, vz, False{}, hit, rt}) : P.Body & List<&2, P.Body>}
+            : {P.Tick.spin(s, g, _) == P.Body.tick(P.K{g, mu, j, acc, s}, obs, P.In{w, False{}}, P.Body{x, y, z, vx, vy, vz, False{}, hit, rt}) : P.Body & List<&2, P.Body>}
           %Equal.sym(P.Body & List<&2, P.Body>, P.Body.step(P.K{g, mu, j, acc, s}, obs, P.In{w, False{}}, P.Body{x, y, z, vx, vy, vz, False{}, hit, rt}),
             P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In{w, False{}}, P.Body{x, y, z, vx, vy, vz, False{}, hit, rt}),
             step_is(P.K{g, mu, j, acc, s}, obs, P.In{w, False{}}, P.Body{x, y, z, vx, vy, vz, False{}, hit, rt}))
-            : {P.Tick.spin(s, P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In{w, True{}}, P.Body{x, y, z, vx, vy, vz, False{}, hit, rt}))
-               == P.Tick.spin(s, _) : P.Body & List<&2, P.Body>}
+            : {P.Tick.spin(s, g, P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In{w, True{}}, P.Body{x, y, z, vx, vy, vz, False{}, hit, rt}))
+               == P.Tick.spin(s, g, _) : P.Body & List<&2, P.Body>}
           {==}
 
 # a takeoff from the ground, untouched: the body after driving is at
@@ -1576,11 +2087,11 @@ def Laws.jump_energy(k, obs, b, stand, free):
     case P.K{+g, +mu, +j, acc, +s} P.Body{+x, +y, +z, +vx, +vy, +vz, gr, +hit, +rt}:
       match gr:
         case True{}:
-          %spin_sym(s, STEP(g, mu, j, acc, s, obs, x, y, z, vx, vy, vz, True{}, hit, rt, P.In{None{}, True{}}), free) : JE(g, j, y, _)
+          %spin_sym(s, g, STEP(g, mu, j, acc, s, obs, x, y, z, vx, vy, vz, True{}, hit, rt, P.In{None{}, True{}}), free) : JE(g, j, y, _)
           jeo_step(g, j, y, P.K{g, mu, j, acc, s}, obs, P.In{None{}, True{}}, P.Body{x, y, z, vx, vy, vz, True{}, hit, rt},
             je2(rt, s, g, obs, x, y, z, vx, vz, P.Share.fst(P.Fric.apply(Nat.div(Nat.mul(mu, g), 256n), vx, vz)), P.Share.snd(P.Fric.apply(Nat.div(Nat.mul(mu, g), 256n), vx, vz)), j,
               unhit_step(P.K{g, mu, j, acc, s}, obs, P.In{None{}, True{}}, P.Body{x, y, z, vx, vy, vz, True{}, hit, rt},
-                spin_unhit(s, STEP(g, mu, j, acc, s, obs, x, y, z, vx, vy, vz, True{}, hit, rt, P.In{None{}, True{}}), free))))
+                spin_unhit(s, g, STEP(g, mu, j, acc, s, obs, x, y, z, vx, vy, vz, True{}, hit, rt, P.In{None{}, True{}}), free))))
         case False{}:
           Empty.absurd({P.Body.energy(g, P.Tick.body(P.Body.tick(P.K{g, mu, j, acc, s}, obs, P.In{None{}, True{}},
               P.Body{x, y, z, vx, vy, vz, False{}, hit, rt})))
@@ -1624,11 +2135,9 @@ def z_gnd_eq(+rt: P.Rot, +s: Nat, ok: Bool, +g: Nat, +obs: List<&2, P.Body>, +dz
       Empty.absurd({P.Body.setrot(Gz(s, obs, x, y, z, dz, vx, vy, vz, rt),
             P.Body.rot(P.Tick.body(P.Tick.y(s, g, P.Move.zgo(s, False{}, obs, dz, P.Z.shift(z, dz), P.Body{x,y,z,vx,vy,vz,True{},False{},rt})))))
           == P.Tick.body(P.Tick.y(s, g, P.Move.zgo(s, False{}, obs, dz, P.Z.shift(z, dz), P.Body{x,y,z,vx,vy,vz,True{},False{},rt}))) : P.Body},
-        unhit(P.Body.hit(P.Tick.body(P.Tick.y(s, g, P.Move.zhit(s, P.Push.z(s, obs, dz, x, y, P.Z.shift(z, dz), vz, P.Rot.q(rt),
-              P.Geo.head(s, x, y, P.Z.shift(z, dz), P.Rot.q(rt), obs)), x, y, z, P.Z.shift(z, dz), vx, vy, True{}, rt)))),
-          hit_ty(s, g, P.Move.zhit(s, P.Push.z(s, obs, dz, x, y, P.Z.shift(z, dz), vz, P.Rot.q(rt), P.Geo.head(s, x, y, P.Z.shift(z, dz), P.Rot.q(rt), obs)),
-              x, y, z, P.Z.shift(z, dz), vx, vy, True{}, rt),
-            hit_zhit(s, P.Push.z(s, obs, dz, x, y, P.Z.shift(z, dz), vz, P.Rot.q(rt), P.Geo.head(s, x, y, P.Z.shift(z, dz), P.Rot.q(rt), obs)), x, y, z, P.Z.shift(z, dz), vx, vy, True{}, rt)),
+        unhit(P.Body.hit(P.Tick.body(P.Tick.y(s, g, P.Move.zno(s, obs, dz, P.Z.shift(z, dz), P.Body{x,y,z,vx,vy,vz,True{},False{},rt})))),
+          hit_ty(s, g, P.Move.zno(s, obs, dz, P.Z.shift(z, dz), P.Body{x,y,z,vx,vy,vz,True{},False{},rt}),
+            hit_zno(s, obs, dz, P.Z.shift(z, dz), x, y, z, vx, vy, vz, True{}, False{}, rt)),
           free))
 
 def x_gnd_eq(+rt: P.Rot, +s: Nat, ok: Bool, +g: Nat, +obs: List<&2, P.Body>, +v0z: P.Z, +dx: P.Z, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
@@ -1646,11 +2155,9 @@ def x_gnd_eq(+rt: P.Rot, +s: Nat, ok: Bool, +g: Nat, +obs: List<&2, P.Body>, +v0
       Empty.absurd({P.Body.setrot(Gz(s, obs, P.Z.shift(x, dx), y, z, P.Z.add(v0z, vz), vx, vy, vz, rt),
             P.Body.rot(P.Tick.body(P.Tick.z(s, g, v0z, P.Move.xgo(s, False{}, obs, dx, P.Z.shift(x, dx), P.Body{x,y,z,vx,vy,vz,True{},False{},rt})))))
           == P.Tick.body(P.Tick.z(s, g, v0z, P.Move.xgo(s, False{}, obs, dx, P.Z.shift(x, dx), P.Body{x,y,z,vx,vy,vz,True{},False{},rt}))) : P.Body},
-        unhit(P.Body.hit(P.Tick.body(P.Tick.z(s, g, v0z, P.Move.xhit(s, P.Push.x(s, obs, dx, P.Z.shift(x, dx), y, z, vx, P.Rot.q(rt),
-              P.Geo.head(s, P.Z.shift(x, dx), y, z, P.Rot.q(rt), obs)), x, y, z, P.Z.shift(x, dx), vy, vz, True{}, rt)))),
-          hit_tz(s, g, v0z, P.Move.xhit(s, P.Push.x(s, obs, dx, P.Z.shift(x, dx), y, z, vx, P.Rot.q(rt), P.Geo.head(s, P.Z.shift(x, dx), y, z, P.Rot.q(rt), obs)),
-              x, y, z, P.Z.shift(x, dx), vy, vz, True{}, rt),
-            hit_xhit(s, P.Push.x(s, obs, dx, P.Z.shift(x, dx), y, z, vx, P.Rot.q(rt), P.Geo.head(s, P.Z.shift(x, dx), y, z, P.Rot.q(rt), obs)), x, y, z, P.Z.shift(x, dx), vy, vz, True{}, rt)),
+        unhit(P.Body.hit(P.Tick.body(P.Tick.z(s, g, v0z, P.Move.xno(s, obs, dx, P.Z.shift(x, dx), P.Body{x,y,z,vx,vy,vz,True{},False{},rt})))),
+          hit_tz(s, g, v0z, P.Move.xno(s, obs, dx, P.Z.shift(x, dx), P.Body{x,y,z,vx,vy,vz,True{},False{},rt}),
+            hit_xno(s, obs, dx, P.Z.shift(x, dx), x, y, z, vx, vy, vz, True{}, False{}, rt)),
           free))
 
 def z_gnd_ok(+rt: P.Rot, +s: Nat, ok: Bool, +g: Nat, +obs: List<&2, P.Body>, +dz: P.Z, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z,
@@ -1663,11 +2170,9 @@ def z_gnd_ok(+rt: P.Rot, +s: Nat, ok: Bool, +g: Nat, +obs: List<&2, P.Body>, +dz
       and_l(P.Z.fits(z, dz), P.Geo.free(s, x, y, P.Z.shift(z, dz), P.Rot.q(rt), obs), eok)
     case False{}:
       Empty.absurd({P.Z.fits(z, dz) == True{} : Bool},
-        unhit(P.Body.hit(P.Tick.body(P.Tick.y(s, g, P.Move.zhit(s, P.Push.z(s, obs, dz, x, y, P.Z.shift(z, dz), vz, P.Rot.q(rt),
-              P.Geo.head(s, x, y, P.Z.shift(z, dz), P.Rot.q(rt), obs)), x, y, z, P.Z.shift(z, dz), vx, vy, True{}, rt)))),
-          hit_ty(s, g, P.Move.zhit(s, P.Push.z(s, obs, dz, x, y, P.Z.shift(z, dz), vz, P.Rot.q(rt), P.Geo.head(s, x, y, P.Z.shift(z, dz), P.Rot.q(rt), obs)),
-              x, y, z, P.Z.shift(z, dz), vx, vy, True{}, rt),
-            hit_zhit(s, P.Push.z(s, obs, dz, x, y, P.Z.shift(z, dz), vz, P.Rot.q(rt), P.Geo.head(s, x, y, P.Z.shift(z, dz), P.Rot.q(rt), obs)), x, y, z, P.Z.shift(z, dz), vx, vy, True{}, rt)),
+        unhit(P.Body.hit(P.Tick.body(P.Tick.y(s, g, P.Move.zno(s, obs, dz, P.Z.shift(z, dz), P.Body{x,y,z,vx,vy,vz,True{},False{},rt})))),
+          hit_ty(s, g, P.Move.zno(s, obs, dz, P.Z.shift(z, dz), P.Body{x,y,z,vx,vy,vz,True{},False{},rt}),
+            hit_zno(s, obs, dz, P.Z.shift(z, dz), x, y, z, vx, vy, vz, True{}, False{}, rt)),
           free))
 
 def x_gnd_ok(+rt: P.Rot, +s: Nat, ok: Bool, +g: Nat, +obs: List<&2, P.Body>, +v0z: P.Z, +dx: P.Z, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
@@ -1684,11 +2189,9 @@ def x_gnd_ok(+rt: P.Rot, +s: Nat, ok: Bool, +g: Nat, +obs: List<&2, P.Body>, +v0
         g, obs, P.Z.add(v0z, vz), P.Z.shift(x, dx), y, z, vx, vy, vz, {==}, free)
     case False{}:
       Empty.absurd({Bool.and(P.Z.fits(x, dx), P.Z.fits(z, P.Z.add(v0z, vz))) == True{} : Bool},
-        unhit(P.Body.hit(P.Tick.body(P.Tick.z(s, g, v0z, P.Move.xhit(s, P.Push.x(s, obs, dx, P.Z.shift(x, dx), y, z, vx, P.Rot.q(rt),
-              P.Geo.head(s, P.Z.shift(x, dx), y, z, P.Rot.q(rt), obs)), x, y, z, P.Z.shift(x, dx), vy, vz, True{}, rt)))),
-          hit_tz(s, g, v0z, P.Move.xhit(s, P.Push.x(s, obs, dx, P.Z.shift(x, dx), y, z, vx, P.Rot.q(rt), P.Geo.head(s, P.Z.shift(x, dx), y, z, P.Rot.q(rt), obs)),
-              x, y, z, P.Z.shift(x, dx), vy, vz, True{}, rt),
-            hit_xhit(s, P.Push.x(s, obs, dx, P.Z.shift(x, dx), y, z, vx, P.Rot.q(rt), P.Geo.head(s, P.Z.shift(x, dx), y, z, P.Rot.q(rt), obs)), x, y, z, P.Z.shift(x, dx), vy, vz, True{}, rt)),
+        unhit(P.Body.hit(P.Tick.body(P.Tick.z(s, g, v0z, P.Move.xno(s, obs, dx, P.Z.shift(x, dx), P.Body{x,y,z,vx,vy,vz,True{},False{},rt})))),
+          hit_tz(s, g, v0z, P.Move.xno(s, obs, dx, P.Z.shift(x, dx), P.Body{x,y,z,vx,vy,vz,True{},False{},rt}),
+            hit_xno(s, obs, dx, P.Z.shift(x, dx), x, y, z, vx, vy, vz, True{}, False{}, rt)),
           free))
 
 # Friction
@@ -1772,12 +2275,12 @@ def Laws.friction_never_reverses(k, obs, b, stand, free):
     case P.K{+g, +mu, j, acc, +s} P.Body{+x, +y, +z, +vx, +vy, +vz, gr, +hit, +rt}:
       match gr:
         case True{}:
-          %spin_sym(s, STEP(g, mu, j, acc, s, obs, x, y, z, vx, vy, vz, True{}, hit, rt, P.In.idle()), free)
+          %spin_sym(s, g, STEP(g, mu, j, acc, s, obs, x, y, z, vx, vy, vz, True{}, hit, rt, P.In.idle()), free)
             : NR(vx, vz, _)
           nr_step(vx, vz, P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, True{}, hit, rt},
             fnr(rt, s, g, obs, x, y, z, vx, vz, T1(Nat.div(Nat.mul(mu, g), 256n), vx, vz), T2(Nat.div(Nat.mul(mu, g), 256n), vx, vz),
               unhit_step(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, True{}, hit, rt},
-                spin_unhit(s, STEP(g, mu, j, acc, s, obs, x, y, z, vx, vy, vz, True{}, hit, rt, P.In.idle()), free))))
+                spin_unhit(s, g, STEP(g, mu, j, acc, s, obs, x, y, z, vx, vy, vz, True{}, hit, rt, P.In.idle()), free))))
         case False{}:
           Empty.absurd(NR(vx, vz, P.Tick.body(P.Body.tick(P.K{g, mu, j, acc, s}, obs, P.In.idle(),
               P.Body{x, y, z, vx, vy, vz, False{}, hit, rt}))), clash2(stand))
@@ -1924,14 +2427,14 @@ def Laws.friction_work(k, obs, b, stand, free):
     case P.K{+g, +mu, j, acc, +s} P.Body{+x, +y, +z, +vx, +vy, +vz, gr, +hit, +rt}:
       match gr:
         case True{}:
-          %spin_sym(s, STEP(g, mu, j, acc, s, obs, x, y, z, vx, vy, vz, True{}, hit, rt, P.In.idle()), free)
+          %spin_sym(s, g, STEP(g, mu, j, acc, s, obs, x, y, z, vx, vy, vz, True{}, hit, rt, P.In.idle()), free)
             : FW(x, y, z, vx, vz, _)
           fw_step(x, y, z, vx, vz, P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, True{}, hit, rt},
             fwork(rt, s, g, obs, x, y, z, vx, vz, T1(Nat.div(Nat.mul(mu, g), 256n), vx, vz), T2(Nat.div(Nat.mul(mu, g), 256n), vx, vz),
               take_le(Nat.div(Nat.mul(mu, g), 256n), P.Z.mag(vx), P.Fric.speed(P.Z.mag(vx), P.Z.mag(vz))),
               take_le(Nat.div(Nat.mul(mu, g), 256n), P.Z.mag(vz), P.Fric.speed(P.Z.mag(vx), P.Z.mag(vz))),
               unhit_step(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, True{}, hit, rt},
-                spin_unhit(s, STEP(g, mu, j, acc, s, obs, x, y, z, vx, vy, vz, True{}, hit, rt, P.In.idle()), free))))
+                spin_unhit(s, g, STEP(g, mu, j, acc, s, obs, x, y, z, vx, vy, vz, True{}, hit, rt, P.In.idle()), free))))
         case False{}:
           Empty.absurd(FW(x, y, z, vx, vz, P.Tick.body(P.Body.tick(P.K{g, mu, j, acc, s}, obs, P.In.idle(),
               P.Body{x, y, z, vx, vy, vz, False{}, hit, rt}))), clash2(stand))
@@ -2155,12 +2658,12 @@ def Laws.coulomb_friction(k, obs, b, stand, free):
     case P.K{+g, +mu, j, acc, +s} P.Body{+x, +y, +z, +vx, +vy, +vz, gr, +hit, +rt}:
       match gr:
         case True{}:
-          %spin_sym(s, STEP(g, mu, j, acc, s, obs, x, y, z, vx, vy, vz, True{}, hit, rt, P.In.idle()), free)
+          %spin_sym(s, g, STEP(g, mu, j, acc, s, obs, x, y, z, vx, vy, vz, True{}, hit, rt, P.In.idle()), free)
             : CF(vx, vz, Nat.div(Nat.mul(mu, g), 256n), _)
           cf_step(vx, vz, Nat.div(Nat.mul(mu, g), 256n), P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, True{}, hit, rt},
             cfric(rt, s, g, obs, x, y, z, vx, vz, Nat.div(Nat.mul(mu, g), 256n),
               unhit_step(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, True{}, hit, rt},
-                spin_unhit(s, STEP(g, mu, j, acc, s, obs, x, y, z, vx, vy, vz, True{}, hit, rt, P.In.idle()), free))))
+                spin_unhit(s, g, STEP(g, mu, j, acc, s, obs, x, y, z, vx, vy, vz, True{}, hit, rt, P.In.idle()), free))))
         case False{}:
           Empty.absurd(CF(vx, vz, Nat.div(Nat.mul(mu, g), 256n), P.Tick.body(P.Body.tick(P.K{g, mu, j, acc, s}, obs,
               P.In.idle(), P.Body{x, y, z, vx, vy, vz, False{}, hit, rt}))), clash2(stand))
@@ -2245,11 +2748,11 @@ def tb_eq(a: P.Body & List<&2, P.Body>, c: P.Body & List<&2, P.Body>,
   %Equal.sym(P.Body & List<&2, P.Body>, a, c, e) : {P.Tick.body(_) == P.Tick.body(c) : P.Body}
   {==}
 
-def rs_free(+s: Nat, +obs: List<&2, P.Body>, a: P.Body & List<&2, P.Body>, +c: P.Body,
+def rs_free(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, a: P.Body & List<&2, P.Body>, +c: P.Body,
   e: {a == (c, obs) : P.Body & List<&2, P.Body>},
-  free: {P.Body.hit(P.Tick.body(P.Tick.spin(s, a))) == False{} : Bool})
-  -> {P.Body.hit(P.Tick.turn(s, obs, c)) == False{} : Bool}:
-  %e : {P.Body.hit(P.Tick.body(P.Tick.spin(s, _))) == False{} : Bool}
+  free: {P.Body.hit(P.Tick.body(P.Tick.spin(s, g, a))) == False{} : Bool})
+  -> {P.Body.hit(P.Tick.turn(s, g, obs, c)) == False{} : Bool}:
+  %e : {P.Body.hit(P.Tick.body(P.Tick.spin(s, g, _))) == False{} : Bool}
   free
 
 # the tick's linear part on a body at rest leaves it where it was, turned
@@ -2274,12 +2777,12 @@ def Laws.rest_stays(k, obs, x, y, z, h, rt, on, clear, free):
          P.Body.step(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, rt}),
          (RestT(s, g, obs, x, y, z, rt), obs),
          rs_all(rt, s, g, mu, j, acc, obs, x, y, z, h, on, clear))
-        : {P.Tick.spin(s, _)
-           == (P.Body.setrot(Rest(x, y, z, rt), P.Body.rot(P.Tick.body(P.Tick.spin(s, _)))), obs) : P.Body & List<&2, P.Body>}
-      pair_eq(P.Tick.turn(s, obs, RestT(s, g, obs, x, y, z, rt)),
-        P.Body.setrot(Rest(x, y, z, rt), P.Body.rot(P.Tick.turn(s, obs, RestT(s, g, obs, x, y, z, rt)))), obs,
-        turn_eq(s, obs, RestT(s, g, obs, x, y, z, rt),
-          rs_free(s, obs,
+        : {P.Tick.spin(s, g, _)
+           == (P.Body.setrot(Rest(x, y, z, rt), P.Body.rot(P.Tick.body(P.Tick.spin(s, g, _)))), obs) : P.Body & List<&2, P.Body>}
+      pair_eq(P.Tick.turn(s, g, obs, RestT(s, g, obs, x, y, z, rt)),
+        P.Body.setrot(Rest(x, y, z, rt), P.Body.rot(P.Tick.turn(s, g, obs, RestT(s, g, obs, x, y, z, rt)))), obs,
+        turn_eq(s, g, obs, RestT(s, g, obs, x, y, z, rt),
+          rs_free(s, g, obs,
             P.Body.step(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, rt}),
             RestT(s, g, obs, x, y, z, rt),
             rs_all(rt, s, g, mu, j, acc, obs, x, y, z, h, on, clear), free)))
@@ -2448,16 +2951,30 @@ def xput_me(ok: Bool, +g: Nat, +obs2: List<&2, P.Body>, +cx: Nat, +x: Nat, +y: N
     case False{}:
       res_e(g, vx, v, P.Z.sq(vy), P.Z.sq(vz), y, obs, obs2, h)
 
-def xhit_me(+s: Nat, +g: Nat, r: P.Pushed, +x: Nat, +y: Nat, +z: Nat, +tx: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool,
-  +obs: List<&2, P.Body>,
+def xpushed_me(+g: Nat, r: P.Pushed, +cx: Nat, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool,
+  +hit: Bool, +obs: List<&2, P.Body>,
   h: {Nat.is_le(Nat.add(P.Z.sq(Pv(r)), P.Body.energies(g, Pobs(r))), Nat.add(P.Z.sq(vx), P.Body.energies(g, obs))) == True{} : Bool}, +rt: P.Rot)
-  -> {Nat.is_le(Nat.add(P.Body.energy(g, P.Tick.body(P.Move.xhit(s, r, x, y, z, tx, vy, vz, gr, rt))), P.Body.energies(g, P.Tick.obs(P.Move.xhit(s, r, x, y, z, tx, vy, vz, gr, rt)))), Nat.add(P.Body.energy(g, P.Tick.body((P.Body{x, y, z, vx, vy, vz, gr, hit, rt}, obs))), P.Body.energies(g, P.Tick.obs((P.Body{x, y, z, vx, vy, vz, gr, hit, rt}, obs))))) == True{} : Bool}:
+  -> {Nat.is_le(Nat.add(P.Body.energy(g, P.Tick.body(P.Move.xpushed(r, cx, y, z, vy, vz, gr, rt))), P.Body.energies(g, P.Tick.obs(P.Move.xpushed(r, cx, y, z, vy, vz, gr, rt)))), Nat.add(P.Body.energy(g, P.Tick.body((P.Body{x, y, z, vx, vy, vz, gr, hit, rt}, obs))), P.Body.energies(g, P.Tick.obs((P.Body{x, y, z, vx, vy, vz, gr, hit, rt}, obs))))) == True{} : Bool}:
   P.Pushed{+v, +obs2, at} = r
-  match at:
-    case None{}:
-      res_e(g, vx, v, P.Z.sq(vy), P.Z.sq(vz), y, obs, obs2, h)
-    case Some{+cx}:
-      xput_me(Bool.and(P.Geo.step(x, tx, cx), P.Geo.free(s, cx, y, z, P.Rot.q(rt), obs2)), g, obs2, cx, x, y, z, v, vx, vy, vz, gr, hit, obs, h, rt)
+  res_e(g, vx, v, P.Z.sq(vy), P.Z.sq(vz), y, obs, obs2, h)
+
+def xtouch_me(touch: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +d: P.Z, +cx: Nat, +pr: Nat, +x: Nat, +y: Nat,
+  +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot)
+  -> {Nat.is_le(Nat.add(P.Body.energy(g, P.Tick.body(P.Move.xtouch(touch, s, obs, d, cx, pr, x, y, z, vx, vy, vz, gr, rt))), P.Body.energies(g, P.Tick.obs(P.Move.xtouch(touch, s, obs, d, cx, pr, x, y, z, vx, vy, vz, gr, rt)))), Nat.add(P.Body.energy(g, P.Tick.body((P.Body{x, y, z, vx, vy, vz, gr, hit, rt}, obs))), P.Body.energies(g, P.Tick.obs((P.Body{x, y, z, vx, vy, vz, gr, hit, rt}, obs))))) == True{} : Bool}:
+  match touch:
+    case True{}:
+      xpushed_me(g, P.Push.x(s, obs, d, pr, y, z, vx, P.Rot.q(rt), P.Geo.head(s, pr, y, z, P.Rot.q(rt), obs)), cx, x, y, z,
+        vx, vy, vz, gr, hit, obs, push_x_e(P.Rot.q(rt), s, g, obs, d, pr, y, z, vx, P.Geo.head(s, pr, y, z, P.Rot.q(rt), obs)), rt)
+    case False{}:
+      xput_me(P.Geo.free(s, cx, y, z, P.Rot.q(rt), obs), g, obs, cx, x, y, z, vx, vx, vy, vz, gr, hit, obs,
+        le_refl(Nat.add(P.Z.sq(vx), P.Body.energies(g, obs))), rt)
+
+def xno_me(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +d: P.Z, +cx: Nat, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
+  +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot)
+  -> {Nat.is_le(Nat.add(P.Body.energy(g, P.Tick.body(P.Move.xno(s, obs, d, cx, P.Body{x,y,z,vx,vy,vz,gr,hit,rt}))), P.Body.energies(g, P.Tick.obs(P.Move.xno(s, obs, d, cx, P.Body{x,y,z,vx,vy,vz,gr,hit,rt})))), Nat.add(P.Body.energy(g, P.Tick.body((P.Body{x, y, z, vx, vy, vz, gr, hit, rt}, obs))), P.Body.energies(g, P.Tick.obs((P.Body{x, y, z, vx, vy, vz, gr, hit, rt}, obs))))) == True{} : Bool}:
+  xtouch_me(P.Move.xtouches(s, obs, d, P.Move.xto(s, obs, d, x, y, z, P.Rot.q(rt)), y, z, P.Rot.q(rt)), s, g, obs, d,
+    P.Move.xto(s, obs, d, x, y, z, P.Rot.q(rt)), P.Z.shift(P.Move.xto(s, obs, d, x, y, z, P.Rot.q(rt)), P.Z.like(d, 1n)),
+    x, y, z, vx, vy, vz, gr, hit, rt)
 
 def xgo_me(+s: Nat, ok: Bool, +g: Nat, +obs: List<&2, P.Body>, +d: P.Z, +cx: Nat, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
   +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot)
@@ -2467,8 +2984,7 @@ def xgo_me(+s: Nat, ok: Bool, +g: Nat, +obs: List<&2, P.Body>, +d: P.Z, +cx: Nat
     case True{}:
       le_refl(Nat.add(P.Body.energy(g, P.Tick.body((P.Body{x, y, z, vx, vy, vz, gr, hit, rt}, obs))), P.Body.energies(g, P.Tick.obs((P.Body{x, y, z, vx, vy, vz, gr, hit, rt}, obs)))))
     case False{}:
-      xhit_me(s, g, P.Push.x(s, obs, d, cx, y, z, vx, P.Rot.q(rt), P.Geo.head(s, cx, y, z, P.Rot.q(rt), obs)), x, y, z, cx, vx, vy, vz, gr, hit, obs,
-        push_x_e(P.Rot.q(rt), s, g, obs, d, cx, y, z, vx, P.Geo.head(s, cx, y, z, P.Rot.q(rt), obs)), rt)
+      xno_me(s, g, obs, d, cx, x, y, z, vx, vy, vz, gr, hit, rt)
 
 def mx_e(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +v0: P.Z, b: P.Body)
   -> {Nat.is_le(Nat.add(P.Body.energy(g, P.Tick.body(P.Move.x(s, obs, v0, b))), P.Body.energies(g, P.Tick.obs(P.Move.x(s, obs, v0, b)))), Nat.add(P.Body.energy(g, P.Tick.body((b, obs))), P.Body.energies(g, P.Tick.obs((b, obs))))) == True{} : Bool}:
@@ -2486,16 +3002,30 @@ def zput_me(ok: Bool, +g: Nat, +obs2: List<&2, P.Body>, +cz: Nat, +x: Nat, +y: N
     case False{}:
       res_ez(g, vz, v, P.Z.sq(vx), P.Z.sq(vy), y, obs, obs2, h)
 
-def zhit_me(+s: Nat, +g: Nat, r: P.Pushed, +x: Nat, +y: Nat, +z: Nat, +tz: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool,
-  +obs: List<&2, P.Body>,
+def zpushed_me(+g: Nat, r: P.Pushed, +cz: Nat, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool,
+  +hit: Bool, +obs: List<&2, P.Body>,
   h: {Nat.is_le(Nat.add(P.Z.sq(Pv(r)), P.Body.energies(g, Pobs(r))), Nat.add(P.Z.sq(vz), P.Body.energies(g, obs))) == True{} : Bool}, +rt: P.Rot)
-  -> {Nat.is_le(Nat.add(P.Body.energy(g, P.Tick.body(P.Move.zhit(s, r, x, y, z, tz, vx, vy, gr, rt))), P.Body.energies(g, P.Tick.obs(P.Move.zhit(s, r, x, y, z, tz, vx, vy, gr, rt)))), Nat.add(P.Body.energy(g, P.Tick.body((P.Body{x, y, z, vx, vy, vz, gr, hit, rt}, obs))), P.Body.energies(g, P.Tick.obs((P.Body{x, y, z, vx, vy, vz, gr, hit, rt}, obs))))) == True{} : Bool}:
+  -> {Nat.is_le(Nat.add(P.Body.energy(g, P.Tick.body(P.Move.zpushed(r, x, y, cz, vx, vy, gr, rt))), P.Body.energies(g, P.Tick.obs(P.Move.zpushed(r, x, y, cz, vx, vy, gr, rt)))), Nat.add(P.Body.energy(g, P.Tick.body((P.Body{x, y, z, vx, vy, vz, gr, hit, rt}, obs))), P.Body.energies(g, P.Tick.obs((P.Body{x, y, z, vx, vy, vz, gr, hit, rt}, obs))))) == True{} : Bool}:
   P.Pushed{+v, +obs2, at} = r
-  match at:
-    case None{}:
-      res_ez(g, vz, v, P.Z.sq(vx), P.Z.sq(vy), y, obs, obs2, h)
-    case Some{+cz}:
-      zput_me(Bool.and(P.Geo.step(z, tz, cz), P.Geo.free(s, x, y, cz, P.Rot.q(rt), obs2)), g, obs2, cz, x, y, z, vx, vy, v, vz, gr, hit, obs, h, rt)
+  res_ez(g, vz, v, P.Z.sq(vx), P.Z.sq(vy), y, obs, obs2, h)
+
+def ztouch_me(touch: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +d: P.Z, +cz: Nat, +pr: Nat, +x: Nat, +y: Nat,
+  +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot)
+  -> {Nat.is_le(Nat.add(P.Body.energy(g, P.Tick.body(P.Move.ztouch(touch, s, obs, d, cz, pr, x, y, z, vx, vy, vz, gr, rt))), P.Body.energies(g, P.Tick.obs(P.Move.ztouch(touch, s, obs, d, cz, pr, x, y, z, vx, vy, vz, gr, rt)))), Nat.add(P.Body.energy(g, P.Tick.body((P.Body{x, y, z, vx, vy, vz, gr, hit, rt}, obs))), P.Body.energies(g, P.Tick.obs((P.Body{x, y, z, vx, vy, vz, gr, hit, rt}, obs))))) == True{} : Bool}:
+  match touch:
+    case True{}:
+      zpushed_me(g, P.Push.z(s, obs, d, x, y, pr, vz, P.Rot.q(rt), P.Geo.head(s, x, y, pr, P.Rot.q(rt), obs)), cz, x, y, z,
+        vx, vy, vz, gr, hit, obs, push_z_e(P.Rot.q(rt), s, g, obs, d, x, y, pr, vz, P.Geo.head(s, x, y, pr, P.Rot.q(rt), obs)), rt)
+    case False{}:
+      zput_me(P.Geo.free(s, x, y, cz, P.Rot.q(rt), obs), g, obs, cz, x, y, z, vx, vy, vz, vz, gr, hit, obs,
+        le_refl(Nat.add(P.Z.sq(vz), P.Body.energies(g, obs))), rt)
+
+def zno_me(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +d: P.Z, +cz: Nat, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
+  +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot)
+  -> {Nat.is_le(Nat.add(P.Body.energy(g, P.Tick.body(P.Move.zno(s, obs, d, cz, P.Body{x,y,z,vx,vy,vz,gr,hit,rt}))), P.Body.energies(g, P.Tick.obs(P.Move.zno(s, obs, d, cz, P.Body{x,y,z,vx,vy,vz,gr,hit,rt})))), Nat.add(P.Body.energy(g, P.Tick.body((P.Body{x, y, z, vx, vy, vz, gr, hit, rt}, obs))), P.Body.energies(g, P.Tick.obs((P.Body{x, y, z, vx, vy, vz, gr, hit, rt}, obs))))) == True{} : Bool}:
+  ztouch_me(P.Move.ztouches(s, obs, d, x, y, P.Move.zto(s, obs, d, x, y, z, P.Rot.q(rt)), P.Rot.q(rt)), s, g, obs, d,
+    P.Move.zto(s, obs, d, x, y, z, P.Rot.q(rt)), P.Z.shift(P.Move.zto(s, obs, d, x, y, z, P.Rot.q(rt)), P.Z.like(d, 1n)),
+    x, y, z, vx, vy, vz, gr, hit, rt)
 
 def zgo_me(+s: Nat, ok: Bool, +g: Nat, +obs: List<&2, P.Body>, +d: P.Z, +cz: Nat, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
   +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot)
@@ -2505,8 +3035,7 @@ def zgo_me(+s: Nat, ok: Bool, +g: Nat, +obs: List<&2, P.Body>, +d: P.Z, +cz: Nat
     case True{}:
       le_refl(Nat.add(P.Body.energy(g, P.Tick.body((P.Body{x, y, z, vx, vy, vz, gr, hit, rt}, obs))), P.Body.energies(g, P.Tick.obs((P.Body{x, y, z, vx, vy, vz, gr, hit, rt}, obs)))))
     case False{}:
-      zhit_me(s, g, P.Push.z(s, obs, d, x, y, cz, vz, P.Rot.q(rt), P.Geo.head(s, x, y, cz, P.Rot.q(rt), obs)), x, y, z, cz, vx, vy, vz, gr, hit, obs,
-        push_z_e(P.Rot.q(rt), s, g, obs, d, x, y, cz, vz, P.Geo.head(s, x, y, cz, P.Rot.q(rt), obs)), rt)
+      zno_me(s, g, obs, d, cz, x, y, z, vx, vy, vz, gr, hit, rt)
 
 def mz_e(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +v0: P.Z, b: P.Body)
   -> {Nat.is_le(Nat.add(P.Body.energy(g, P.Tick.body(P.Move.z(s, obs, v0, b))), P.Body.energies(g, P.Tick.obs(P.Move.z(s, obs, v0, b)))), Nat.add(P.Body.energy(g, P.Tick.body((b, obs))), P.Body.energies(g, P.Tick.obs((b, obs))))) == True{} : Bool}:
@@ -2537,48 +3066,42 @@ def rise_e(ok: Bool, +g: Nat, +x: Nat, +y: Nat, +z: Nat, +p: Nat, +vx: P.Z, +v: 
     case False{}:
       stop_e(P.Z.sq(vx), P.Z.sq(vz), P.Z.sq(vy), g, y, y, le_refl(y))
 
-def land_e(ok: Bool, +g: Nat, +x: Nat, +y: Nat, +z: Nat, +fl: Nat, +vx: P.Z, +vz: P.Z, +vy: P.Z, -rest: Bool,
-  +more: Bool, eok: {Bool.and(Bool.and(Nat.is_le(fl, y), more), rest) == ok : Bool}, +rt: P.Rot)
-  -> {Nat.is_le(P.Body.energy(g, P.Move.land(ok, x, y, z, fl, vx, vz, rt)),
-                Nat.add(Nat.add(Nat.add(P.Z.sq(vx), P.Z.sq(vy)), P.Z.sq(vz)), Nat.mul(g, y))) == True{} : Bool}:
+def land_e(ok: Bool, +g: Nat, +x: Nat, +y: Nat, +z: Nat, +ny: Nat, +vx: P.Z, +vz: P.Z, +vy: P.Z,
+  hle: {Nat.is_le(ny, y) == True{} : Bool}, +rt: P.Rot)
+  -> {Nat.is_le(P.Body.energy(g, P.Move.land(ok, x, y, z, ny, vx, vz, vy, rt)), Nat.add(Nat.add(Nat.add(P.Z.sq(vx), P.Z.sq(vy)), P.Z.sq(vz)), Nat.mul(g, y))) == True{} : Bool}:
   match ok:
     case True{}:
-      stop_e(P.Z.sq(vx), P.Z.sq(vz), P.Z.sq(vy), g, y, fl,
-        and_l(Nat.is_le(fl, y), more, and_l(Bool.and(Nat.is_le(fl, y), more), rest, eok)))
+      stop_e(P.Z.sq(vx), P.Z.sq(vz), P.Z.sq(vy), g, y, ny, hle)
     case False{}:
-      stop_e(P.Z.sq(vx), P.Z.sq(vz), P.Z.sq(vy), g, y, y, le_refl(y))
+      le_refl(Nat.add(Nat.add(Nat.add(P.Z.sq(vx), P.Z.sq(vy)), P.Z.sq(vz)), Nat.mul(g, y)))
 
-def fall_e(+rt: P.Rot, +s: Nat, ok: Bool, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +q: Nat, +fl: Nat, +vx: P.Z, +v: P.Z, +vz: P.Z,
+def fall_e(+rt: P.Rot, +s: Nat, ok: Bool, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +q: Nat, +vx: P.Z, +v: P.Z, +vz: P.Z,
   +vy: P.Z, +hit: Bool,
-  eok: {Bool.and(Nat.is_le(Nat.add(fl, q), y), P.Geo.free(s, x, Nat.sub(y, q), z, P.Rot.q(rt), obs)) == ok : Bool},
+  eok: {P.Move.fallok(s, obs, x, y, z, q, P.Rot.q(rt)) == ok : Bool},
   hf: {Nat.is_le(q, y) == True{} : Bool}
     -> {Nat.add(Nat.add(Nat.add(P.Z.sq(vx), P.Z.sq(v)), P.Z.sq(vz)), Nat.mul(g, Nat.sub(y, q)))
         == Nat.add(Nat.add(Nat.add(P.Z.sq(vx), P.Z.sq(vy)), P.Z.sq(vz)), Nat.mul(g, y)) : Nat})
-  -> {Nat.is_le(P.Body.energy(g, P.Move.fall(s, ok, obs, x, y, z, q, fl, vx, v, vz, hit, rt)),
-                Nat.add(Nat.add(Nat.add(P.Z.sq(vx), P.Z.sq(vy)), P.Z.sq(vz)), Nat.mul(g, y))) == True{} : Bool}:
+  -> {Nat.is_le(P.Body.energy(g, P.Move.fall(s, ok, obs, x, y, z, q, vx, v, vz, vy, hit, rt)), Nat.add(Nat.add(Nat.add(P.Z.sq(vx), P.Z.sq(vy)), P.Z.sq(vz)), Nat.mul(g, y))) == True{} : Bool}:
   match ok:
     case True{}:
-      le_eq(Nat.add(Nat.add(Nat.add(P.Z.sq(vx), P.Z.sq(v)), P.Z.sq(vz)), Nat.mul(g, Nat.sub(y, q))),
-        Nat.add(Nat.add(Nat.add(P.Z.sq(vx), P.Z.sq(vy)), P.Z.sq(vz)), Nat.mul(g, y)),
-        hf(le_addl(fl, q, y, and_l(Nat.is_le(Nat.add(fl, q), y), P.Geo.free(s, x, Nat.sub(y, q), z, P.Rot.q(rt), obs), eok))))
+      le_eq(Nat.add(Nat.add(Nat.add(P.Z.sq(vx), P.Z.sq(v)), P.Z.sq(vz)), Nat.mul(g, Nat.sub(y, q))), Nat.add(Nat.add(Nat.add(P.Z.sq(vx), P.Z.sq(vy)), P.Z.sq(vz)), Nat.mul(g, y)),
+        hf(and_l(Nat.is_le(q, y), Bool.and(P.Tick.fits(s, obs, x, Nat.sub(y, q), z, P.Rot.q(rt)),
+          P.Tick.path(64n, Nat.is_lt(s, q), s, obs, x, y, z, P.Rot.q(rt), q, s)), eok)))
     case False{}:
-      land_e(Bool.and(Bool.and(Nat.is_le(flo(s, fl, rt), y), Nat.is_le(y, Nat.add(flo(s, fl, rt), q))),
-          P.Geo.free(s, x, flo(s, fl, rt), z, P.Rot.q(rt), obs)), g, x, y, z, flo(s, fl, rt), vx, vz, vy,
-        P.Geo.free(s, x, flo(s, fl, rt), z, P.Rot.q(rt), obs), Nat.is_le(y, Nat.add(flo(s, fl, rt), q)), {==}, rt)
+      land_e(P.Move.landok(s, obs, x, P.Move.landy(s, obs, x, y, z, P.Rot.q(rt), q), z, P.Rot.q(rt)), g, x, y, z,
+        P.Move.landy(s, obs, x, y, z, P.Rot.q(rt), q), vx, vz, vy, sub_le(y, P.Tick.drop(s, obs, x, y, z, P.Rot.q(rt), q)), rt)
 
 def fly_le(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vz: P.Z, +hit: Bool, +vy: P.Z, st: P.Z & P.Z,
   hf: {P.Z.fits(y, P.Share.snd(st)) == True{} : Bool}
     -> {Nat.add(Nat.add(Nat.add(P.Z.sq(vx), P.Z.sq(P.Share.fst(st))), P.Z.sq(vz)), Nat.mul(g, P.Z.shift(y, P.Share.snd(st))))
         == Nat.add(Nat.add(Nat.add(P.Z.sq(vx), P.Z.sq(vy)), P.Z.sq(vz)), Nat.mul(g, y)) : Nat}, +rt: P.Rot)
-  -> {Nat.is_le(P.Body.energy(g, P.Move.fly(s, obs, x, y, z, vx, vz, hit, st, rt)),
-                Nat.add(Nat.add(Nat.add(P.Z.sq(vx), P.Z.sq(vy)), P.Z.sq(vz)), Nat.mul(g, y))) == True{} : Bool}:
+  -> {Nat.is_le(P.Body.energy(g, P.Move.fly(s, obs, x, y, z, vx, vy, vz, hit, st, rt)), Nat.add(Nat.add(Nat.add(P.Z.sq(vx), P.Z.sq(vy)), P.Z.sq(vz)), Nat.mul(g, y))) == True{} : Bool}:
   (+v, d) = st
   match d:
     case P.Pos{+p}:
       rise_e(P.Geo.free(s, x, Nat.add(y, p), z, P.Rot.q(rt), obs), g, x, y, z, p, vx, v, vz, vy, hit, hf({==}), rt)
     case P.Neg{+q}:
-      fall_e(rt, s, Bool.and(Nat.is_le(Nat.add(P.Geo.floor(s, x, y, z, obs, 0n), q), y), P.Geo.free(s, x, Nat.sub(y, q), z, P.Rot.q(rt), obs)),
-        g, obs, x, y, z, q, P.Geo.floor(s, x, y, z, obs, 0n), vx, v, vz, vy, hit, {==}, hf)
+      fall_e(rt, s, P.Move.fallok(s, obs, x, y, z, q, P.Rot.q(rt)), g, obs, x, y, z, q, vx, v, vz, vy, hit, {==}, hf)
 
 # the press of a hold only turns the body, and what it is worth does not
 # depend on how it is turned
@@ -2640,93 +3163,141 @@ def drive_e(+s: Nat, +g: Nat, +mu: Nat, +j: Nat, +acc: Nat, b: P.Body)
 # how fast the body is going, so the energy it ends with is at most the
 # energy it began with. Every way of turning ends in that one choice.
 
+# a <= b false gives b <= a
+def le_flip(+a: Nat, +b: Nat, h: {Nat.is_le(a, b) == False{} : Bool}) -> {Nat.is_le(b, a) == True{} : Bool}:
+  match a b:
+    case 0n 0n:
+      Empty.absurd({Nat.is_le(0n, 0n) == True{} : Bool}, clash(h))
+    case 0n 1n+q:
+      Empty.absurd({Nat.is_le(1n+q, 0n) == True{} : Bool}, clash(h))
+    case 1n+p 0n:
+      {==}
+    case 1n+p 1n+q:
+      le_flip(p, q, h)
+
+# the smaller of g and d, squared, is at most g d
+def low_sq(le: Bool, +g: Nat, +d: Nat, e: {Nat.is_le(g, d) == le : Bool})
+  -> {Nat.is_le(Nat.mul(P.Pick.n(le, g, d), P.Pick.n(le, g, d)), Nat.mul(g, d)) == True{} : Bool}:
+  match le:
+    case True{}:
+      le_mul_l(g, g, d, e)
+    case False{}:
+      %R.eq([g, d], R.Mul{R.V{1n}, R.V{0n}}, R.Mul{R.V{0n}, R.V{1n}}, {==}) : {Nat.is_le(Nat.mul(d, d), _) == True{} : Bool}
+      le_mul_l(d, d, g, le_flip(g, d, e))
+
+# Letting go makes no energy: a body whose middle went down d = y - ny
+# and leaves going down at min(g, d) has at most what it had -- the drop
+# gave up g d, and min(g, d) squared is at most that.
+def let_e(+A: Nat, +V: Nat, +C: Nat, +g: Nat, +y: Nat, +ny: Nat, hle: {Nat.is_le(ny, y) == True{} : Bool})
+  -> {Nat.is_le(Nat.add(Nat.add(Nat.add(A, Nat.mul(P.Pick.low(g, Nat.sub(y, ny)), P.Pick.low(g, Nat.sub(y, ny)))), C), Nat.mul(g, ny)),
+                Nat.add(Nat.add(Nat.add(A, V), C), Nat.mul(g, y))) == True{} : Bool}:
+  +L = Nat.mul(P.Pick.low(g, Nat.sub(y, ny)), P.Pick.low(g, Nat.sub(y, ny)))
+  +W = Nat.mul(g, Nat.sub(y, ny))
+  le_trans(Nat.add(Nat.add(Nat.add(A, L), C), Nat.mul(g, ny)),
+    Nat.add(Nat.add(Nat.add(A, Nat.add(W, V)), C), Nat.mul(g, ny)),
+    Nat.add(Nat.add(Nat.add(A, V), C), Nat.mul(g, y)),
+    le_sum(Nat.add(Nat.add(A, L), C), Nat.add(Nat.add(A, Nat.add(W, V)), C), Nat.mul(g, ny),
+      le_sum(Nat.add(A, L), Nat.add(A, Nat.add(W, V)), C,
+        le_add2(A, A, L, Nat.add(W, V), le_refl(A),
+          le_trans(L, W, Nat.add(W, V), low_sq(Nat.is_le(g, Nat.sub(y, ny)), g, Nat.sub(y, ny), {==}), le_add(W, V))))),
+    le_eq(Nat.add(Nat.add(Nat.add(A, Nat.add(W, V)), C), Nat.mul(g, ny)), Nat.add(Nat.add(Nat.add(A, V), C), Nat.mul(g, y)),
+      %sub_add(ny, y, hle)
+        : {Nat.add(Nat.add(Nat.add(A, Nat.add(W, V)), C), Nat.mul(g, ny)) == Nat.add(Nat.add(Nat.add(A, V), C), Nat.mul(g, _)) : Nat}
+      R.eq([A, V, C, g, ny, Nat.sub(y, ny)],
+        R.Add{R.Add{R.Add{R.V{0n}, R.Add{R.Mul{R.V{3n}, R.V{5n}}, R.V{1n}}}, R.V{2n}}, R.Mul{R.V{3n}, R.V{4n}}},
+        R.Add{R.Add{R.Add{R.V{0n}, R.V{1n}}, R.V{2n}}, R.Mul{R.V{3n}, R.Add{R.V{4n}, R.V{5n}}}}, {==})))
+
+def putt_e(gr: Bool, st: Bool, +g: Nat, +y: Nat, +ny: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z,
+  hle: {Nat.is_le(ny, y) == True{} : Bool})
+  -> {Nat.is_le(Nat.add(Nat.add(Nat.add(P.Z.sq(vx), P.Z.sq(P.Tick.letv(gr, st, g, Nat.sub(y, ny), vy))), P.Z.sq(vz)), Nat.mul(g, ny)),
+       Nat.add(Nat.add(Nat.add(P.Z.sq(vx), P.Z.sq(vy)), P.Z.sq(vz)), Nat.mul(g, y))) == True{} : Bool}:
+  match gr st:
+    case True{} True{}:
+      le_add2(Nat.add(Nat.add(P.Z.sq(vx), P.Z.sq(vy)), P.Z.sq(vz)), Nat.add(Nat.add(P.Z.sq(vx), P.Z.sq(vy)), P.Z.sq(vz)), Nat.mul(g, ny), Nat.mul(g, y), le_refl(Nat.add(Nat.add(P.Z.sq(vx), P.Z.sq(vy)), P.Z.sq(vz))), le_mul_l(g, ny, y, hle))
+    case True{} False{}:
+      let_e(P.Z.sq(vx), P.Z.sq(vy), P.Z.sq(vz), g, y, ny, hle)
+    case False{} True{}:
+      le_add2(Nat.add(Nat.add(P.Z.sq(vx), P.Z.sq(vy)), P.Z.sq(vz)), Nat.add(Nat.add(P.Z.sq(vx), P.Z.sq(vy)), P.Z.sq(vz)), Nat.mul(g, ny), Nat.mul(g, y), le_refl(Nat.add(Nat.add(P.Z.sq(vx), P.Z.sq(vy)), P.Z.sq(vz))), le_mul_l(g, ny, y, hle))
+    case False{} False{}:
+      le_add2(Nat.add(Nat.add(P.Z.sq(vx), P.Z.sq(vy)), P.Z.sq(vz)), Nat.add(Nat.add(P.Z.sq(vx), P.Z.sq(vy)), P.Z.sq(vz)), Nat.mul(g, ny), Nat.mul(g, y), le_refl(Nat.add(Nat.add(P.Z.sq(vx), P.Z.sq(vy)), P.Z.sq(vz))), le_mul_l(g, ny, y, hle))
+
 def put_e2(ok: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +nx: Nat, +ny: Nat,
   +nz: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot,
-  eok: {Bool.and(Nat.is_le(ny, y), P.Tick.fits(s, obs, nx, ny, nz, P.Rot.q(r2))) == ok : Bool})
-  -> {Nat.is_le(P.Body.energy(g, P.Tick.put(ok, x, y, z, nx, ny, nz, vx, vy, vz, gr, hit, rt, r2)),
+  eok: {P.Tick.turnok(s, obs, y, nx, ny, nz, P.Rot.q(r2), gr) == ok : Bool})
+  -> {Nat.is_le(P.Body.energy(g, P.Tick.put(ok, s, g, obs, x, y, z, nx, ny, nz, vx, vy, vz, gr, hit, rt, r2)),
        P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == True{} : Bool}:
   match ok:
     case True{}:
-      le_add2(Nat.add(Nat.add(P.Z.sq(vx), P.Z.sq(vy)), P.Z.sq(vz)), Nat.add(Nat.add(P.Z.sq(vx), P.Z.sq(vy)), P.Z.sq(vz)), Nat.mul(g, ny), Nat.mul(g, y), le_refl(Nat.add(Nat.add(P.Z.sq(vx), P.Z.sq(vy)), P.Z.sq(vz))),
-        le_mul_l(g, ny, y, and_l(Nat.is_le(ny, y), P.Tick.fits(s, obs, nx, ny, nz, P.Rot.q(r2)), eok)))
+      putt_e(gr, P.Tick.stands(gr, s, obs, nx, ny, nz, P.Rot.q(r2)), g, y, ny, vx, vy, vz,
+        and_l(Nat.is_le(ny, y), Bool.and(P.Tick.fits(s, obs, nx, ny, nz, P.Rot.q(r2)),
+          P.Tick.keeps(gr, s, obs, y, nx, ny, nz, P.Rot.q(r2))), eok))
     case False{}:
       le_refl(P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt}))
 
 def place_e2(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +nx: Nat, +ny: Nat, +nz: Nat,
   +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot)
-  -> {Nat.is_le(P.Body.energy(g, P.Tick.place(s, obs, x, y, z, nx, ny, nz, vx, vy, vz, gr, hit, rt, r2)),
+  -> {Nat.is_le(P.Body.energy(g, P.Tick.place(s, g, obs, x, y, z, nx, ny, nz, vx, vy, vz, gr, hit, rt, r2)),
        P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == True{} : Bool}:
-  put_e2(Bool.and(Nat.is_le(ny, y), P.Tick.fits(s, obs, nx, ny, nz, P.Rot.q(r2))), s, g, obs, x, y, z, nx, ny, nz,
+  put_e2(P.Tick.turnok(s, obs, y, nx, ny, nz, P.Rot.q(r2), gr), s, g, obs, x, y, z, nx, ny, nz,
     vx, vy, vz, gr, hit, rt, r2, {==})
 
 def pivot_e2(m: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
   +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, +rx: P.Z, +ry: P.Z, +rz: P.Z)
-  -> {Nat.is_le(P.Body.energy(g, P.Tick.pivot(m, s, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, rx, ry, rz)),
+  -> {Nat.is_le(P.Body.energy(g, P.Tick.pivot(m, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, rx, ry, rz)),
        P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == True{} : Bool}:
   P.Mat{+axx, +axy, +axz, +ayx, +ayy, +ayz, +azx, +azy, +azz} = m
-  place_e2(s, g, obs, x, y, z, P.Pivot.c(x, rx, axx, ayx, azx, rx, ry, rz),
-    P.Tick.lift(s, obs, y, P.Pivot.c(x, rx, axx, ayx, azx, rx, ry, rz),
-      P.Pivot.c(y, ry, axy, ayy, azy, rx, ry, rz), P.Pivot.c(z, rz, axz, ayz, azz, rx, ry, rz), P.Rot.q(r2)),
-    P.Pivot.c(z, rz, axz, ayz, azz, rx, ry, rz), vx, vy, vz, gr, hit, rt, r2)
+  +nx = P.Pivot.c(x, rx, axx, ayx, azx, rx, ry, rz)
+  +ny = P.Pivot.c(y, ry, axy, ayy, azy, rx, ry, rz)
+  +nz = P.Pivot.c(z, rz, axz, ayz, azz, rx, ry, rz)
+  +d = P.Tick.drop(s, obs, nx, y, nz, P.Rot.q(r2), Nat.add(Nat.sub(y, P.Pick.low(ny, y)), Nat.div(s, 256n)))
+  place_e2(s, g, obs, x, y, z, nx, Nat.sub(y, d), nz, vx, vy, vz, gr, hit, rt, r2)
 
-def tipv_e2(m: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
-  +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, md: P.Mat)
-  -> {Nat.is_le(P.Body.energy(g, P.Tick.tipv(m, s, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, md)),
+def pivota_e2(md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
+  +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, a: P.Wv)
+  -> {Nat.is_le(P.Body.energy(g, P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, a)),
        P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == True{} : Bool}:
-  P.Mat{+axx, +axy, +axz, +ayx, +ayy, +ayz, +azx, +azy, +azz} = m
-  pivot_e2(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2,
-    P.Tip.arm(Nat.div(s, 2n), P.Z.sgnop(axy), P.Z.sgnop(ayy), P.Z.sgnop(azy), axx, ayx, azx),
-    P.Tip.arm(Nat.div(s, 2n), P.Z.sgnop(axy), P.Z.sgnop(ayy), P.Z.sgnop(azy), axy, ayy, azy),
-    P.Tip.arm(Nat.div(s, 2n), P.Z.sgnop(axy), P.Z.sgnop(ayy), P.Z.sgnop(azy), axz, ayz, azz))
-
-def footv_e2(f: P.Foot, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
-  +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, md: P.Mat)
-  -> {Nat.is_le(P.Body.energy(g, P.Tick.footv(f, s, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, md)),
-       P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == True{} : Bool}:
-  P.Foot{+n, +lx, +hx, +lz, +hz, +ty} = f
-  pivot_e2(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, P.Geo.lean(Nat.div(s, 2n), lx, hx),
-    P.Z.diff(Nat.is_lt(ty, Nat.add(y, Nat.div(s, 2n))), ty, Nat.add(y, Nat.div(s, 2n))),
-    P.Geo.lean(Nat.div(s, 2n), lz, hz))
+  P.Wv{+ax, +ay, +az} = a
+  pivot_e2(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, ax, ay, az)
 
 def turn2_e2(held: Bool, floor: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat,
   +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, +md: P.Mat)
-  -> {Nat.is_le(P.Body.energy(g, P.Tick.turn2(held, floor, s, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, md)),
+  -> {Nat.is_le(P.Body.energy(g, P.Tick.turn2(held, floor, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, md)),
        P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == True{} : Bool}:
   match held floor:
     case False{} _:
       place_e2(s, g, obs, x, y, z, x, y, z, vx, vy, vz, gr, hit, rt, r2)
     case True{} False{}:
-      footv_e2(P.Geo.foot(s, x, y, z, obs, P.Foot.none()), s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, r2, md)
+      pivota_e2(md, s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s))
     case True{} True{}:
-      tipv_e2(P.Rot.mat(P.Rot.q(rt)), s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, r2, md)
+      pivota_e2(md, s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, r2, P.Hold.low(P.Rot.mat(P.Rot.q(rt)), s))
 
 def turn1_e2(still: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z,
   +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot)
-  -> {Nat.is_le(P.Body.energy(g, P.Tick.turn1(still, s, obs, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})),
+  -> {Nat.is_le(P.Body.energy(g, P.Tick.turn1(still, s, g, obs, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})),
        P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == True{} : Bool}:
   match still:
     case True{}:
       le_refl(P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt}))
     case False{}:
-      turn2_e2(gr, Nat.is_le(y, Nat.add(P.Geo.sag(s, P.Rot.q(rt)), Nat.div(s, 512n))), s, g, obs, x, y, z, vx,
+      turn2_e2(gr, P.Geo.onfloor(s, y, P.Rot.q(rt)), s, g, obs, x, y, z, vx,
         vy, vz, gr, hit, rt, P.Rot.free(rt),
         P.Rot.mat(P.Quat.half(P.Quat.step(P.Rot.w(rt), P.Wv.mag(P.Rot.w(rt))))))
 
 def turn_e20(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +b: P.Body)
-  -> {Nat.is_le(P.Body.energy(g, P.Tick.turn0(s, obs, b)), P.Body.energy(g, b)) == True{} : Bool}:
+  -> {Nat.is_le(P.Body.energy(g, P.Tick.turn0(s, g, obs, b)), P.Body.energy(g, b)) == True{} : Bool}:
   P.Body{+x, +y, +z, +vx, +vy, +vz, +gr, +hit, +rt} = b
   turn1_e2(P.Wv.null(P.Rot.w(rt)), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt)
 
 def turn_e2(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +b: P.Body)
-  -> {Nat.is_le(P.Body.energy(g, P.Tick.turn(s, obs, b)), P.Body.energy(g, b)) == True{} : Bool}:
-  %turn_sym(s, obs, b) : {Nat.is_le(P.Body.energy(g, _), P.Body.energy(g, b)) == True{} : Bool}
+  -> {Nat.is_le(P.Body.energy(g, P.Tick.turn(s, g, obs, b)), P.Body.energy(g, b)) == True{} : Bool}:
+  %turn_sym(s, g, obs, b) : {Nat.is_le(P.Body.energy(g, _), P.Body.energy(g, b)) == True{} : Bool}
   turn_e20(s, g, obs, b)
 
 def spin_e2(+s: Nat, +g: Nat, r: P.Body & List<&2, P.Body>)
-  -> {Nat.is_le(Nat.add(P.Body.energy(g, P.Tick.body(P.Tick.spin(s, r))), P.Body.energies(g, P.Tick.obs(P.Tick.spin(s, r)))),
+  -> {Nat.is_le(Nat.add(P.Body.energy(g, P.Tick.body(P.Tick.spin(s, g, r))), P.Body.energies(g, P.Tick.obs(P.Tick.spin(s, g, r)))),
        Nat.add(P.Body.energy(g, P.Tick.body(r)), P.Body.energies(g, P.Tick.obs(r)))) == True{} : Bool}:
   (+b, +obs) = r
-  le_sum(P.Body.energy(g, P.Tick.turn(s, obs, b)), P.Body.energy(g, b), P.Body.energies(g, obs),
+  le_sum(P.Body.energy(g, P.Tick.turn(s, g, obs, b)), P.Body.energy(g, b), P.Body.energies(g, obs),
     turn_e2(s, g, obs, b))
 
 # the tick's linear part never makes energy
@@ -2782,32 +3353,32 @@ def le_two(+a1: Nat, +a2: Nat, +b1: Nat, +b2: Nat, +c: Nat,
   le_trans(Nat.add(a1, b2), Nat.add(b1, b2), c, le_sum(a1, b1, b2, h1), h3)
 
 # what the turn stage does to a pair, taken apart once and for all
-def spin_body_r(+s: Nat, r: P.Body & List<&2, P.Body>)
-  -> {P.Tick.turn(s, P.Tick.obs(r), P.Tick.body(r)) == P.Tick.body(P.Tick.spin(s, r)) : P.Body}:
+def spin_body_r(+s: Nat, +g: Nat, r: P.Body & List<&2, P.Body>)
+  -> {P.Tick.turn(s, g, P.Tick.obs(r), P.Tick.body(r)) == P.Tick.body(P.Tick.spin(s, g, r)) : P.Body}:
   (+b, +obs) = r
   {==}
 
-def spin_obs_r(+s: Nat, r: P.Body & List<&2, P.Body>)
-  -> {P.Tick.obs(r) == P.Tick.obs(P.Tick.spin(s, r)) : List<&2, P.Body>}:
+def spin_obs_r(+s: Nat, +g: Nat, r: P.Body & List<&2, P.Body>)
+  -> {P.Tick.obs(r) == P.Tick.obs(P.Tick.spin(s, g, r)) : List<&2, P.Body>}:
   (+b, +obs) = r
   {==}
 
 # the turn never raises the body's own energy
 def spin_body_le(+g: Nat, +mu: Nat, +j: Nat, +acc: Nat, +s: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat,
   +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot)
-  -> {Nat.is_le(P.Body.energy(g, P.Tick.turn(s, P.Tick.obs(P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, gr, hit, rt})), P.Tick.body(P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, gr, hit, rt})))), P.Body.energy(g, P.Tick.body(P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, gr, hit, rt})))) == True{} : Bool}:
+  -> {Nat.is_le(P.Body.energy(g, P.Tick.turn(s, g, P.Tick.obs(P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, gr, hit, rt})), P.Tick.body(P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, gr, hit, rt})))), P.Body.energy(g, P.Tick.body(P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, gr, hit, rt})))) == True{} : Bool}:
   turn_e2(s, g, P.Tick.obs(P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, gr, hit, rt})), P.Tick.body(P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, gr, hit, rt})))
 
 # the law's own words, taken in: the tick is the step turned, and the
 # obstacles it ends with are the ones the step ended with
 def ea_in(+g: Nat, +mu: Nat, +j: Nat, +acc: Nat, +s: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat,
   +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot,
-  h: {Nat.is_le(Nat.add(P.Body.energy(g, P.Tick.turn(s, P.Tick.obs(P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, gr, hit, rt})), P.Tick.body(P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, gr, hit, rt})))), P.Body.energies(g, P.Tick.obs(P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, gr, hit, rt})))), Nat.add(P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt}), P.Body.energies(g, obs))) == True{} : Bool})
+  h: {Nat.is_le(Nat.add(P.Body.energy(g, P.Tick.turn(s, g, P.Tick.obs(P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, gr, hit, rt})), P.Tick.body(P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, gr, hit, rt})))), P.Body.energies(g, P.Tick.obs(P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, gr, hit, rt})))), Nat.add(P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt}), P.Body.energies(g, obs))) == True{} : Bool})
   -> Laws.EnergyAfter(P.K{g, mu, j, acc, s}, obs, P.Body{x, y, z, vx, vy, vz, gr, hit, rt}):
-  %spin_body_r(s, P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, gr, hit, rt}))
-    : {Nat.is_le(Nat.add(P.Body.energy(g, _), P.Body.energies(g, P.Tick.obs(P.Tick.spin(s, P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, gr, hit, rt}))))), Nat.add(P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt}), P.Body.energies(g, obs))) == True{} : Bool}
-  %spin_obs_r(s, P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, gr, hit, rt}))
-    : {Nat.is_le(Nat.add(P.Body.energy(g, P.Tick.turn(s, P.Tick.obs(P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, gr, hit, rt})), P.Tick.body(P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, gr, hit, rt})))), P.Body.energies(g, _)), Nat.add(P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt}), P.Body.energies(g, obs))) == True{} : Bool}
+  %spin_body_r(s, g, P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, gr, hit, rt}))
+    : {Nat.is_le(Nat.add(P.Body.energy(g, _), P.Body.energies(g, P.Tick.obs(P.Tick.spin(s, g, P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, gr, hit, rt}))))), Nat.add(P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt}), P.Body.energies(g, obs))) == True{} : Bool}
+  %spin_obs_r(s, g, P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, gr, hit, rt}))
+    : {Nat.is_le(Nat.add(P.Body.energy(g, P.Tick.turn(s, g, P.Tick.obs(P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, gr, hit, rt})), P.Tick.body(P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, gr, hit, rt})))), P.Body.energies(g, _)), Nat.add(P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt}), P.Body.energies(g, obs))) == True{} : Bool}
   h
 
 # the two sums put together, still in the step's own names
@@ -2815,8 +3386,8 @@ def spin_sum(+g: Nat, +mu: Nat, +j: Nat, +acc: Nat, +s: Nat, +obs: List<&2, P.Bo
   +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot,
   h: {Nat.is_le(Nat.add(P.Body.energy(g, P.Tick.body(P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, gr, hit, rt}))),
        P.Body.energies(g, P.Tick.obs(P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, gr, hit, rt})))), Nat.add(P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt}), P.Body.energies(g, obs))) == True{} : Bool})
-  -> {Nat.is_le(Nat.add(P.Body.energy(g, P.Tick.turn(s, P.Tick.obs(P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, gr, hit, rt})), P.Tick.body(P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, gr, hit, rt})))), P.Body.energies(g, P.Tick.obs(P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, gr, hit, rt})))), Nat.add(P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt}), P.Body.energies(g, obs))) == True{} : Bool}:
-  le_two(P.Body.energy(g, P.Tick.turn(s, P.Tick.obs(P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, gr, hit, rt})), P.Tick.body(P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, gr, hit, rt})))), P.Body.energies(g, P.Tick.obs(P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, gr, hit, rt}))),
+  -> {Nat.is_le(Nat.add(P.Body.energy(g, P.Tick.turn(s, g, P.Tick.obs(P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, gr, hit, rt})), P.Tick.body(P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, gr, hit, rt})))), P.Body.energies(g, P.Tick.obs(P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, gr, hit, rt})))), Nat.add(P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt}), P.Body.energies(g, obs))) == True{} : Bool}:
+  le_two(P.Body.energy(g, P.Tick.turn(s, g, P.Tick.obs(P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, gr, hit, rt})), P.Tick.body(P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, gr, hit, rt})))), P.Body.energies(g, P.Tick.obs(P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, gr, hit, rt}))),
     P.Body.energy(g, P.Tick.body(P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, gr, hit, rt}))), P.Body.energies(g, P.Tick.obs(P.Body.step1(P.K{g, mu, j, acc, s}, obs, P.In.idle(), P.Body{x, y, z, vx, vy, vz, gr, hit, rt}))),
     Nat.add(P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt}), P.Body.energies(g, obs)), spin_body_le(g, mu, j, acc, s, obs, x, y, z, vx, vy, vz, gr, hit, rt), {==}, h)
 
@@ -2903,16 +3474,36 @@ def xput_nc(+rt: P.Rot, +s: Nat, ok: Bool, +obs2: List<&2, P.Body>, +cx: Nat, +x
     case False{}:
       h
 
-def xhit_nc(+rt: P.Rot, +s: Nat, r: P.Pushed, +x: Nat, +y: Nat, +z: Nat, +tx: Nat, +vy: P.Z, +vz: P.Z, +gr: Bool,
-  h: {P.Geo.free(s, x, y, z, P.Rot.q(rt), Pobs(r)) == True{} : Bool})
-  -> NC(s, P.Move.xhit(s, r, x, y, z, tx, vy, vz, gr, rt)):
+def xpushed_nc(+rt: P.Rot, +s: Nat, r: P.Pushed, +cx: Nat, +y: Nat, +z: Nat, +vy: P.Z, +vz: P.Z, +gr: Bool,
+  h: {P.Geo.free(s, cx, y, z, P.Rot.q(rt), Pobs(r)) == True{} : Bool})
+  -> NC(s, P.Move.xpushed(r, cx, y, z, vy, vz, gr, rt)):
   P.Pushed{+v, +obs2, at} = r
-  match at:
-    case None{}:
-      h
-    case Some{+cx}:
-      xput_nc(rt, s, Bool.and(P.Geo.step(x, tx, cx), P.Geo.free(s, cx, y, z, P.Rot.q(rt), obs2)), obs2, cx, x, y, z,
-        v, vy, vz, gr, P.Geo.step(x, tx, cx), {==}, h)
+  h
+
+# a refused move stops where the body is clear: what it reached was
+# tested before anything was pushed, and a push moves nothing, it only
+# hands out velocity
+def xtouch_nc(touch: Bool, +rt: P.Rot, +s: Nat, +obs: List<&2, P.Body>, +d: P.Z, +cx: Nat, +pr: Nat, +x: Nat, +y: Nat,
+  +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool,
+  et: {P.Move.xtouches(s, obs, d, cx, y, z, P.Rot.q(rt)) == touch : Bool},
+  h: {P.Geo.free(s, x, y, z, P.Rot.q(rt), obs) == True{} : Bool})
+  -> NC(s, P.Move.xtouch(touch, s, obs, d, cx, pr, x, y, z, vx, vy, vz, gr, rt)):
+  match touch:
+    case True{}:
+      xpushed_nc(rt, s, P.Push.x(s, obs, d, pr, y, z, vx, P.Rot.q(rt), P.Geo.head(s, pr, y, z, P.Rot.q(rt), obs)), cx, y, z, vy, vz, gr,
+        Equal.trans(Bool, P.Geo.free(s, cx, y, z, P.Rot.q(rt), Pobs(P.Push.x(s, obs, d, pr, y, z, vx, P.Rot.q(rt), P.Geo.head(s, pr, y, z, P.Rot.q(rt), obs)))),
+          P.Geo.free(s, cx, y, z, P.Rot.q(rt), obs), True{},
+          push_x_free(P.Rot.q(rt), s, obs, d, pr, y, z, vx, P.Geo.head(s, pr, y, z, P.Rot.q(rt), obs), cx, y, z),
+          and_l(P.Geo.free(s, cx, y, z, P.Rot.q(rt), obs), Bool.not(P.Geo.free(s, P.Z.shift(cx, P.Z.like(d, 1n)), y, z, P.Rot.q(rt), obs)), et)))
+    case False{}:
+      xput_nc(rt, s, P.Geo.free(s, cx, y, z, P.Rot.q(rt), obs), obs, cx, x, y, z, vx, vy, vz, gr, True{}, {==}, h)
+
+def xno_nc(+rt: P.Rot, +s: Nat, +obs: List<&2, P.Body>, +d: P.Z, +cx: Nat, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
+  +vz: P.Z, +gr: Bool, +hit: Bool, h: {P.Geo.free(s, x, y, z, P.Rot.q(rt), obs) == True{} : Bool})
+  -> NC(s, P.Move.xno(s, obs, d, cx, P.Body{x,y,z,vx,vy,vz,gr,hit,rt})):
+  xtouch_nc(P.Move.xtouches(s, obs, d, P.Move.xto(s, obs, d, x, y, z, P.Rot.q(rt)), y, z, P.Rot.q(rt)), rt, s, obs, d,
+    P.Move.xto(s, obs, d, x, y, z, P.Rot.q(rt)), P.Z.shift(P.Move.xto(s, obs, d, x, y, z, P.Rot.q(rt)), P.Z.like(d, 1n)),
+    x, y, z, vx, vy, vz, gr, {==}, h)
 
 def xgo_nc(+rt: P.Rot, +s: Nat, ok: Bool, +obs: List<&2, P.Body>, +d: P.Z, +cx: Nat, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z,
   +gr: Bool, +hit: Bool, eok: {Bool.and(P.Z.fits(x, d), P.Geo.free(s, cx, y, z, P.Rot.q(rt), obs)) == ok : Bool},
@@ -2922,10 +3513,7 @@ def xgo_nc(+rt: P.Rot, +s: Nat, ok: Bool, +obs: List<&2, P.Body>, +d: P.Z, +cx: 
     case True{}:
       and_r(P.Z.fits(x, d), P.Geo.free(s, cx, y, z, P.Rot.q(rt), obs), eok)
     case False{}:
-      xhit_nc(rt, s, P.Push.x(s, obs, d, cx, y, z, vx, P.Rot.q(rt), P.Geo.head(s, cx, y, z, P.Rot.q(rt), obs)), x, y, z, cx, vy, vz, gr,
-        Equal.trans(Bool, P.Geo.free(s, x, y, z, P.Rot.q(rt), Pobs(P.Push.x(s, obs, d, cx, y, z, vx, P.Rot.q(rt), P.Geo.head(s, cx, y, z, P.Rot.q(rt), obs)))),
-          P.Geo.free(s, x, y, z, P.Rot.q(rt), obs), True{},
-          push_x_free(P.Rot.q(rt), s, obs, d, cx, y, z, vx, P.Geo.head(s, cx, y, z, P.Rot.q(rt), obs), x, y, z), h))
+      xno_nc(rt, s, obs, d, cx, x, y, z, vx, vy, vz, gr, hit, h)
 
 def mx_nc(+s: Nat, +obs: List<&2, P.Body>, +v0: P.Z, b: P.Body, h: {P.Geo.free(s, P.Body.x(b), P.Body.y(b), P.Body.z(b), P.Rot.q(P.Body.rot(b)), obs) == True{} : Bool})
   -> NC(s, P.Move.x(s, obs, v0, b)):
@@ -2943,16 +3531,33 @@ def zput_nc(+rt: P.Rot, +s: Nat, ok: Bool, +obs2: List<&2, P.Body>, +cz: Nat, +x
     case False{}:
       h
 
-def zhit_nc(+rt: P.Rot, +s: Nat, r: P.Pushed, +x: Nat, +y: Nat, +z: Nat, +tz: Nat, +vx: P.Z, +vy: P.Z, +gr: Bool,
-  h: {P.Geo.free(s, x, y, z, P.Rot.q(rt), Pobs(r)) == True{} : Bool})
-  -> NC(s, P.Move.zhit(s, r, x, y, z, tz, vx, vy, gr, rt)):
+def zpushed_nc(+rt: P.Rot, +s: Nat, r: P.Pushed, +x: Nat, +y: Nat, +cz: Nat, +vx: P.Z, +vy: P.Z, +gr: Bool,
+  h: {P.Geo.free(s, x, y, cz, P.Rot.q(rt), Pobs(r)) == True{} : Bool})
+  -> NC(s, P.Move.zpushed(r, x, y, cz, vx, vy, gr, rt)):
   P.Pushed{+v, +obs2, at} = r
-  match at:
-    case None{}:
-      h
-    case Some{+cz}:
-      zput_nc(rt, s, Bool.and(P.Geo.step(z, tz, cz), P.Geo.free(s, x, y, cz, P.Rot.q(rt), obs2)), obs2, cz, x, y, z,
-        vx, vy, v, gr, P.Geo.step(z, tz, cz), {==}, h)
+  h
+
+def ztouch_nc(touch: Bool, +rt: P.Rot, +s: Nat, +obs: List<&2, P.Body>, +d: P.Z, +cz: Nat, +pr: Nat, +x: Nat, +y: Nat,
+  +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool,
+  et: {P.Move.ztouches(s, obs, d, x, y, cz, P.Rot.q(rt)) == touch : Bool},
+  h: {P.Geo.free(s, x, y, z, P.Rot.q(rt), obs) == True{} : Bool})
+  -> NC(s, P.Move.ztouch(touch, s, obs, d, cz, pr, x, y, z, vx, vy, vz, gr, rt)):
+  match touch:
+    case True{}:
+      zpushed_nc(rt, s, P.Push.z(s, obs, d, x, y, pr, vz, P.Rot.q(rt), P.Geo.head(s, x, y, pr, P.Rot.q(rt), obs)), x, y, cz, vx, vy, gr,
+        Equal.trans(Bool, P.Geo.free(s, x, y, cz, P.Rot.q(rt), Pobs(P.Push.z(s, obs, d, x, y, pr, vz, P.Rot.q(rt), P.Geo.head(s, x, y, pr, P.Rot.q(rt), obs)))),
+          P.Geo.free(s, x, y, cz, P.Rot.q(rt), obs), True{},
+          push_z_free(P.Rot.q(rt), s, obs, d, x, y, pr, vz, P.Geo.head(s, x, y, pr, P.Rot.q(rt), obs), x, y, cz),
+          and_l(P.Geo.free(s, x, y, cz, P.Rot.q(rt), obs), Bool.not(P.Geo.free(s, x, y, P.Z.shift(cz, P.Z.like(d, 1n)), P.Rot.q(rt), obs)), et)))
+    case False{}:
+      zput_nc(rt, s, P.Geo.free(s, x, y, cz, P.Rot.q(rt), obs), obs, cz, x, y, z, vx, vy, vz, gr, True{}, {==}, h)
+
+def zno_nc(+rt: P.Rot, +s: Nat, +obs: List<&2, P.Body>, +d: P.Z, +cz: Nat, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
+  +vz: P.Z, +gr: Bool, +hit: Bool, h: {P.Geo.free(s, x, y, z, P.Rot.q(rt), obs) == True{} : Bool})
+  -> NC(s, P.Move.zno(s, obs, d, cz, P.Body{x,y,z,vx,vy,vz,gr,hit,rt})):
+  ztouch_nc(P.Move.ztouches(s, obs, d, x, y, P.Move.zto(s, obs, d, x, y, z, P.Rot.q(rt)), P.Rot.q(rt)), rt, s, obs, d,
+    P.Move.zto(s, obs, d, x, y, z, P.Rot.q(rt)), P.Z.shift(P.Move.zto(s, obs, d, x, y, z, P.Rot.q(rt)), P.Z.like(d, 1n)),
+    x, y, z, vx, vy, vz, gr, {==}, h)
 
 def zgo_nc(+rt: P.Rot, +s: Nat, ok: Bool, +obs: List<&2, P.Body>, +d: P.Z, +cz: Nat, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z,
   +gr: Bool, +hit: Bool, eok: {Bool.and(P.Z.fits(z, d), P.Geo.free(s, x, y, cz, P.Rot.q(rt), obs)) == ok : Bool},
@@ -2962,10 +3567,7 @@ def zgo_nc(+rt: P.Rot, +s: Nat, ok: Bool, +obs: List<&2, P.Body>, +d: P.Z, +cz: 
     case True{}:
       and_r(P.Z.fits(z, d), P.Geo.free(s, x, y, cz, P.Rot.q(rt), obs), eok)
     case False{}:
-      zhit_nc(rt, s, P.Push.z(s, obs, d, x, y, cz, vz, P.Rot.q(rt), P.Geo.head(s, x, y, cz, P.Rot.q(rt), obs)), x, y, z, cz, vx, vy, gr,
-        Equal.trans(Bool, P.Geo.free(s, x, y, z, P.Rot.q(rt), Pobs(P.Push.z(s, obs, d, x, y, cz, vz, P.Rot.q(rt), P.Geo.head(s, x, y, cz, P.Rot.q(rt), obs)))),
-          P.Geo.free(s, x, y, z, P.Rot.q(rt), obs), True{},
-          push_z_free(P.Rot.q(rt), s, obs, d, x, y, cz, vz, P.Geo.head(s, x, y, cz, P.Rot.q(rt), obs), x, y, z), h))
+      zno_nc(rt, s, obs, d, cz, x, y, z, vx, vy, vz, gr, hit, h)
 
 def mz_nc(+s: Nat, +obs: List<&2, P.Body>, +v0: P.Z, b: P.Body, h: {P.Geo.free(s, P.Body.x(b), P.Body.y(b), P.Body.z(b), P.Rot.q(P.Body.rot(b)), obs) == True{} : Bool})
   -> NC(s, P.Move.z(s, obs, v0, b)):
@@ -2986,63 +3588,65 @@ def rise_nc(+rt: P.Rot, +s: Nat, ok: Bool, +obs: List<&2, P.Body>, +x: Nat, +y: 
 # landing: whatever else the tick asked before it (that the floor is
 # below and within the step), what it asked last is that the body be
 # clear where it lands -- and that is the half the law needs
-def land_nc(+rt: P.Rot, +s: Nat, ok: Bool, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +fl: Nat, +vx: P.Z, +vz: P.Z,
-  +g: Bool, eok: {Bool.and(g, P.Geo.free(s, x, fl, z, P.Rot.q(rt), obs)) == ok : Bool}, h: {P.Geo.free(s, x, y, z, P.Rot.q(rt), obs) == True{} : Bool})
-  -> {P.Geo.free(s, P.Body.x(P.Move.land(ok, x, y, z, fl, vx, vz, rt)), P.Body.y(P.Move.land(ok, x, y, z, fl, vx, vz, rt)),
-        P.Body.z(P.Move.land(ok, x, y, z, fl, vx, vz, rt)), P.Rot.q(P.Body.rot(P.Move.land(ok, x, y, z, fl, vx, vz, rt))), obs) == True{} : Bool}:
+def fits2_free(free: Bool, +s: Nat, +y: Nat, +q: P.Quat,
+  e: {P.Tick.fits2(free, s, y, q) == True{} : Bool}) -> {free == True{} : Bool}:
+  match free:
+    case True{}:
+      {==}
+    case False{}:
+      e
+
+# where Tick.fits says yes, the body is clear of every cube
+def fits_free(+s: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +q: P.Quat,
+  e: {P.Tick.fits(s, obs, x, y, z, q) == True{} : Bool}) -> {P.Geo.free(s, x, y, z, q, obs) == True{} : Bool}:
+  fits2_free(P.Geo.free(s, x, y, z, q, obs), s, y, q, e)
+
+# a landing is taken only where the body fits, and a refused one leaves
+# it where it was
+def land_nc(+rt: P.Rot, +s: Nat, ok: Bool, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +ny: Nat, +vx: P.Z, +vz: P.Z,
+  +v0: P.Z, eok: {P.Move.landok(s, obs, x, ny, z, P.Rot.q(rt)) == ok : Bool}, h: {P.Geo.free(s, x, y, z, P.Rot.q(rt), obs) == True{} : Bool})
+  -> {P.Geo.free(s, P.Body.x(P.Move.land(ok, x, y, z, ny, vx, vz, v0, rt)), P.Body.y(P.Move.land(ok, x, y, z, ny, vx, vz, v0, rt)), P.Body.z(P.Move.land(ok, x, y, z, ny, vx, vz, v0, rt)), P.Rot.q(P.Body.rot(P.Move.land(ok, x, y, z, ny, vx, vz, v0, rt))), obs) == True{} : Bool}:
   match ok:
     case True{}:
-      and_r(g, P.Geo.free(s, x, fl, z, P.Rot.q(rt), obs), eok)
+      fits_free(s, obs, x, ny, z, P.Rot.q(rt), and_l(P.Tick.fits(s, obs, x, ny, z, P.Rot.q(rt)), Bool.not(P.Tick.sinks(s, obs, x, ny, z, P.Rot.q(rt))), eok))
     case False{}:
       h
 
-def fall_nc(+rt: P.Rot, +s: Nat, ok: Bool, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +q: Nat, +fl: Nat, +vx: P.Z, +v: P.Z, +vz: P.Z,
-  +hit: Bool, eok: {Bool.and(Nat.is_le(Nat.add(fl, q), y), P.Geo.free(s, x, Nat.sub(y, q), z, P.Rot.q(rt), obs)) == ok : Bool},
+def fall_nc(+rt: P.Rot, +s: Nat, ok: Bool, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +q: Nat, +vx: P.Z, +v: P.Z, +vz: P.Z,
+  +v0: P.Z, +hit: Bool, eok: {P.Move.fallok(s, obs, x, y, z, q, P.Rot.q(rt)) == ok : Bool},
   +h: {P.Geo.free(s, x, y, z, P.Rot.q(rt), obs) == True{} : Bool})
-  -> {P.Geo.free(s, P.Body.x(P.Move.fall(s, ok, obs, x, y, z, q, fl, vx, v, vz, hit, rt)), P.Body.y(P.Move.fall(s, ok, obs, x, y, z, q, fl, vx, v, vz, hit, rt)),
-        P.Body.z(P.Move.fall(s, ok, obs, x, y, z, q, fl, vx, v, vz, hit, rt)), P.Rot.q(P.Body.rot(P.Move.fall(s, ok, obs, x, y, z, q, fl, vx, v, vz, hit, rt))), obs) == True{} : Bool}:
+  -> {P.Geo.free(s, P.Body.x(P.Move.fall(s, ok, obs, x, y, z, q, vx, v, vz, v0, hit, rt)), P.Body.y(P.Move.fall(s, ok, obs, x, y, z, q, vx, v, vz, v0, hit, rt)), P.Body.z(P.Move.fall(s, ok, obs, x, y, z, q, vx, v, vz, v0, hit, rt)), P.Rot.q(P.Body.rot(P.Move.fall(s, ok, obs, x, y, z, q, vx, v, vz, v0, hit, rt))), obs) == True{} : Bool}:
   match ok:
     case True{}:
-      and_r(Nat.is_le(Nat.add(fl, q), y), P.Geo.free(s, x, Nat.sub(y, q), z, P.Rot.q(rt), obs), eok)
+      fits_free(s, obs, x, Nat.sub(y, q), z, P.Rot.q(rt),
+        and_l(P.Tick.fits(s, obs, x, Nat.sub(y, q), z, P.Rot.q(rt)), P.Tick.path(64n, Nat.is_lt(s, q), s, obs, x, y, z, P.Rot.q(rt), q, s),
+          and_r(Nat.is_le(q, y), Bool.and(P.Tick.fits(s, obs, x, Nat.sub(y, q), z, P.Rot.q(rt)),
+            P.Tick.path(64n, Nat.is_lt(s, q), s, obs, x, y, z, P.Rot.q(rt), q, s)), eok)))
     case False{}:
-      land_nc(rt, s, Bool.and(Bool.and(Nat.is_le(Nat.add(fl, P.Geo.sag(s, P.Rot.q(rt))), y),
-          Nat.is_le(y, Nat.add(Nat.add(fl, P.Geo.sag(s, P.Rot.q(rt))), q))),
-          P.Geo.free(s, x, Nat.add(fl, P.Geo.sag(s, P.Rot.q(rt))), z, P.Rot.q(rt), obs)),
-        obs, x, y, z, Nat.add(fl, P.Geo.sag(s, P.Rot.q(rt))), vx, vz,
-        Bool.and(Nat.is_le(Nat.add(fl, P.Geo.sag(s, P.Rot.q(rt))), y),
-          Nat.is_le(y, Nat.add(Nat.add(fl, P.Geo.sag(s, P.Rot.q(rt))), q))), {==}, h)
+      land_nc(rt, s, P.Move.landok(s, obs, x, P.Move.landy(s, obs, x, y, z, P.Rot.q(rt), q), z, P.Rot.q(rt)), obs, x, y, z,
+        P.Move.landy(s, obs, x, y, z, P.Rot.q(rt), q), vx, vz, v0, {==}, h)
 
-def fly_nc(+rt: P.Rot, +s: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vz: P.Z, +hit: Bool, st: P.Z & P.Z,
+def fly_nc(+rt: P.Rot, +s: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy0: P.Z, +vz: P.Z, +hit: Bool, st: P.Z & P.Z,
   +h: {P.Geo.free(s, x, y, z, P.Rot.q(rt), obs) == True{} : Bool})
-  -> {P.Geo.free(s, P.Body.x(P.Move.fly(s, obs, x, y, z, vx, vz, hit, st, rt)), P.Body.y(P.Move.fly(s, obs, x, y, z, vx, vz, hit, st, rt)),
-        P.Body.z(P.Move.fly(s, obs, x, y, z, vx, vz, hit, st, rt)), P.Rot.q(P.Body.rot(P.Move.fly(s, obs, x, y, z, vx, vz, hit, st, rt))), obs) == True{} : Bool}:
+  -> {P.Geo.free(s, P.Body.x(P.Move.fly(s, obs, x, y, z, vx, vy0, vz, hit, st, rt)), P.Body.y(P.Move.fly(s, obs, x, y, z, vx, vy0, vz, hit, st, rt)), P.Body.z(P.Move.fly(s, obs, x, y, z, vx, vy0, vz, hit, st, rt)), P.Rot.q(P.Body.rot(P.Move.fly(s, obs, x, y, z, vx, vy0, vz, hit, st, rt))), obs) == True{} : Bool}:
   (+v, d) = st
   match d:
     case P.Pos{+p}:
       rise_nc(rt, s, P.Geo.free(s, x, Nat.add(y, p), z, P.Rot.q(rt), obs), obs, x, y, z, p, vx, v, vz, hit, {==}, h)
     case P.Neg{+q}:
-      fall_nc(rt, s, Bool.and(Nat.is_le(Nat.add(P.Geo.floor(s, x, y, z, obs, 0n), q), y), P.Geo.free(s, x, Nat.sub(y, q), z, P.Rot.q(rt), obs)),
-        obs, x, y, z, q, P.Geo.floor(s, x, y, z, obs, 0n), vx, v, vz, hit, {==}, h)
+      fall_nc(rt, s, P.Move.fallok(s, obs, x, y, z, q, P.Rot.q(rt)), obs, x, y, z, q, vx, v, vz, vy0, hit, {==}, h)
 
 # a hold from below only presses: it leaves the body where it is and
 # turned as it was, and only the spin it carries changes
-def q_stand(f: P.Foot, +rt: P.Rot, +s: Nat, +y: Nat, +j: Nat)
-  -> {P.Rot.q(rt) == P.Rot.q(P.Rot.stand(f, rt, s, y, j)) : P.Quat}:
-  P.Foot{+n, +lx, +hx, +lz, +hz, +ty} = f
-  {==}
-
-def q_tip(m: P.Mat, +rt: P.Rot, +s: Nat, +j: Nat)
-  -> {P.Rot.q(rt) == P.Rot.q(P.Rot.tip(m, rt, s, j)) : P.Quat}:
-  P.Mat{+axx, +axy, +axz, +ayx, +ayy, +ayz, +azx, +azy, +azz} = m
-  {==}
-
+# a hold from below only presses: it leaves the body where it is and
+# turned as it was, and only the spin it carries changes
 def q_held(floor: Bool, +rt: P.Rot, +s: Nat, +x: Nat, +y: Nat, +z: Nat, +j: Nat, obs: List<&2, P.Body>)
   -> {P.Rot.q(rt) == P.Rot.q(P.Rot.held(floor, rt, s, x, y, z, j, obs)) : P.Quat}:
   match floor:
     case True{}:
-      q_tip(P.Rot.mat(P.Rot.q(rt)), rt, s, j)
+      {==}
     case False{}:
-      q_stand(P.Geo.foot(s, x, y, z, obs, P.Foot.none()), rt, s, y, j)
+      {==}
 
 def stay_nc(rest: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
   +vz: P.Z, +hit: Bool, +rt: P.Rot,
@@ -3053,7 +3657,7 @@ def stay_nc(rest: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: N
        P.Rot.q(P.Body.rot(P.Move.stay(rest, s, g, obs, x, y, z, vx, vy, vz, hit, rt))), obs) == True{} : Bool}:
   match rest:
     case True{}:
-      %q_held(Nat.is_le(y, Nat.add(P.Geo.sag(s, P.Rot.q(rt)), Nat.div(s, 512n))), rt, s, x, y, z, g, obs)
+      %q_held(P.Geo.onfloor(s, y, P.Rot.q(rt)), rt, s, x, y, z, g, obs)
         : {P.Geo.free(s, x, y, z, _, obs) == True{} : Bool}
       h
     case False{}:
@@ -3067,7 +3671,7 @@ def my_nc(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, b: P.Body, h: {P.Geo.free(s,
     case True{}:
       stay_nc(P.Geo.held(P.Quat.flat(P.Rot.q(rt)), s, x, y, z, P.Rot.q(rt), obs), s, g, obs, x, y, z, vx, vy, vz, hit, rt, h)
     case False{}:
-      fly_nc(rt, s, obs, x, y, z, vx, vz, hit, P.Fly.step(g, vy), h)
+      fly_nc(rt, s, obs, x, y, z, vx, vy, vz, hit, P.Fly.step(g, vy), h)
 
 def ty_nc(+rt: P.Rot, +s: Nat, +g: Nat, r: P.Body & List<&2, P.Body>, h: NC(s, r)) -> NC(s, P.Tick.y(s, g, r)):
   (+b, +obs) = r
@@ -3132,104 +3736,133 @@ def FREE(+s: Nat, +obs: List<&2, P.Body>, -b: P.Body) -> Type:
   {P.Geo.free(s, P.Body.x(b), P.Body.y(b), P.Body.z(b), P.Rot.q(P.Body.rot(b)), obs) == True{} : Bool}
 
 # the clearing, back out of the answer Tick.fits gave
-def fits2_free(free: Bool, +s: Nat, +y: Nat, +q: P.Quat,
-  e: {P.Tick.fits2(free, s, y, q) == True{} : Bool}) -> {free == True{} : Bool}:
-  match free:
-    case True{}:
-      {==}
-    case False{}:
-      e
-
-def put_nc(ok: Bool, +s: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +nx: Nat, +ny: Nat, +nz: Nat,
+def put_nc(ok: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +nx: Nat, +ny: Nat, +nz: Nat,
   +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot,
-  eok: {Bool.and(Nat.is_le(ny, y), P.Tick.fits(s, obs, nx, ny, nz, P.Rot.q(r2))) == ok : Bool},
+  eok: {P.Tick.turnok(s, obs, y, nx, ny, nz, P.Rot.q(r2), gr) == ok : Bool},
   h: FREE(s, obs, P.Body{x, y, z, vx, vy, vz, gr, hit, rt}))
-  -> FREE(s, obs, P.Tick.put(ok, x, y, z, nx, ny, nz, vx, vy, vz, gr, hit, rt, r2)):
+  -> FREE(s, obs, P.Tick.put(ok, s, g, obs, x, y, z, nx, ny, nz, vx, vy, vz, gr, hit, rt, r2)):
   match ok:
     case True{}:
-      fits2_free(P.Geo.free(s, nx, ny, nz, P.Rot.q(r2), obs), s, ny, P.Rot.q(r2),
-        and_r(Nat.is_le(ny, y), P.Tick.fits(s, obs, nx, ny, nz, P.Rot.q(r2)), eok))
+      fits_free(s, obs, nx, ny, nz, P.Rot.q(r2),
+        and_l(P.Tick.fits(s, obs, nx, ny, nz, P.Rot.q(r2)), P.Tick.keeps(gr, s, obs, y, nx, ny, nz, P.Rot.q(r2)),
+          and_r(Nat.is_le(ny, y), Bool.and(P.Tick.fits(s, obs, nx, ny, nz, P.Rot.q(r2)),
+            P.Tick.keeps(gr, s, obs, y, nx, ny, nz, P.Rot.q(r2))), eok)))
     case False{}:
       h
 
-def place_nc(+s: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +nx: Nat, +ny: Nat, +nz: Nat,
+def place_nc(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +nx: Nat, +ny: Nat, +nz: Nat,
   +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot,
   h: FREE(s, obs, P.Body{x, y, z, vx, vy, vz, gr, hit, rt}))
-  -> FREE(s, obs, P.Tick.place(s, obs, x, y, z, nx, ny, nz, vx, vy, vz, gr, hit, rt, r2)):
-  put_nc(Bool.and(Nat.is_le(ny, y), P.Tick.fits(s, obs, nx, ny, nz, P.Rot.q(r2))), s, obs, x, y, z, nx, ny, nz,
+  -> FREE(s, obs, P.Tick.place(s, g, obs, x, y, z, nx, ny, nz, vx, vy, vz, gr, hit, rt, r2)):
+  put_nc(P.Tick.turnok(s, obs, y, nx, ny, nz, P.Rot.q(r2), gr), s, g, obs, x, y, z, nx, ny, nz,
     vx, vy, vz, gr, hit, rt, r2, {==}, h)
 
-def pivot_nc(m: P.Mat, +s: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z,
+def pivot_nc(m: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z,
   +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, +rx: P.Z, +ry: P.Z, +rz: P.Z,
   h: FREE(s, obs, P.Body{x, y, z, vx, vy, vz, gr, hit, rt}))
-  -> FREE(s, obs, P.Tick.pivot(m, s, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, rx, ry, rz)):
+  -> FREE(s, obs, P.Tick.pivot(m, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, rx, ry, rz)):
   P.Mat{+axx, +axy, +axz, +ayx, +ayy, +ayz, +azx, +azy, +azz} = m
-  place_nc(s, obs, x, y, z, P.Pivot.c(x, rx, axx, ayx, azx, rx, ry, rz),
-    P.Tick.lift(s, obs, y, P.Pivot.c(x, rx, axx, ayx, azx, rx, ry, rz),
-      P.Pivot.c(y, ry, axy, ayy, azy, rx, ry, rz), P.Pivot.c(z, rz, axz, ayz, azz, rx, ry, rz), P.Rot.q(r2)),
-    P.Pivot.c(z, rz, axz, ayz, azz, rx, ry, rz), vx, vy, vz, gr, hit, rt, r2, h)
+  +nx = P.Pivot.c(x, rx, axx, ayx, azx, rx, ry, rz)
+  +ny = P.Pivot.c(y, ry, axy, ayy, azy, rx, ry, rz)
+  +nz = P.Pivot.c(z, rz, axz, ayz, azz, rx, ry, rz)
+  +d = P.Tick.drop(s, obs, nx, y, nz, P.Rot.q(r2), Nat.add(Nat.sub(y, P.Pick.low(ny, y)), Nat.div(s, 256n)))
+  place_nc(s, g, obs, x, y, z, nx, Nat.sub(y, d), nz, vx, vy, vz, gr, hit, rt, r2, h)
 
-def tipv_nc(m: P.Mat, +s: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z,
-  +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, md: P.Mat,
+def pivota_nc(md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z,
+  +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, a: P.Wv,
   h: FREE(s, obs, P.Body{x, y, z, vx, vy, vz, gr, hit, rt}))
-  -> FREE(s, obs, P.Tick.tipv(m, s, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, md)):
-  P.Mat{+axx, +axy, +axz, +ayx, +ayy, +ayz, +azx, +azy, +azz} = m
-  pivot_nc(md, s, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2,
-    P.Tip.arm(Nat.div(s, 2n), P.Z.sgnop(axy), P.Z.sgnop(ayy), P.Z.sgnop(azy), axx, ayx, azx),
-    P.Tip.arm(Nat.div(s, 2n), P.Z.sgnop(axy), P.Z.sgnop(ayy), P.Z.sgnop(azy), axy, ayy, azy),
-    P.Tip.arm(Nat.div(s, 2n), P.Z.sgnop(axy), P.Z.sgnop(ayy), P.Z.sgnop(azy), axz, ayz, azz), h)
+  -> FREE(s, obs, P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, a)):
+  P.Wv{+ax, +ay, +az} = a
+  pivot_nc(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, ax, ay, az, h)
 
-def footv_nc(f: P.Foot, +s: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z,
-  +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, md: P.Mat,
-  h: FREE(s, obs, P.Body{x, y, z, vx, vy, vz, gr, hit, rt}))
-  -> FREE(s, obs, P.Tick.footv(f, s, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, md)):
-  P.Foot{+n, +lx, +hx, +lz, +hz, +ty} = f
-  pivot_nc(md, s, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, P.Geo.lean(Nat.div(s, 2n), lx, hx),
-    P.Z.diff(Nat.is_lt(ty, Nat.add(y, Nat.div(s, 2n))), ty, Nat.add(y, Nat.div(s, 2n))),
-    P.Geo.lean(Nat.div(s, 2n), lz, hz), h)
-
-def turn2_nc(held: Bool, floor: Bool, +s: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z,
+def turn2_nc(held: Bool, floor: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z,
   +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, +md: P.Mat,
   h: FREE(s, obs, P.Body{x, y, z, vx, vy, vz, gr, hit, rt}))
-  -> FREE(s, obs, P.Tick.turn2(held, floor, s, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, md)):
+  -> FREE(s, obs, P.Tick.turn2(held, floor, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, md)):
   match held floor:
     case False{} _:
-      place_nc(s, obs, x, y, z, x, y, z, vx, vy, vz, gr, hit, rt, r2, h)
+      place_nc(s, g, obs, x, y, z, x, y, z, vx, vy, vz, gr, hit, rt, r2, h)
     case True{} False{}:
-      footv_nc(P.Geo.foot(s, x, y, z, obs, P.Foot.none()), s, obs, x, y, z, vx, vy, vz, gr, True{}, rt, r2, md, h)
+      pivota_nc(md, s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s), h)
     case True{} True{}:
-      tipv_nc(P.Rot.mat(P.Rot.q(rt)), s, obs, x, y, z, vx, vy, vz, gr, True{}, rt, r2, md, h)
+      pivota_nc(md, s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, r2, P.Hold.low(P.Rot.mat(P.Rot.q(rt)), s), h)
 
-def turn1_nc(still: Bool, +s: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
+def turn1_nc(still: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
   +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot,
   h: FREE(s, obs, P.Body{x, y, z, vx, vy, vz, gr, hit, rt}))
-  -> FREE(s, obs, P.Tick.turn1(still, s, obs, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})):
+  -> FREE(s, obs, P.Tick.turn1(still, s, g, obs, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})):
   match still:
     case True{}:
       h
     case False{}:
-      turn2_nc(gr, Nat.is_le(y, Nat.add(P.Geo.sag(s, P.Rot.q(rt)), Nat.div(s, 512n))), s, obs, x, y, z, vx, vy,
+      turn2_nc(gr, P.Geo.onfloor(s, y, P.Rot.q(rt)), s, g, obs, x, y, z, vx, vy,
         vz, gr, hit, rt, P.Rot.free(rt),
         P.Rot.mat(P.Quat.half(P.Quat.step(P.Rot.w(rt), P.Wv.mag(P.Rot.w(rt))))), h)
 
-def turn_nc0(+s: Nat, +obs: List<&2, P.Body>, +b: P.Body, h: FREE(s, obs, b))
-  -> FREE(s, obs, P.Tick.turn0(s, obs, b)):
+def turn_nc0(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +b: P.Body, h: FREE(s, obs, b))
+  -> FREE(s, obs, P.Tick.turn0(s, g, obs, b)):
   P.Body{+x, +y, +z, +vx, +vy, +vz, +gr, +hit, +rt} = b
-  turn1_nc(P.Wv.null(P.Rot.w(rt)), s, obs, x, y, z, vx, vy, vz, gr, hit, rt, h)
+  turn1_nc(P.Wv.null(P.Rot.w(rt)), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, h)
 
-def turn_nc(+s: Nat, +obs: List<&2, P.Body>, +b: P.Body, h: FREE(s, obs, b))
-  -> FREE(s, obs, P.Tick.turn(s, obs, b)):
-  %turn_sym(s, obs, b) : FREE(s, obs, _)
-  turn_nc0(s, obs, b, h)
+def turn_nc(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +b: P.Body, h: FREE(s, obs, b))
+  -> FREE(s, obs, P.Tick.turn(s, g, obs, b)):
+  %turn_sym(s, g, obs, b) : FREE(s, obs, _)
+  turn_nc0(s, g, obs, b, h)
 
-def spin_nc(+s: Nat, r: P.Body & List<&2, P.Body>, h: NC(s, r)) -> NC(s, P.Tick.spin(s, r)):
+def spin_nc(+s: Nat, +g: Nat, r: P.Body & List<&2, P.Body>, h: NC(s, r)) -> NC(s, P.Tick.spin(s, g, r)):
   (+b, +obs) = r
-  turn_nc(s, obs, b, h)
+  turn_nc(s, g, obs, b, h)
+
+def Laws.spin_turns_the_body(k, obs, inp, b, spin, free):
+  spin_q(P.K.size(k), P.K.g(k), P.Body.step(k, obs, inp, b), spin, free)
+
+# the last two stages of the tick's linear part, opened once
+def ticky_is(+s: Nat, +g: Nat, r2: P.Body & List<&2, P.Body>)
+  -> {P.Tick.body(P.Tick.y(s, g, r2)) == P.Move.y(s, g, P.Tick.obs(r2), P.Tick.body(r2)) : P.Body}:
+  (+b, +obs) = r2
+  {==}
+
+def tickz_is(+s: Nat, +g: Nat, +vz0: P.Z, r: P.Body & List<&2, P.Body>)
+  -> {P.Tick.body(P.Tick.z(s, g, vz0, r))
+      == P.Move.y(s, g, P.Tick.obs(P.Move.z(s, P.Tick.obs(r), vz0, P.Tick.body(r))),
+           P.Tick.body(P.Move.z(s, P.Tick.obs(r), vz0, P.Tick.body(r)))) : P.Body}:
+  (+b, +obs) = r
+  ticky_is(s, g, P.Move.z(s, obs, vz0, b))
+
+# the tick's linear part ends in the fall stage
+def stepy_is(+k: P.K, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +q: Nat, +vz: P.Z,
+  +hh: Bool, +rt: P.Rot)
+  -> {P.Tick.body(P.Body.step(k, obs, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt})) == P.Move.y(P.K.size(k), P.K.g(k), P.Tick.obs(P.Move.z(P.K.size(k), P.Tick.obs(P.Move.x(P.K.size(k), obs, vx, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt}))), vz, P.Tick.body(P.Move.x(P.K.size(k), obs, vx, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt}))))), P.Tick.body(P.Move.z(P.K.size(k), P.Tick.obs(P.Move.x(P.K.size(k), obs, vx, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt}))), vz, P.Tick.body(P.Move.x(P.K.size(k), obs, vx, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt})))))) : P.Body}:
+  tickz_is(P.K.size(k), P.K.g(k), vz,
+    P.Move.x(P.K.size(k), obs, vx, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt})))
+
+def step_fs(+k: P.K, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +q: Nat, +vz: P.Z,
+  +hh: Bool, +rt: P.Rot, going: {Nat.is_lt(0n, q) == True{} : Bool})
+  -> FS(P.Tick.body(P.Body.step(k, obs, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt}))):
+  %Equal.sym(P.Body, P.Tick.body(P.Body.step(k, obs, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt})), P.Move.y(P.K.size(k), P.K.g(k), P.Tick.obs(P.Move.z(P.K.size(k), P.Tick.obs(P.Move.x(P.K.size(k), obs, vx, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt}))), vz, P.Tick.body(P.Move.x(P.K.size(k), obs, vx, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt}))))), P.Tick.body(P.Move.z(P.K.size(k), P.Tick.obs(P.Move.x(P.K.size(k), obs, vx, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt}))), vz, P.Tick.body(P.Move.x(P.K.size(k), obs, vx, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt})))))), stepy_is(k, obs, x, y, z, vx, q, vz, hh, rt)) : FS(_)
+  my_fs(P.K.size(k), P.K.g(k), P.Tick.obs(P.Move.z(P.K.size(k), P.Tick.obs(P.Move.x(P.K.size(k), obs, vx, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt}))), vz, P.Tick.body(P.Move.x(P.K.size(k), obs, vx, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt}))))), P.Tick.body(P.Move.z(P.K.size(k), P.Tick.obs(P.Move.x(P.K.size(k), obs, vx, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt}))), vz, P.Tick.body(P.Move.x(P.K.size(k), obs, vx, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt}))))), q,
+    Equal.trans(Bool, P.Body.ground(P.Tick.body(P.Move.z(P.K.size(k), P.Tick.obs(P.Move.x(P.K.size(k), obs, vx, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt}))), vz, P.Tick.body(P.Move.x(P.K.size(k), obs, vx, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt})))))), P.Body.ground(P.Tick.body(P.Move.x(P.K.size(k), obs, vx, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt})))), False{},
+      same_g(P.Body.vy(P.Tick.body(P.Move.x(P.K.size(k), obs, vx, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt})))), P.Body.ground(P.Tick.body(P.Move.x(P.K.size(k), obs, vx, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt})))), P.Tick.body(P.Move.z(P.K.size(k), P.Tick.obs(P.Move.x(P.K.size(k), obs, vx, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt}))), vz, P.Tick.body(P.Move.x(P.K.size(k), obs, vx, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt}))))),
+        mz_same(P.K.size(k), P.Tick.obs(P.Move.x(P.K.size(k), obs, vx, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt}))), vz, P.Tick.body(P.Move.x(P.K.size(k), obs, vx, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt}))))),
+      Equal.trans(Bool, P.Body.ground(P.Tick.body(P.Move.x(P.K.size(k), obs, vx, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt})))), P.Body.ground(P.Body.drive(k, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt})), False{},
+        same_g(P.Body.vy(P.Body.drive(k, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt})), P.Body.ground(P.Body.drive(k, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt})), P.Tick.body(P.Move.x(P.K.size(k), obs, vx, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt}))),
+          mx_same(P.K.size(k), obs, vx, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt}))), {==})),
+    Equal.trans(P.Z, P.Body.vy(P.Tick.body(P.Move.z(P.K.size(k), P.Tick.obs(P.Move.x(P.K.size(k), obs, vx, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt}))), vz, P.Tick.body(P.Move.x(P.K.size(k), obs, vx, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt})))))), P.Body.vy(P.Tick.body(P.Move.x(P.K.size(k), obs, vx, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt})))), P.Neg{q},
+      same_v(P.Body.vy(P.Tick.body(P.Move.x(P.K.size(k), obs, vx, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt})))), P.Body.ground(P.Tick.body(P.Move.x(P.K.size(k), obs, vx, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt})))), P.Tick.body(P.Move.z(P.K.size(k), P.Tick.obs(P.Move.x(P.K.size(k), obs, vx, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt}))), vz, P.Tick.body(P.Move.x(P.K.size(k), obs, vx, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt}))))),
+        mz_same(P.K.size(k), P.Tick.obs(P.Move.x(P.K.size(k), obs, vx, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt}))), vz, P.Tick.body(P.Move.x(P.K.size(k), obs, vx, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt}))))),
+      Equal.trans(P.Z, P.Body.vy(P.Tick.body(P.Move.x(P.K.size(k), obs, vx, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt})))), P.Body.vy(P.Body.drive(k, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt})), P.Neg{q},
+        same_v(P.Body.vy(P.Body.drive(k, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt})), P.Body.ground(P.Body.drive(k, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt})), P.Tick.body(P.Move.x(P.K.size(k), obs, vx, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt}))),
+          mx_same(P.K.size(k), obs, vx, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, hh, rt}))), {==})),
+    going)
+
+def Laws.it_falls_or_it_stands(k, heavy, obs, x, y, z, vx, vz, q, going, h, rt):
+  spin_fs(P.K.size(k), P.K.g(k), P.Body.step(k, obs, P.In.idle(), P.Body{x, y, z, vx, P.Neg{q}, vz, False{}, h, rt}),
+    heavy, step_fs(k, obs, x, y, z, vx, q, vz, h, rt, going))
 
 def Laws.no_clip(k, obs, inp, b, clear):
   match k b:
     case P.K{+g, +mu, +j, +acc, +s} P.Body{+x, +y, +z, +vx, +vy, +vz, +gr, +hit, +rt}:
-      spin_nc(s, P.Tick.z(s, g, vz, P.Move.x(s, obs, vx,
+      spin_nc(s, g, P.Tick.z(s, g, vz, P.Move.x(s, obs, vx,
           P.Body.drive(P.K{g, mu, j, acc, s}, inp, P.Body{x, y, z, vx, vy, vz, gr, hit, rt}))),
         nclip(rt, g, mu, j, acc, s, obs, inp, x, y, z, vx, vy, vz, gr, hit, clear))
 
@@ -3323,3 +3956,561 @@ def Laws.spin_is_across_the_push(rx, jx):
       ({==}, across_np(a, b))
     case P.Neg{+a} P.Neg{+b}:
       ({==}, across_nn(a, b))
+
+
+# Nothing goes into the floor
+# ---------------------------
+# A body's lowest point is y - sag. Every move that changes where a body
+# is, or how it is turned, is gated by Tick.fits, and Tick.fits asks for
+# exactly sag <= y; a move that is not gated by it changes neither y nor
+# the turn, or only raises y. So a body that starts above the floor ends
+# every stage of the tick above it.
+
+def FL(+s: Nat, -b: P.Body) -> Type:
+  {Nat.is_le(P.Geo.sag(s, P.Rot.q(P.Body.rot(b))), P.Body.y(b)) == True{} : Bool}
+
+def fits2_sag(free: Bool, +s: Nat, +y: Nat, +q: P.Quat, e: {P.Tick.fits2(free, s, y, q) == True{} : Bool})
+  -> {Nat.is_le(P.Geo.sag(s, q), y) == True{} : Bool}:
+  match free:
+    case True{}:
+      e
+    case False{}:
+      Empty.absurd({Nat.is_le(P.Geo.sag(s, q), y) == True{} : Bool}, clash2(e))
+
+# where Tick.fits says yes, the body's lowest point is above the floor
+def fits_sag(+s: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +q: P.Quat,
+  e: {P.Tick.fits(s, obs, x, y, z, q) == True{} : Bool}) -> {Nat.is_le(P.Geo.sag(s, q), y) == True{} : Bool}:
+  fits2_sag(P.Geo.free(s, x, y, z, q, obs), s, y, q, e)
+
+def leap_fl(+rt: P.Rot, +s: Nat, jump: Bool, +k: P.K, +x: Nat, +y: Nat, +z: Nat, v: P.Z & P.Z, h: {Nat.is_le(P.Geo.sag(s, P.Rot.q(rt)), y) == True{} : Bool})
+  -> FL(s, P.Drive.leap(jump, k, x, y, z, v, rt)):
+  match jump:
+    case True{}:
+      P.K{g, mu, j, acc, sz} = k
+      (vx, vz) = v
+      h
+    case False{}:
+      (vx, vz) = v
+      h
+
+def drive_fl(+s: Nat, +g: Nat, +mu: Nat, +j: Nat, +acc: Nat, inp: P.In, b: P.Body, h: FL(s, b))
+  -> FL(s, P.Body.drive(P.K{g, mu, j, acc, s}, inp, b)):
+  P.In{+walk, jump} = inp
+  P.Body{+x, +y, +z, +vx, +vy, +vz, gr, +hit, +rt} = b
+  match gr:
+    case True{}:
+      leap_fl(rt, s, jump, P.K{g, mu, j, acc, s}, x, y, z,
+        P.Motor.go(acc, walk, P.Share.fst(P.Fric.apply(Nat.div(Nat.mul(mu, g), 256n), vx, vz)),
+          P.Share.snd(P.Fric.apply(Nat.div(Nat.mul(mu, g), 256n), vx, vz))), h)
+    case False{}:
+      h
+
+def xput_fl(ok: Bool, +s: Nat, +obs: List<&2, P.Body>, +cx: Nat, +x: Nat, +y: Nat, +z: Nat, +v: P.Z, +vy: P.Z, +vz: P.Z,
+  +gr: Bool, +rt: P.Rot, h: {Nat.is_le(P.Geo.sag(s, P.Rot.q(rt)), y) == True{} : Bool}) -> FL(s, P.Tick.body(P.Move.xput(ok, obs, cx, x, y, z, v, vy, vz, gr, rt))):
+  match ok:
+    case True{}:
+      h
+    case False{}:
+      h
+
+def xpushed_fl(r: P.Pushed, +s: Nat, +cx: Nat, +y: Nat, +z: Nat, +vy: P.Z, +vz: P.Z, +gr: Bool, +rt: P.Rot, h: {Nat.is_le(P.Geo.sag(s, P.Rot.q(rt)), y) == True{} : Bool})
+  -> FL(s, P.Tick.body(P.Move.xpushed(r, cx, y, z, vy, vz, gr, rt))):
+  P.Pushed{+v, +obs, at} = r
+  h
+
+def xtouch_fl(touch: Bool, +s: Nat, +obs: List<&2, P.Body>, +d: P.Z, +cx: Nat, +pr: Nat, +x: Nat, +y: Nat, +z: Nat,
+  +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +rt: P.Rot, h: {Nat.is_le(P.Geo.sag(s, P.Rot.q(rt)), y) == True{} : Bool})
+  -> FL(s, P.Tick.body(P.Move.xtouch(touch, s, obs, d, cx, pr, x, y, z, vx, vy, vz, gr, rt))):
+  match touch:
+    case True{}:
+      xpushed_fl(P.Push.x(s, obs, d, pr, y, z, vx, P.Rot.q(rt), P.Geo.head(s, pr, y, z, P.Rot.q(rt), obs)), s, cx, y, z, vy, vz, gr, rt, h)
+    case False{}:
+      xput_fl(P.Geo.free(s, cx, y, z, P.Rot.q(rt), obs), s, obs, cx, x, y, z, vx, vy, vz, gr, rt, h)
+
+def xgo_fl(ok: Bool, +s: Nat, +obs: List<&2, P.Body>, +d: P.Z, +cx: Nat, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
+  +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, h: {Nat.is_le(P.Geo.sag(s, P.Rot.q(rt)), y) == True{} : Bool})
+  -> FL(s, P.Tick.body(P.Move.xgo(s, ok, obs, d, cx, P.Body{x, y, z, vx, vy, vz, gr, hit, rt}))):
+  match ok:
+    case True{}:
+      h
+    case False{}:
+      xtouch_fl(P.Move.xtouches(s, obs, d, P.Move.xto(s, obs, d, x, y, z, P.Rot.q(rt)), y, z, P.Rot.q(rt)), s, obs, d, P.Move.xto(s, obs, d, x, y, z, P.Rot.q(rt)), P.Z.shift(P.Move.xto(s, obs, d, x, y, z, P.Rot.q(rt)), P.Z.like(d, 1n)),
+        x, y, z, vx, vy, vz, gr, rt, h)
+
+def mx_fl(+s: Nat, +obs: List<&2, P.Body>, +v0: P.Z, b: P.Body, h: FL(s, b)) -> FL(s, P.Tick.body(P.Move.x(s, obs, v0, b))):
+  P.Body{+x, +y, +z, +vx, +vy, +vz, +gr, +hit, +rt} = b
+  xgo_fl(Bool.and(P.Z.fits(x, P.Z.add(v0, vx)), P.Geo.free(s, P.Z.shift(x, P.Z.add(v0, vx)), y, z, P.Rot.q(rt), obs)), s, obs,
+    P.Z.add(v0, vx), P.Z.shift(x, P.Z.add(v0, vx)), x, y, z, vx, vy, vz, gr, hit, rt, h)
+
+def zput_fl(ok: Bool, +s: Nat, +obs: List<&2, P.Body>, +cz: Nat, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +v: P.Z,
+  +gr: Bool, +rt: P.Rot, h: {Nat.is_le(P.Geo.sag(s, P.Rot.q(rt)), y) == True{} : Bool}) -> FL(s, P.Tick.body(P.Move.zput(ok, obs, cz, x, y, z, vx, vy, v, gr, rt))):
+  match ok:
+    case True{}:
+      h
+    case False{}:
+      h
+
+def zpushed_fl(r: P.Pushed, +s: Nat, +x: Nat, +y: Nat, +cz: Nat, +vx: P.Z, +vy: P.Z, +gr: Bool, +rt: P.Rot, h: {Nat.is_le(P.Geo.sag(s, P.Rot.q(rt)), y) == True{} : Bool})
+  -> FL(s, P.Tick.body(P.Move.zpushed(r, x, y, cz, vx, vy, gr, rt))):
+  P.Pushed{+v, +obs, at} = r
+  h
+
+def ztouch_fl(touch: Bool, +s: Nat, +obs: List<&2, P.Body>, +d: P.Z, +cz: Nat, +pr: Nat, +x: Nat, +y: Nat, +z: Nat,
+  +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +rt: P.Rot, h: {Nat.is_le(P.Geo.sag(s, P.Rot.q(rt)), y) == True{} : Bool})
+  -> FL(s, P.Tick.body(P.Move.ztouch(touch, s, obs, d, cz, pr, x, y, z, vx, vy, vz, gr, rt))):
+  match touch:
+    case True{}:
+      zpushed_fl(P.Push.z(s, obs, d, x, y, pr, vz, P.Rot.q(rt), P.Geo.head(s, x, y, pr, P.Rot.q(rt), obs)), s, x, y, cz, vx, vy, gr, rt, h)
+    case False{}:
+      zput_fl(P.Geo.free(s, x, y, cz, P.Rot.q(rt), obs), s, obs, cz, x, y, z, vx, vy, vz, gr, rt, h)
+
+def zgo_fl(ok: Bool, +s: Nat, +obs: List<&2, P.Body>, +d: P.Z, +cz: Nat, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
+  +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, h: {Nat.is_le(P.Geo.sag(s, P.Rot.q(rt)), y) == True{} : Bool})
+  -> FL(s, P.Tick.body(P.Move.zgo(s, ok, obs, d, cz, P.Body{x, y, z, vx, vy, vz, gr, hit, rt}))):
+  match ok:
+    case True{}:
+      h
+    case False{}:
+      ztouch_fl(P.Move.ztouches(s, obs, d, x, y, P.Move.zto(s, obs, d, x, y, z, P.Rot.q(rt)), P.Rot.q(rt)), s, obs, d, P.Move.zto(s, obs, d, x, y, z, P.Rot.q(rt)), P.Z.shift(P.Move.zto(s, obs, d, x, y, z, P.Rot.q(rt)), P.Z.like(d, 1n)),
+        x, y, z, vx, vy, vz, gr, rt, h)
+
+def mz_fl(+s: Nat, +obs: List<&2, P.Body>, +v0: P.Z, b: P.Body, h: FL(s, b)) -> FL(s, P.Tick.body(P.Move.z(s, obs, v0, b))):
+  P.Body{+x, +y, +z, +vx, +vy, +vz, +gr, +hit, +rt} = b
+  zgo_fl(Bool.and(P.Z.fits(z, P.Z.add(v0, vz)), P.Geo.free(s, x, y, P.Z.shift(z, P.Z.add(v0, vz)), P.Rot.q(rt), obs)), s, obs,
+    P.Z.add(v0, vz), P.Z.shift(z, P.Z.add(v0, vz)), x, y, z, vx, vy, vz, gr, hit, rt, h)
+
+def rise_fl(ok: Bool, +s: Nat, +x: Nat, +y: Nat, +z: Nat, +p: Nat, +vx: P.Z, +v: P.Z, +vz: P.Z, +hit: Bool, +rt: P.Rot, h: {Nat.is_le(P.Geo.sag(s, P.Rot.q(rt)), y) == True{} : Bool})
+  -> FL(s, P.Move.rise(ok, x, y, z, p, vx, v, vz, hit, rt)):
+  match ok:
+    case True{}:
+      le_trans(P.Geo.sag(s, P.Rot.q(rt)), y, Nat.add(y, p), h, le_add(y, p))
+    case False{}:
+      h
+
+def land_fl(ok: Bool, +s: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +ny: Nat, +vx: P.Z, +vz: P.Z, +v0: P.Z,
+  +rt: P.Rot, eok: {P.Move.landok(s, obs, x, ny, z, P.Rot.q(rt)) == ok : Bool}, h: {Nat.is_le(P.Geo.sag(s, P.Rot.q(rt)), y) == True{} : Bool})
+  -> FL(s, P.Move.land(ok, x, y, z, ny, vx, vz, v0, rt)):
+  match ok:
+    case True{}:
+      fits_sag(s, obs, x, ny, z, P.Rot.q(rt), and_l(P.Tick.fits(s, obs, x, ny, z, P.Rot.q(rt)), Bool.not(P.Tick.sinks(s, obs, x, ny, z, P.Rot.q(rt))), eok))
+    case False{}:
+      h
+
+def fall_fl(ok: Bool, +s: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +q: Nat, +vx: P.Z, +v: P.Z, +vz: P.Z,
+  +v0: P.Z, +hit: Bool, +rt: P.Rot, eok: {P.Move.fallok(s, obs, x, y, z, q, P.Rot.q(rt)) == ok : Bool}, h: {Nat.is_le(P.Geo.sag(s, P.Rot.q(rt)), y) == True{} : Bool})
+  -> FL(s, P.Move.fall(s, ok, obs, x, y, z, q, vx, v, vz, v0, hit, rt)):
+  match ok:
+    case True{}:
+      fits_sag(s, obs, x, Nat.sub(y, q), z, P.Rot.q(rt),
+        and_l(P.Tick.fits(s, obs, x, Nat.sub(y, q), z, P.Rot.q(rt)), P.Tick.path(64n, Nat.is_lt(s, q), s, obs, x, y, z, P.Rot.q(rt), q, s),
+          and_r(Nat.is_le(q, y), Bool.and(P.Tick.fits(s, obs, x, Nat.sub(y, q), z, P.Rot.q(rt)),
+            P.Tick.path(64n, Nat.is_lt(s, q), s, obs, x, y, z, P.Rot.q(rt), q, s)), eok)))
+    case False{}:
+      land_fl(P.Move.landok(s, obs, x, P.Move.landy(s, obs, x, y, z, P.Rot.q(rt), q), z, P.Rot.q(rt)), s, obs, x, y, z,
+        P.Move.landy(s, obs, x, y, z, P.Rot.q(rt), q), vx, vz, v0, rt, {==}, h)
+
+def fly_fl(+s: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy0: P.Z, +vz: P.Z, +hit: Bool,
+  st: P.Z & P.Z, +rt: P.Rot, h: {Nat.is_le(P.Geo.sag(s, P.Rot.q(rt)), y) == True{} : Bool}) -> FL(s, P.Move.fly(s, obs, x, y, z, vx, vy0, vz, hit, st, rt)):
+  (+v, d) = st
+  match d:
+    case P.Pos{+p}:
+      rise_fl(P.Geo.free(s, x, Nat.add(y, p), z, P.Rot.q(rt), obs), s, x, y, z, p, vx, v, vz, hit, rt, h)
+    case P.Neg{+q}:
+      fall_fl(P.Move.fallok(s, obs, x, y, z, q, P.Rot.q(rt)), s, obs, x, y, z, q, vx, v, vz, vy0, hit, rt, {==}, h)
+
+def stay_fl(rest: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
+  +vz: P.Z, +hit: Bool, +rt: P.Rot, h: {Nat.is_le(P.Geo.sag(s, P.Rot.q(rt)), y) == True{} : Bool}) -> FL(s, P.Move.stay(rest, s, g, obs, x, y, z, vx, vy, vz, hit, rt)):
+  match rest:
+    case True{}:
+      %q_held(P.Geo.onfloor(s, y, P.Rot.q(rt)), rt, s, x, y, z, g, obs) : {Nat.is_le(P.Geo.sag(s, _), y) == True{} : Bool}
+      h
+    case False{}:
+      h
+
+def my_fl(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, b: P.Body, h: FL(s, b)) -> FL(s, P.Move.y(s, g, obs, b)):
+  P.Body{+x, +y, +z, +vx, +vy, +vz, gr, +hit, +rt} = b
+  match gr:
+    case True{}:
+      stay_fl(P.Geo.held(P.Quat.flat(P.Rot.q(rt)), s, x, y, z, P.Rot.q(rt), obs), s, g, obs, x, y, z, vx, vy, vz, hit, rt, h)
+    case False{}:
+      fly_fl(s, obs, x, y, z, vx, vy, vz, hit, P.Fly.step(g, vy), rt, h)
+
+def ty_fl(+s: Nat, +g: Nat, r: P.Body & List<&2, P.Body>, h: FL(s, P.Tick.body(r))) -> FL(s, P.Tick.body(P.Tick.y(s, g, r))):
+  (+b, +obs) = r
+  my_fl(s, g, obs, b, h)
+
+def tz_fl(+s: Nat, +g: Nat, +v0: P.Z, r: P.Body & List<&2, P.Body>, h: FL(s, P.Tick.body(r)))
+  -> FL(s, P.Tick.body(P.Tick.z(s, g, v0, r))):
+  (+b, +obs) = r
+  ty_fl(s, g, P.Move.z(s, obs, v0, b), mz_fl(s, obs, v0, b, h))
+
+def put_fl(ok: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +nx: Nat, +ny: Nat, +nz: Nat,
+  +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot,
+  eok: {P.Tick.turnok(s, obs, y, nx, ny, nz, P.Rot.q(r2), gr) == ok : Bool}, h: {Nat.is_le(P.Geo.sag(s, P.Rot.q(rt)), y) == True{} : Bool})
+  -> FL(s, P.Tick.put(ok, s, g, obs, x, y, z, nx, ny, nz, vx, vy, vz, gr, hit, rt, r2)):
+  match ok:
+    case True{}:
+      fits_sag(s, obs, nx, ny, nz, P.Rot.q(r2),
+        and_l(P.Tick.fits(s, obs, nx, ny, nz, P.Rot.q(r2)), P.Tick.keeps(gr, s, obs, y, nx, ny, nz, P.Rot.q(r2)),
+          and_r(Nat.is_le(ny, y), Bool.and(P.Tick.fits(s, obs, nx, ny, nz, P.Rot.q(r2)),
+            P.Tick.keeps(gr, s, obs, y, nx, ny, nz, P.Rot.q(r2))), eok)))
+    case False{}:
+      h
+
+def place_fl(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +nx: Nat, +ny: Nat, +nz: Nat,
+  +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, h: {Nat.is_le(P.Geo.sag(s, P.Rot.q(rt)), y) == True{} : Bool})
+  -> FL(s, P.Tick.place(s, g, obs, x, y, z, nx, ny, nz, vx, vy, vz, gr, hit, rt, r2)):
+  put_fl(P.Tick.turnok(s, obs, y, nx, ny, nz, P.Rot.q(r2), gr), s, g, obs, x, y, z, nx, ny, nz, vx, vy, vz, gr, hit, rt, r2,
+    {==}, h)
+
+def pivot_fl(m: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z,
+  +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, +rx: P.Z, +ry: P.Z, +rz: P.Z, h: {Nat.is_le(P.Geo.sag(s, P.Rot.q(rt)), y) == True{} : Bool})
+  -> FL(s, P.Tick.pivot(m, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, rx, ry, rz)):
+  P.Mat{+axx, +axy, +axz, +ayx, +ayy, +ayz, +azx, +azy, +azz} = m
+  +nx = P.Pivot.c(x, rx, axx, ayx, azx, rx, ry, rz)
+  +ny = P.Pivot.c(y, ry, axy, ayy, azy, rx, ry, rz)
+  +nz = P.Pivot.c(z, rz, axz, ayz, azz, rx, ry, rz)
+  +d = P.Tick.drop(s, obs, nx, y, nz, P.Rot.q(r2), Nat.add(Nat.sub(y, P.Pick.low(ny, y)), Nat.div(s, 256n)))
+  place_fl(s, g, obs, x, y, z, nx, Nat.sub(y, d), nz, vx, vy, vz, gr, hit, rt, r2, h)
+
+def pivota_fl(md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z,
+  +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, a: P.Wv, h: {Nat.is_le(P.Geo.sag(s, P.Rot.q(rt)), y) == True{} : Bool})
+  -> FL(s, P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, a)):
+  P.Wv{+ax, +ay, +az} = a
+  pivot_fl(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, ax, ay, az, h)
+
+def turn2_fl(held: Bool, floor: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z,
+  +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, +md: P.Mat, h: {Nat.is_le(P.Geo.sag(s, P.Rot.q(rt)), y) == True{} : Bool})
+  -> FL(s, P.Tick.turn2(held, floor, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, md)):
+  match held floor:
+    case False{} _:
+      place_fl(s, g, obs, x, y, z, x, y, z, vx, vy, vz, gr, hit, rt, r2, h)
+    case True{} False{}:
+      pivota_fl(md, s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s), h)
+    case True{} True{}:
+      pivota_fl(md, s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, r2, P.Hold.low(P.Rot.mat(P.Rot.q(rt)), s), h)
+
+def turn1_fl(still: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
+  +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, h: {Nat.is_le(P.Geo.sag(s, P.Rot.q(rt)), y) == True{} : Bool})
+  -> FL(s, P.Tick.turn1(still, s, g, obs, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})):
+  match still:
+    case True{}:
+      h
+    case False{}:
+      turn2_fl(gr, P.Geo.onfloor(s, y, P.Rot.q(rt)), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Rot.free(rt),
+        P.Rot.mat(P.Quat.half(P.Quat.step(P.Rot.w(rt), P.Wv.mag(P.Rot.w(rt))))), h)
+
+def turn_fl0(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +b: P.Body, h: FL(s, b)) -> FL(s, P.Tick.turn0(s, g, obs, b)):
+  P.Body{+x, +y, +z, +vx, +vy, +vz, +gr, +hit, +rt} = b
+  turn1_fl(P.Wv.null(P.Rot.w(rt)), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, h)
+
+def turn_fl(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +b: P.Body, h: FL(s, b)) -> FL(s, P.Tick.turn(s, g, obs, b)):
+  %turn_sym(s, g, obs, b) : FL(s, _)
+  turn_fl0(s, g, obs, b, h)
+
+def spin_fl(+s: Nat, +g: Nat, r: P.Body & List<&2, P.Body>, h: FL(s, P.Tick.body(r)))
+  -> FL(s, P.Tick.body(P.Tick.spin(s, g, r))):
+  (+b, +obs) = r
+  turn_fl(s, g, obs, b, h)
+
+def Laws.never_under_the_floor(k, obs, inp, b, above):
+  match k b:
+    case P.K{+g, +mu, +j, +acc, +s} P.Body{+x, +y, +z, +vx, +vy, +vz, +gr, +hit, +rt}:
+      spin_fl(s, g, P.Tick.z(s, g, vz, P.Move.x(s, obs, vx, P.Body.drive(P.K{g, mu, j, acc, s}, inp,
+          P.Body{x, y, z, vx, vy, vz, gr, hit, rt}))),
+        tz_fl(s, g, vz, P.Move.x(s, obs, vx, P.Body.drive(P.K{g, mu, j, acc, s}, inp, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})),
+          mx_fl(s, obs, vx, P.Body.drive(P.K{g, mu, j, acc, s}, inp, P.Body{x, y, z, vx, vy, vz, gr, hit, rt}),
+            drive_fl(s, g, mu, j, acc, inp, P.Body{x, y, z, vx, vy, vz, gr, hit, rt}, above))))
+
+# Nothing floats
+# --------------
+# A body ends a tick standing only where it is held: the vertical move
+# stands it only after asking Tick.sinks, a landing only after asking it
+# where it lands, and a turn that moves a standing body asks it again
+# where the body ends up -- the very question the law asks. Nothing else
+# ever stands a body up.
+
+def SH(+s: Nat, +obs: List<&2, P.Body>, -b: P.Body) -> Type:
+  {Bool.and(P.Body.ground(b), P.Tick.sinks(s, obs, P.Body.x(b), P.Body.y(b), P.Body.z(b), P.Rot.q(P.Body.rot(b)))) == False{} : Bool}
+
+def and_not_self(b: Bool) -> {Bool.and(Bool.not(b), b) == False{} : Bool}:
+  match b:
+    case True{}:
+      {==}
+    case False{}:
+      {==}
+
+def stay_sh(rest: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
+  +vz: P.Z, +hit: Bool, +rt: P.Rot, e: {Bool.not(P.Tick.sinks(s, obs, x, y, z, P.Rot.q(rt))) == rest : Bool})
+  -> SH(s, obs, P.Move.stay(rest, s, g, obs, x, y, z, vx, vy, vz, hit, rt)):
+  match rest:
+    case True{}:
+      %q_held(P.Geo.onfloor(s, y, P.Rot.q(rt)), rt, s, x, y, z, g, obs)
+        : {Bool.and(True{}, P.Tick.sinks(s, obs, x, y, z, _)) == False{} : Bool}
+      not_t(P.Tick.sinks(s, obs, x, y, z, P.Rot.q(rt)), e)
+    case False{}:
+      {==}
+
+def land_sh(ok: Bool, +s: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +ny: Nat, +vx: P.Z, +vz: P.Z, +v0: P.Z,
+  +rt: P.Rot, eok: {P.Move.landok(s, obs, x, ny, z, P.Rot.q(rt)) == ok : Bool})
+  -> SH(s, obs, P.Move.land(ok, x, y, z, ny, vx, vz, v0, rt)):
+  match ok:
+    case True{}:
+      not_t(P.Tick.sinks(s, obs, x, ny, z, P.Rot.q(rt)), and_r(P.Tick.fits(s, obs, x, ny, z, P.Rot.q(rt)), Bool.not(P.Tick.sinks(s, obs, x, ny, z, P.Rot.q(rt))), eok))
+    case False{}:
+      {==}
+
+def fall_sh(ok: Bool, +s: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +q: Nat, +vx: P.Z, +v: P.Z, +vz: P.Z,
+  +v0: P.Z, +hit: Bool, +rt: P.Rot) -> SH(s, obs, P.Move.fall(s, ok, obs, x, y, z, q, vx, v, vz, v0, hit, rt)):
+  match ok:
+    case True{}:
+      {==}
+    case False{}:
+      land_sh(P.Move.landok(s, obs, x, P.Move.landy(s, obs, x, y, z, P.Rot.q(rt), q), z, P.Rot.q(rt)), s, obs, x, y, z,
+        P.Move.landy(s, obs, x, y, z, P.Rot.q(rt), q), vx, vz, v0, rt, {==})
+
+def rise_sh(ok: Bool, +s: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +p: Nat, +vx: P.Z, +v: P.Z, +vz: P.Z,
+  +hit: Bool, +rt: P.Rot) -> SH(s, obs, P.Move.rise(ok, x, y, z, p, vx, v, vz, hit, rt)):
+  match ok:
+    case True{}:
+      {==}
+    case False{}:
+      {==}
+
+def fly_sh(+s: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy0: P.Z, +vz: P.Z, +hit: Bool,
+  st: P.Z & P.Z, +rt: P.Rot) -> SH(s, obs, P.Move.fly(s, obs, x, y, z, vx, vy0, vz, hit, st, rt)):
+  (+v, d) = st
+  match d:
+    case P.Pos{+p}:
+      rise_sh(P.Geo.free(s, x, Nat.add(y, p), z, P.Rot.q(rt), obs), s, obs, x, y, z, p, vx, v, vz, hit, rt)
+    case P.Neg{+q}:
+      fall_sh(P.Move.fallok(s, obs, x, y, z, q, P.Rot.q(rt)), s, obs, x, y, z, q, vx, v, vz, vy0, hit, rt)
+
+def my_sh(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, b: P.Body) -> SH(s, obs, P.Move.y(s, g, obs, b)):
+  P.Body{+x, +y, +z, +vx, +vy, +vz, gr, +hit, +rt} = b
+  match gr:
+    case True{}:
+      stay_sh(P.Geo.held(P.Quat.flat(P.Rot.q(rt)), s, x, y, z, P.Rot.q(rt), obs), s, g, obs, x, y, z, vx, vy, vz, hit, rt, {==})
+    case False{}:
+      fly_sh(s, obs, x, y, z, vx, vy, vz, hit, P.Fly.step(g, vy), rt)
+
+def ty_sh(+s: Nat, +g: Nat, r: P.Body & List<&2, P.Body>)
+  -> SH(s, P.Tick.obs(P.Tick.y(s, g, r)), P.Tick.body(P.Tick.y(s, g, r))):
+  (+b, +obs) = r
+  my_sh(s, g, obs, b)
+
+def tz_sh(+s: Nat, +g: Nat, +v0: P.Z, r: P.Body & List<&2, P.Body>)
+  -> SH(s, P.Tick.obs(P.Tick.z(s, g, v0, r)), P.Tick.body(P.Tick.z(s, g, v0, r))):
+  (+b, +obs) = r
+  ty_sh(s, g, P.Move.z(s, obs, v0, b))
+
+def stands_sh(gr: Bool, +s: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +q: P.Quat)
+  -> {Bool.and(P.Tick.stands(gr, s, obs, x, y, z, q), P.Tick.sinks(s, obs, x, y, z, q)) == False{} : Bool}:
+  match gr:
+    case True{}:
+      and_not_self(P.Tick.sinks(s, obs, x, y, z, q))
+    case False{}:
+      {==}
+
+def put_sh(ok: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +nx: Nat, +ny: Nat, +nz: Nat,
+  +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, h: {Bool.and(gr, P.Tick.sinks(s, obs, x, y, z, P.Rot.q(rt))) == False{} : Bool})
+  -> SH(s, obs, P.Tick.put(ok, s, g, obs, x, y, z, nx, ny, nz, vx, vy, vz, gr, hit, rt, r2)):
+  match ok:
+    case True{}:
+      stands_sh(gr, s, obs, nx, ny, nz, P.Rot.q(r2))
+    case False{}:
+      h
+
+def place_sh(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +nx: Nat, +ny: Nat, +nz: Nat,
+  +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, h: {Bool.and(gr, P.Tick.sinks(s, obs, x, y, z, P.Rot.q(rt))) == False{} : Bool})
+  -> SH(s, obs, P.Tick.place(s, g, obs, x, y, z, nx, ny, nz, vx, vy, vz, gr, hit, rt, r2)):
+  put_sh(P.Tick.turnok(s, obs, y, nx, ny, nz, P.Rot.q(r2), gr), s, g, obs, x, y, z, nx, ny, nz, vx, vy, vz, gr, hit, rt, r2, h)
+
+def pivot_sh(m: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z,
+  +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, +rx: P.Z, +ry: P.Z, +rz: P.Z, h: {Bool.and(gr, P.Tick.sinks(s, obs, x, y, z, P.Rot.q(rt))) == False{} : Bool})
+  -> SH(s, obs, P.Tick.pivot(m, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, rx, ry, rz)):
+  P.Mat{+axx, +axy, +axz, +ayx, +ayy, +ayz, +azx, +azy, +azz} = m
+  +nx = P.Pivot.c(x, rx, axx, ayx, azx, rx, ry, rz)
+  +ny = P.Pivot.c(y, ry, axy, ayy, azy, rx, ry, rz)
+  +nz = P.Pivot.c(z, rz, axz, ayz, azz, rx, ry, rz)
+  +d = P.Tick.drop(s, obs, nx, y, nz, P.Rot.q(r2), Nat.add(Nat.sub(y, P.Pick.low(ny, y)), Nat.div(s, 256n)))
+  place_sh(s, g, obs, x, y, z, nx, Nat.sub(y, d), nz, vx, vy, vz, gr, hit, rt, r2, h)
+
+def pivota_sh(md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z,
+  +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, a: P.Wv, h: {Bool.and(gr, P.Tick.sinks(s, obs, x, y, z, P.Rot.q(rt))) == False{} : Bool})
+  -> SH(s, obs, P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, a)):
+  P.Wv{+ax, +ay, +az} = a
+  pivot_sh(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, ax, ay, az, h)
+
+def turn2_sh(held: Bool, floor: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z,
+  +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, +md: P.Mat, h: {Bool.and(gr, P.Tick.sinks(s, obs, x, y, z, P.Rot.q(rt))) == False{} : Bool})
+  -> SH(s, obs, P.Tick.turn2(held, floor, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, md)):
+  match held floor:
+    case False{} _:
+      place_sh(s, g, obs, x, y, z, x, y, z, vx, vy, vz, gr, hit, rt, r2, h)
+    case True{} False{}:
+      pivota_sh(md, s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s), h)
+    case True{} True{}:
+      pivota_sh(md, s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, r2, P.Hold.low(P.Rot.mat(P.Rot.q(rt)), s), h)
+
+def turn1_sh(still: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
+  +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, h: {Bool.and(gr, P.Tick.sinks(s, obs, x, y, z, P.Rot.q(rt))) == False{} : Bool})
+  -> SH(s, obs, P.Tick.turn1(still, s, g, obs, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})):
+  match still:
+    case True{}:
+      h
+    case False{}:
+      turn2_sh(gr, P.Geo.onfloor(s, y, P.Rot.q(rt)), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Rot.free(rt),
+        P.Rot.mat(P.Quat.half(P.Quat.step(P.Rot.w(rt), P.Wv.mag(P.Rot.w(rt))))), h)
+
+def turn_sh0(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +b: P.Body, h: SH(s, obs, b)) -> SH(s, obs, P.Tick.turn0(s, g, obs, b)):
+  P.Body{+x, +y, +z, +vx, +vy, +vz, +gr, +hit, +rt} = b
+  turn1_sh(P.Wv.null(P.Rot.w(rt)), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, h)
+
+def turn_sh(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +b: P.Body, h: SH(s, obs, b)) -> SH(s, obs, P.Tick.turn(s, g, obs, b)):
+  %turn_sym(s, g, obs, b) : SH(s, obs, _)
+  turn_sh0(s, g, obs, b, h)
+
+def spin_sh(+s: Nat, +g: Nat, r: P.Body & List<&2, P.Body>, h: SH(s, P.Tick.obs(r), P.Tick.body(r)))
+  -> SH(s, P.Tick.obs(P.Tick.spin(s, g, r)), P.Tick.body(P.Tick.spin(s, g, r))):
+  (+b, +obs) = r
+  turn_sh(s, g, obs, b, h)
+
+# standing, and not both standing and able to sink: not able to sink
+def sh_use(gg: Bool, -sk: Bool, h: {Bool.and(gg, sk) == False{} : Bool}, st: {gg == True{} : Bool}) -> {sk == False{} : Bool}:
+  match gg:
+    case True{}:
+      h
+    case False{}:
+      Empty.absurd({sk == False{} : Bool}, clash2(st))
+
+def Laws.standing_is_held(k, obs, inp, b, stands):
+  match k b:
+    case P.K{+g, +mu, +j, +acc, +s} P.Body{+x, +y, +z, +vx, +vy, +vz, +gr, +hit, +rt}:
+      +tz = P.Tick.z(s, g, vz, P.Move.x(s, obs, vx, P.Body.drive(P.K{g, mu, j, acc, s}, inp, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})))
+      +a = P.Tick.body(P.Tick.spin(s, g, tz))
+      sh_use(P.Body.ground(a),
+        P.Tick.sinks(s, P.Tick.obs(P.Tick.spin(s, g, tz)), P.Body.x(a), P.Body.y(a), P.Body.z(a), P.Rot.q(P.Body.rot(a))),
+        spin_sh(s, g, tz, tz_sh(s, g, vz, P.Move.x(s, obs, vx, P.Body.drive(P.K{g, mu, j, acc, s}, inp,
+          P.Body{x, y, z, vx, vy, vz, gr, hit, rt})))), stands)
+
+# A push is a touch
+# -----------------
+# A refused move pushes only down the branch that asked, where the body
+# stopped, whether it is touching something one unit on. The law hands
+# in that it is not: that branch is then impossible, and every other
+# branch hands the obstacles back as they came.
+
+def xput_obs(ok: Bool, +obs: List<&2, P.Body>, +cx: Nat, +x: Nat, +y: Nat, +z: Nat, +v: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool,
+  +rt: P.Rot) -> {P.Tick.obs(P.Move.xput(ok, obs, cx, x, y, z, v, vy, vz, gr, rt)) == obs : List<&2, P.Body>}:
+  match ok:
+    case True{}:
+      {==}
+    case False{}:
+      {==}
+
+def xpushed_x(r: P.Pushed, +cx: Nat, +y: Nat, +z: Nat, +vy: P.Z, +vz: P.Z, +gr: Bool, +rt: P.Rot)
+  -> {P.Body.x(P.Tick.body(P.Move.xpushed(r, cx, y, z, vy, vz, gr, rt))) == cx : Nat}:
+  P.Pushed{+v, +obs, at} = r
+  {==}
+
+def free_at(-X: Nat, +cx: Nat, +l: P.Z, +s: Nat, +y: Nat, +z: Nat, +q: P.Quat, +obs: List<&2, P.Body>,
+  e: {X == cx : Nat}, h: {P.Geo.free(s, P.Z.shift(X, l), y, z, q, obs) == True{} : Bool})
+  -> {P.Geo.free(s, P.Z.shift(cx, l), y, z, q, obs) == True{} : Bool}:
+  %e : {P.Geo.free(s, P.Z.shift(_, l), y, z, q, obs) == True{} : Bool}
+  h
+
+def xtouch_obs(touch: Bool, +s: Nat, +obs: List<&2, P.Body>, +d: P.Z, +cx: Nat, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z,
+  +vy: P.Z, +vz: P.Z, +gr: Bool, +rt: P.Rot,
+  et: {P.Move.xtouches(s, obs, d, cx, y, z, P.Rot.q(rt)) == touch : Bool},
+  room: {P.Geo.free(s, P.Z.shift(P.Body.x(P.Tick.body(P.Move.xtouch(touch, s, obs, d, cx, P.Z.shift(cx, P.Z.like(d, 1n)), x, y, z,
+    vx, vy, vz, gr, rt))), P.Z.like(d, 1n)), y, z, P.Rot.q(rt), obs) == True{} : Bool})
+  -> {P.Tick.obs(P.Move.xtouch(touch, s, obs, d, cx, P.Z.shift(cx, P.Z.like(d, 1n)), x, y, z, vx, vy, vz, gr, rt))
+      == obs : List<&2, P.Body>}:
+  match touch:
+    case True{}:
+      +pr = P.Z.shift(cx, P.Z.like(d, 1n))
+      +r = P.Push.x(s, obs, d, pr, y, z, vx, P.Rot.q(rt), P.Geo.head(s, pr, y, z, P.Rot.q(rt), obs))
+      Empty.absurd({P.Tick.obs(P.Move.xpushed(r, cx, y, z, vy, vz, gr, rt)) == obs : List<&2, P.Body>},
+        clash(Equal.trans(Bool, True{}, P.Geo.free(s, pr, y, z, P.Rot.q(rt), obs), False{},
+          Equal.sym(Bool, P.Geo.free(s, pr, y, z, P.Rot.q(rt), obs), True{},
+            free_at(P.Body.x(P.Tick.body(P.Move.xpushed(r, cx, y, z, vy, vz, gr, rt))), cx, P.Z.like(d, 1n), s, y, z, P.Rot.q(rt), obs,
+              xpushed_x(r, cx, y, z, vy, vz, gr, rt), room)),
+          not_t(P.Geo.free(s, pr, y, z, P.Rot.q(rt), obs),
+            and_r(P.Geo.free(s, cx, y, z, P.Rot.q(rt), obs), Bool.not(P.Geo.free(s, pr, y, z, P.Rot.q(rt), obs)), et)))))
+    case False{}:
+      xput_obs(P.Geo.free(s, cx, y, z, P.Rot.q(rt), obs), obs, cx, x, y, z, vx, vy, vz, gr, rt)
+
+def xgo_obs(ok: Bool, +s: Nat, +obs: List<&2, P.Body>, +d: P.Z, +cx: Nat, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
+  +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot,
+  room: {P.Geo.free(s, P.Z.shift(P.Body.x(P.Tick.body(P.Move.xgo(s, ok, obs, d, cx, P.Body{x, y, z, vx, vy, vz, gr, hit, rt}))),
+    P.Z.like(d, 1n)), y, z, P.Rot.q(rt), obs) == True{} : Bool})
+  -> {P.Tick.obs(P.Move.xgo(s, ok, obs, d, cx, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == obs : List<&2, P.Body>}:
+  match ok:
+    case True{}:
+      {==}
+    case False{}:
+      xtouch_obs(P.Move.xtouches(s, obs, d, P.Move.xto(s, obs, d, x, y, z, P.Rot.q(rt)), y, z, P.Rot.q(rt)), s, obs, d, P.Move.xto(s, obs, d, x, y, z, P.Rot.q(rt)), x, y, z, vx, vy, vz, gr, rt, {==}, room)
+
+def Laws.a_push_is_a_touch_x(s, obs, v0, b, room):
+  match b:
+    case P.Body{+x, +y, +z, +vx, +vy, +vz, +gr, +hit, +rt}:
+      xgo_obs(Bool.and(P.Z.fits(x, P.Z.add(v0, vx)), P.Geo.free(s, P.Z.shift(x, P.Z.add(v0, vx)), y, z, P.Rot.q(rt), obs)), s, obs,
+        P.Z.add(v0, vx), P.Z.shift(x, P.Z.add(v0, vx)), x, y, z, vx, vy, vz, gr, hit, rt, room)
+
+def zput_obs(ok: Bool, +obs: List<&2, P.Body>, +cz: Nat, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +v: P.Z, +gr: Bool,
+  +rt: P.Rot) -> {P.Tick.obs(P.Move.zput(ok, obs, cz, x, y, z, vx, vy, v, gr, rt)) == obs : List<&2, P.Body>}:
+  match ok:
+    case True{}:
+      {==}
+    case False{}:
+      {==}
+
+def zpushed_z(r: P.Pushed, +x: Nat, +y: Nat, +cz: Nat, +vx: P.Z, +vy: P.Z, +gr: Bool, +rt: P.Rot)
+  -> {P.Body.z(P.Tick.body(P.Move.zpushed(r, x, y, cz, vx, vy, gr, rt))) == cz : Nat}:
+  P.Pushed{+v, +obs, at} = r
+  {==}
+
+def free_atz(-Zz: Nat, +cz: Nat, +l: P.Z, +s: Nat, +x: Nat, +y: Nat, +q: P.Quat, +obs: List<&2, P.Body>,
+  e: {Zz == cz : Nat}, h: {P.Geo.free(s, x, y, P.Z.shift(Zz, l), q, obs) == True{} : Bool})
+  -> {P.Geo.free(s, x, y, P.Z.shift(cz, l), q, obs) == True{} : Bool}:
+  %e : {P.Geo.free(s, x, y, P.Z.shift(_, l), q, obs) == True{} : Bool}
+  h
+
+def ztouch_obs(touch: Bool, +s: Nat, +obs: List<&2, P.Body>, +d: P.Z, +cz: Nat, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z,
+  +vy: P.Z, +vz: P.Z, +gr: Bool, +rt: P.Rot,
+  et: {P.Move.ztouches(s, obs, d, x, y, cz, P.Rot.q(rt)) == touch : Bool},
+  room: {P.Geo.free(s, x, y, P.Z.shift(P.Body.z(P.Tick.body(P.Move.ztouch(touch, s, obs, d, cz, P.Z.shift(cz, P.Z.like(d, 1n)), x, y, z,
+    vx, vy, vz, gr, rt))), P.Z.like(d, 1n)), P.Rot.q(rt), obs) == True{} : Bool})
+  -> {P.Tick.obs(P.Move.ztouch(touch, s, obs, d, cz, P.Z.shift(cz, P.Z.like(d, 1n)), x, y, z, vx, vy, vz, gr, rt))
+      == obs : List<&2, P.Body>}:
+  match touch:
+    case True{}:
+      +pr = P.Z.shift(cz, P.Z.like(d, 1n))
+      +r = P.Push.z(s, obs, d, x, y, pr, vz, P.Rot.q(rt), P.Geo.head(s, x, y, pr, P.Rot.q(rt), obs))
+      Empty.absurd({P.Tick.obs(P.Move.zpushed(r, x, y, cz, vx, vy, gr, rt)) == obs : List<&2, P.Body>},
+        clash(Equal.trans(Bool, True{}, P.Geo.free(s, x, y, pr, P.Rot.q(rt), obs), False{},
+          Equal.sym(Bool, P.Geo.free(s, x, y, pr, P.Rot.q(rt), obs), True{},
+            free_atz(P.Body.z(P.Tick.body(P.Move.zpushed(r, x, y, cz, vx, vy, gr, rt))), cz, P.Z.like(d, 1n), s, x, y, P.Rot.q(rt), obs,
+              zpushed_z(r, x, y, cz, vx, vy, gr, rt), room)),
+          not_t(P.Geo.free(s, x, y, pr, P.Rot.q(rt), obs),
+            and_r(P.Geo.free(s, x, y, cz, P.Rot.q(rt), obs), Bool.not(P.Geo.free(s, x, y, pr, P.Rot.q(rt), obs)), et)))))
+    case False{}:
+      zput_obs(P.Geo.free(s, x, y, cz, P.Rot.q(rt), obs), obs, cz, x, y, z, vx, vy, vz, gr, rt)
+
+def zgo_obs(ok: Bool, +s: Nat, +obs: List<&2, P.Body>, +d: P.Z, +cz: Nat, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
+  +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot,
+  room: {P.Geo.free(s, x, y, P.Z.shift(P.Body.z(P.Tick.body(P.Move.zgo(s, ok, obs, d, cz, P.Body{x, y, z, vx, vy, vz, gr, hit, rt}))),
+    P.Z.like(d, 1n)), P.Rot.q(rt), obs) == True{} : Bool})
+  -> {P.Tick.obs(P.Move.zgo(s, ok, obs, d, cz, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == obs : List<&2, P.Body>}:
+  match ok:
+    case True{}:
+      {==}
+    case False{}:
+      ztouch_obs(P.Move.ztouches(s, obs, d, x, y, P.Move.zto(s, obs, d, x, y, z, P.Rot.q(rt)), P.Rot.q(rt)), s, obs, d, P.Move.zto(s, obs, d, x, y, z, P.Rot.q(rt)), x, y, z, vx, vy, vz, gr, rt, {==}, room)
+
+def Laws.a_push_is_a_touch_z(s, obs, v0, b, room):
+  match b:
+    case P.Body{+x, +y, +z, +vx, +vy, +vz, +gr, +hit, +rt}:
+      zgo_obs(Bool.and(P.Z.fits(z, P.Z.add(v0, vz)), P.Geo.free(s, x, y, P.Z.shift(z, P.Z.add(v0, vz)), P.Rot.q(rt), obs)), s, obs,
+        P.Z.add(v0, vz), P.Z.shift(z, P.Z.add(v0, vz)), x, y, z, vx, vy, vz, gr, hit, rt, room)

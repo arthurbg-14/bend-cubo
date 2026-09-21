@@ -424,6 +424,20 @@ def Txt.lines(ls: List<&2, String>, +i: U32) -> List<&2, Put>:
 def Frame.rel(+x: Nat, +c: U32) -> U32:
   (U32.from_nat(x) - U32.from_nat(W.W.base(c)) : U32)
 
+# the orientation, four bytes: each part of the quaternion from 2^-15
+# into a signed byte around 128, so the screen can draw the box where it
+# really is instead of square with the world.
+def Frame.q8(+v: P.Z) -> U32:
+  +p = P.Pick.low(Nat.div(Nat.mul(P.Z.pos(v), 127n), 32768n), 127n)
+  +n = P.Pick.low(Nat.div(Nat.mul(P.Z.neg(v), 127n), 32768n), 128n)
+  U32.from_nat(Nat.sub(Nat.add(128n, p), n))
+
+def Frame.q32(+q: P.Quat) -> U32:
+  (Frame.q8(P.Quat.a(q))
+    .|. (Frame.q8(P.Quat.b(q)) << 8n)
+    .|. (Frame.q8(P.Quat.c(q)) << 16n)
+    .|. (Frame.q8(P.Quat.d(q)) << 24n) : U32)
+
 # the moving bodies, the player first: at most 250 (the header holds 256,
 # the GPU draws 250; the rest are drawn once they sleep)
 def Frame.dyn(n: Nat, bs: List<&2, P.Body>, +j: U32, +ocx: U32, +ocz: U32) -> List<&2, Put>:
@@ -433,9 +447,10 @@ def Frame.dyn(n: Nat, bs: List<&2, P.Body>, +j: U32, +ocx: U32, +ocz: U32) -> Li
     case _ Nil{}:
       []
     case 1n+m +b <> rest:
-      +o = (32 + j * 4 : U32)
+      +o = (32 + j * 5 : U32)
       Put{o, Frame.rel(P.Body.x(b), ocx)} <> Put{(o + 1 : U32), U32.from_nat(P.Body.y(b))}
         <> Put{(o + 2 : U32), Frame.rel(P.Body.z(b), ocz)} <> Put{(o + 3 : U32), Pick.u(U32.is_eq(j, 0), 1, 0)}
+        <> Put{(o + 4 : U32), Frame.q32(P.Rot.q(P.Body.rot(b)))}
         <> Frame.dyn(m, rest, (j + 1 : U32), ocx, ocz)
 
 # a cell's cubes, four words each: where in the cell, x y z
@@ -445,7 +460,8 @@ def Frame.cubes(bs: List<&2, P.Body>, +o: U32, +cx: U32, +cz: U32) -> List<&2, P
       []
     case +b <> rest:
       Put{o, U32.from_nat(Nat.sub(P.Body.x(b), W.W.base(cx)))} <> Put{(o + 1 : U32), U32.from_nat(P.Body.y(b))}
-        <> Put{(o + 2 : U32), U32.from_nat(Nat.sub(P.Body.z(b), W.W.base(cz)))} <> Frame.cubes(rest, (o + 4 : U32), cx, cz)
+        <> Put{(o + 2 : U32), U32.from_nat(Nat.sub(P.Body.z(b), W.W.base(cz)))}
+        <> Put{(o + 3 : U32), Frame.q32(P.Rot.q(P.Body.rot(b)))} <> Frame.cubes(rest, (o + 4 : U32), cx, cz)
 
 def Frame.patch(+t: W.Cells, +seed: U32, +cx: U32, +cz: U32, +o: U32) -> List<&2, Put>:
   +cubes = W.Cells.at(t, seed, cx, cz)
@@ -605,10 +621,10 @@ def Play.head(+s: Play, +now: Nat, +pts: Patches, hdr: Array<U32>) -> Array<U32>
   Buf.write(List.append(&2, Put,
     [Put{0, seed}, Put{1, ocx}, Put{2, ocz}, Put{3, Frame.rel(P.Body.x(eye), ocx)}, Put{4, U32.from_nat(P.Body.y(eye))},
      Put{5, Frame.rel(P.Body.z(eye), ocz)}, Put{6, yaw}, Put{7, pitch}, Put{8, dist}, Put{9, U32.from_nat(now)},
-     Put{10, U32.from_nat(Nat.min(Nat.add(List.length(&2, P.Body, awake), 1n), 250n))},
+     Put{10, U32.from_nat(P.Pick.low(Nat.add(List.length(&2, P.Body, awake), 1n), 200n))},
      Put{11, Play.hud_count(s)}, Put{12, U32.from_nat(Nat.add(sel, 3n))}, Put{13, 1},
      Put{2048, n}],
-    List.append(&2, Put, Frame.dyn(250n, eye <> awake, 0, ocx, ocz), List.append(&2, Put, Play.hud_puts(hv, s), puts))), hdr)
+    List.append(&2, Put, Frame.dyn(200n, eye <> awake, 0, ocx, ocz), List.append(&2, Put, Play.hud_puts(hv, s), puts))), hdr)
 
 def Play.untake(s: Play, rest: List<&2, W.Cell>) -> Play:
   Play{w, k, inp, t0, ticks, rep, prev, yaw, pitch, dist, sel, help, gpu, fus, hv} = s
