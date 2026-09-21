@@ -6,7 +6,7 @@ verdes nascem ao acaso (uma semente nova a cada partida), em pilhas de 1 a 3,
 num mundo **sem fim**: meio milhão de quilômetros para cada lado.
 
 A física segue as leis da cinemática, da conservação da energia e do atrito
-de Coulomb, e isso é **provado**. São treze leis em [`LAWS.bend`](LAWS.bend),
+de Coulomb, e isso é **provado**. São dezenove leis em [`LAWS.bend`](LAWS.bend),
 e `bend PROOF.bend` só passa se todas valem. Elas valem para **qualquer valor
 das constantes**, e isso importa porque gravidade, atrito, pulo e motor mudam
 durante o jogo.
@@ -119,7 +119,7 @@ movimento. O tick marca isso no próprio corpo (`hit`).
 | `friction_never_reverses` | no chão, sem entrada, o atrito só freia: nenhum componente da velocidade cresce ou troca de sentido |
 | `coulomb_friction` | o atrito de um tick tem módulo no máximo µ·g, em qualquer direção de deslize: `fx² + fz² ≤ (µg)²` |
 | `friction_work` | teorema trabalho-energia: a energia cinética perdida é **exatamente** o atrito vezes a distância deslizada, e o corpo desliza essa distância |
-| `rest_stays` | atrito estático: um corpo parado no chão ou em cima de um cubo, sem entrada, fica exatamente onde está |
+| `rest_stays` | atrito estático: um corpo parado e apoiado, sem entrada e sem batida, fica exatamente onde está -- só o modo como ele está virado pode mudar, porque o apoio empurra para cima e onde esse empurrão cai é o que o vira |
 | `push_momentum` | uma colisão (o empurrão) **conserva o momento** exatamente |
 | `push_energy` | uma colisão nunca cria energia cinética |
 | `energy_never_grows` | sem entrada, nenhum tick aumenta a energia do corpo mais a dos obstáculos que ele toca; só o motor e o pulo põem energia |
@@ -129,7 +129,10 @@ movimento. O tick marca isso no próprio corpo (`hit`).
 | `no_spin_from_the_middle` | uma batida no meio não gira nada: o que gira é o braço, e braço zero não cruza com nada |
 | `spin_is_across_the_push` | uma batida só gira em torno dos eixos atravessados a ela |
 
-Não há `@unsafe`, `?TODO` nem axiomas. A verificação leva cerca de 1 min.
+Não há `@unsafe`, `?TODO` nem axiomas. A verificação leva alguns minutos e
+precisa de mais pilha do que um shell costuma dar: `./build.sh` pede
+`ulimit -s 1000000` e passa `BUN_JSC_maxPerThreadStackUsage`. Sem os dois o
+checador morre com "machine stack overflow" antes de terminar.
 
 ### Rotação: o que é exato e o que não é
 

@@ -16,7 +16,7 @@ def meets(+a: P.Body, xs: List<&2, P.Body>) -> Nat:
     case []:
       0n
     case +b <> rest:
-      Nat.add(M.Pick.n(P.Geo.meets(W.W.size(), P.Body.x(a), P.Body.y(a), P.Body.z(a), P.Rot.q(P.Body.rot(a)), b), 1n, 0n), meets(a, rest))
+      Nat.add(M.Pick.n(P.Geo.hits(W.W.size(), P.Body.x(a), P.Body.y(a), P.Body.z(a), P.Rot.q(P.Body.rot(a)), b), 1n, 0n), meets(a, rest))
 
 def clash(xs: List<&2, P.Body>) -> Nat:
   match xs:
@@ -87,7 +87,7 @@ def mine(xs: List<&2, P.Body>, +bx: Nat, +bz: Nat) -> List<&2, P.Body>:
 
 def chunk(+bx: Nat, +bz: Nat, +xs: List<&2, P.Body>, +n: Nat, r: U32 & Nat) -> W.Chk:
   (+cap, b) = r
-  W.ChL{W.C.mark(n, W.F.pack(xs, Array.new(U32, Nat.add(b, 6n), 0), 0, oar(), True{}), 0, cap, 1),
+  W.ChL{W.C.mark(n, W.F.pack(xs, Array.new(U32, Nat.add(b, 7n), 0), 0, oar(), True{}), 0, cap, 1),
     U32.from_nat(n), cap, (first(bx) - 1 - (W.W.origin() - 32) : U32),
     (first(bz) - 1 - (W.W.origin() - 32) : U32)}
 
@@ -138,9 +138,42 @@ def fin(r: W.Gr2) -> IO(Unit):
   W.Gr2{g, bs} = r
   out(bs)
 
-def gyr(r: W.Gr2) -> IO(Unit):
+# quantos cubos sairam do array com o quaternio zerado: quatro palavras
+# zeradas sao a orientacao de um cubo que nunca girou, e tem que voltar
+# como a identidade. Se voltarem como zero, multiplicar por elas zera
+# tudo e o cubo nunca mais gira -- sem lei nenhuma pedir.
+def zeroq(xs: List<&2, P.Body>, +n: Nat) -> Nat:
+  match xs:
+    case []:
+      n
+    case +b <> rest:
+      zeroq(rest, Nat.add(n, M.Pick.n(Nat.is_eq(Nat.add(Nat.add(P.Z.mag(P.Quat.a(P.Rot.q(P.Body.rot(b)))),
+        P.Z.mag(P.Quat.b(P.Rot.q(P.Body.rot(b))))), Nat.add(P.Z.mag(P.Quat.c(P.Rot.q(P.Body.rot(b)))),
+        P.Z.mag(P.Quat.d(P.Rot.q(P.Body.rot(b)))))), 0n), 1n, 0n)))
+
+def turning(xs: List<&2, P.Body>, +n: Nat) -> Nat:
+  match xs:
+    case []:
+      n
+    case +b <> rest:
+      turning(rest, Nat.add(n, M.Pick.n(P.Rot.still(P.Body.rot(b)), 0n, 1n)))
+
+# A ida e a volta pelo array nao pode mexer no giro: a soma que entra tem
+# que ser a que sai. Depois dos ticks a soma ja nao se conserva -- o
+# contato cria e tira giro, que e o que faz um cubo tombar -- entao o que
+# se cobra ali e outra coisa: que o array nao tenha comido a rotacao de
+# ninguem (nenhum quaternio zerado) e que ainda haja cubo girando.
+def gyr(+n0: Nat, r: W.Gr2) -> IO(Unit):
   W.Gr2{g, +bs} = r
-  IO.print("giro: soma " ++ Nat.show(spins(bs, 0n)) ++ " (tem que bater com a do inicio)")
+  IO.print("giro na ida e volta: " ++ M.Pick.s(Nat.is_eq(spins(bs, 0n), n0), "OK", "FAIL") ++ ": soma "
+    ++ Nat.show(spins(bs, 0n)) ++ " (entrou " ++ Nat.show(n0) ++ ")")
+
+def gyr2(r: W.Gr2) -> IO(Unit):
+  W.Gr2{g, +bs} = r
+  IO.print("giro depois de 300 ticks: " ++ M.Pick.s(Bool.and(Nat.is_eq(zeroq(bs, 0n), 0n),
+      Nat.is_lt(0n, turning(bs, 0n))), "OK", "FAIL") ++ ": " ++ Nat.show(turning(bs, 0n))
+    ++ " cubos ainda girando, " ++ Nat.show(zeroq(bs, 0n))
+    ++ " quaternios zerados (tem que ser 0; o contato muda a soma, entao ela nao se cobra)")
 
 def fin2(r: W.Gr2) -> IO(Unit):
   W.Gr2{g, +bs} = r
@@ -151,7 +184,7 @@ def start() -> IO(Unit):
   fin2(W.C.gbodies(grid(6n, 6n, scene(12n)), oar(), 1))
 
 def start2() -> IO(Unit):
-  gyr(W.C.gbodies(grid(6n, 6n, scene(12n)), oar(), 1))
+  gyr(spins(scene(12n), 0n), W.C.gbodies(grid(6n, 6n, scene(12n)), oar(), 1))
 
 # The second test: the world's own tick with the grid kept alive
 # (W.tick_cg), on a crowd wide enough to have chunks in BOTH directions --
@@ -212,5 +245,5 @@ def main() -> IO(Unit):
     a : Unit <- start()
     a2 : Unit <- start2()
     b : Unit <- fin(W.C.gbodies(ticks(300n, grid(6n, 6n, scene(12n))), oar(), 1))
-    b2 : Unit <- gyr(W.C.gbodies(ticks(300n, grid(6n, 6n, scene(12n))), oar(), 1))
+    b2 : Unit <- gyr2(W.C.gbodies(ticks(300n, grid(6n, 6n, scene(12n))), oar(), 1))
     wtest()

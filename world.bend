@@ -196,11 +196,39 @@ def Cells.set(t: Cells, +cx: U32, +cz: U32, cubes: List<&2, P.Body>) -> Cells:
 # How far a body can reach in a tick (in units): twice its speed on each
 # axis (a tick moves it by v + v'), what the motor and gravity add, and a
 # quarter of a metre to spare (the player: a jump, a push of the motor).
+# The sieve by distance inside an array cannot look at each cube's own
+# turning (it walks words, not bodies), so it counts the room a turn
+# could take for any of them. It only widens the sieve, never the
+# rectangle of cells -- which is what a chunk's band is cut for.
+
+# a cube that has turned sticks out past its box, by up to (sqrt 3 - 1)/2
+# of a side, so it can touch what is that much further away. A cube that
+# is square with the world AND not turning is handed exactly what it was
+# handed before; one that is still square but already turning asks for
+# the room too, because by the end of the tick it will not be square.
+def W.turnroom(flat: Bool) -> Nat:
+  match flat:
+    case True{}:
+      0n
+    case False{}:
+      Nat.div(Nat.mul(3n, W.size()), 8n)
+
+
+# A body that turns about a contact also swings its middle a little: that
+# step is real movement, and the reach has to count it or the neighbours
+# it swings towards are never looked at. Two sweeps and the push back out
+# would be the bound on paper; measured, the crowd needs more than the
+# paper says -- cutting this to the bound puts holes back in the living
+# grid -- so it is handed eight sweeps and a hair.
+def W.swing(+rt: P.Rot) -> Nat:
+  Nat.add(Nat.mul(8n, P.Geo.sweep(W.size(), P.Rot.w(rt))), Nat.div(W.size(), 256n))
+
 def W.reach(+k: P.K, b: P.Body) -> Nat:
   P.K{+g, mu, jump, +acc, size} = k
-  P.Body{x, y, z, vx, vy, vz, gr, h, rt} = b
+  P.Body{x, y, z, vx, vy, vz, gr, h, +rt} = b
   Nat.add(Nat.add(Nat.mul(2n, Nat.add(Nat.add(P.Z.mag(vx), P.Z.mag(vy)), P.Z.mag(vz))),
-    Nat.add(Nat.mul(2n, Nat.add(acc, g)), 65536n)), Nat.div(Nat.mul(3n, W.size()), 8n))
+    Nat.add(Nat.mul(2n, Nat.add(acc, g)), 65536n)),
+    Nat.add(W.turnroom(P.Rot.still(rt)), W.swing(rt)))
 
 # the sleeping cubes of the cells in (x0 .. x0 + nx - 1, z0 .. z0 + nz - 1),
 # i counting them down
@@ -214,8 +242,8 @@ def W.rect(+i: Nat, +t: Cells, +seed: U32, +x0: U32, +z0: U32, +nx: Nat) -> List
 
 def W.reachz(+k: P.K, +vx: P.Z, +vy: P.Z, +vz: P.Z) -> Nat:
   P.K{+g, mu, jump, +acc, size} = k
-  Nat.add(Nat.add(Nat.mul(2n, Nat.add(Nat.add(P.Z.mag(vx), P.Z.mag(vy)), P.Z.mag(vz))),
-    Nat.add(Nat.mul(2n, Nat.add(acc, g)), 65536n)), Nat.div(Nat.mul(3n, W.size()), 8n))
+  Nat.add(Nat.mul(2n, Nat.add(Nat.add(P.Z.mag(vx), P.Z.mag(vy)), P.Z.mag(vz))),
+    Nat.add(Nat.mul(2n, Nat.add(acc, g)), 65536n))
 
 # How far a cube (no input) can reach in a tick: it moves by v + v' on each
 # axis, and without a motor v' only loses speed (friction) or gains g
@@ -224,12 +252,20 @@ def W.reachz(+k: P.K, +vx: P.Z, +vy: P.Z, +vz: P.Z) -> Nat:
 # handed exactly the bodies it may touch, not every one within a quarter
 # of a metre more.
 def W.creachz(+k: P.K, +vx: P.Z, +vy: P.Z, +vz: P.Z) -> Nat:
-  Nat.add(Nat.add(Nat.mul(2n, Nat.add(Nat.add(P.Z.mag(vx), P.Z.mag(vy)), P.Z.mag(vz))),
-    Nat.add(Nat.mul(2n, Nat.add(P.K.g(k), P.K.acc(k))), 16n)), Nat.div(Nat.mul(3n, W.size()), 8n))
+  Nat.add(Nat.mul(2n, Nat.add(Nat.add(P.Z.mag(vx), P.Z.mag(vy)), P.Z.mag(vz))),
+    Nat.add(Nat.mul(2n, Nat.add(P.K.g(k), P.K.acc(k))), 16n))
 
 def W.creach(+k: P.K, b: P.Body) -> Nat:
-  P.Body{x, y, z, +vx, +vy, +vz, gr, h, rt} = b
-  W.creachz(k, vx, vy, vz)
+  P.Body{x, y, z, +vx, +vy, +vz, gr, h, +rt} = b
+  Nat.add(W.creachz(k, vx, vy, vz), Nat.add(W.turnroom(P.Rot.still(rt)), W.swing(rt)))
+
+# the same reach again, for the rectangle of cells a cube looks at inside
+# its chunk. It used to leave the turn's room out, because the rectangle
+# is cut to the chunk's band and a band one cell wide lost cells instead
+# of gaining them; the band is two cells now, which is exactly the room a
+# turned cube asks for, so it asks for it here too.
+def W.creachr(+k: P.K, b: P.Body) -> Nat:
+  W.creach(k, b)
 
 # the cells whose cubes a body at x (m its reach) can touch: a cube homed
 # in cell h spans [h, h + 2) cubes, the body [x - m, x + S + m): h from
@@ -259,7 +295,7 @@ def W.closep(+r: Nat, +ax: Nat, +ay: Nat, +az: Nat, +bx: Nat, +by: Nat, +bz: Nat
   Bool.and(Nat.is_lt(W.dist(ax, bx), r), Bool.and(Nat.is_lt(W.dist(az, bz), r), Nat.is_lt(W.dist(ay, by), r)))
 
 def W.close(+m: Nat, +b: P.Body, +o: P.Body) -> Bool:
-  +r = Nat.add(W.size(), m)
+  +r = Nat.add(Nat.add(W.size(), m), W.turnroom(P.Rot.still(P.Body.rot(o))))
   Bool.and(Nat.is_lt(W.dist(P.Body.x(b), P.Body.x(o)), r),
     Bool.and(Nat.is_lt(W.dist(P.Body.z(b), P.Body.z(o)), r), Nat.is_lt(W.dist(P.Body.y(b), P.Body.y(o)), r)))
 
@@ -271,8 +307,9 @@ def W.nof(+r: Nat, +x: Nat, +y: Nat, +z: Nat, xs: List<&2, P.Body>) -> List<&2, 
   match xs:
     case []:
       []
-    case P.Body{+ox, +oy, +oz, vx, vy, vz, g, h, rt} <> rest:
-      W.take_if(W.closep(r, x, y, z, ox, oy, oz), P.Body{ox, oy, oz, vx, vy, vz, g, h, rt}, W.nof(r, x, y, z, rest))
+    case P.Body{+ox, +oy, +oz, vx, vy, vz, g, h, +rt} <> rest:
+      W.take_if(W.closep(Nat.add(r, W.turnroom(P.Rot.still(rt))), x, y, z, ox, oy, oz),
+        P.Body{ox, oy, oz, vx, vy, vz, g, h, rt}, W.nof(r, x, y, z, rest))
 
 def W.near_of(xs: List<&2, P.Body>, +m: Nat, +b: P.Body) -> List<&2, P.Body>:
   W.nof(Nat.add(W.size(), m), P.Body.x(b), P.Body.y(b), P.Body.z(b), xs)
@@ -366,8 +403,13 @@ def W.pn(+r: Nat, +x: Nat, +y: Nat, +z: Nat, xs: List<&2, P.Body>) -> Two:
   match xs:
     case []:
       Two{[], []}
-    case P.Body{+ox, +oy, +oz, vx, vy, vz, g, h, rt} <> rest:
-      W.near1(W.closep(r, x, y, z, ox, oy, oz), P.Body{ox, oy, oz, vx, vy, vz, g, h, rt}, W.pn(r, x, y, z, rest))
+    case P.Body{+ox, +oy, +oz, vx, vy, vz, g, h, +rt} <> rest:
+      W.near1(W.closep(Nat.add(r, W.turnroom(P.Rot.still(rt))), x, y, z, ox, oy, oz),
+        P.Body{ox, oy, oz, vx, vy, vz, g, h, rt}, W.pn(r, x, y, z, rest))
+
+# A cube that has turned sticks out past its box, so it is near from
+# further away than a square one: the sieve counts the room its own turn
+# takes, not just the room of whoever is looking.
 
 # the same, counting the near ones
 type Pc is Data:
@@ -386,8 +428,9 @@ def W.pnc(+r: Nat, +x: Nat, +y: Nat, +z: Nat, xs: List<&2, P.Body>) -> Pc:
   match xs:
     case []:
       Pc{[], 0n, []}
-    case P.Body{+ox, +oy, +oz, vx, vy, vz, g, h, rt} <> rest:
-      W.tn1(W.closep(r, x, y, z, ox, oy, oz), P.Body{ox, oy, oz, vx, vy, vz, g, h, rt}, W.pnc(r, x, y, z, rest))
+    case P.Body{+ox, +oy, +oz, vx, vy, vz, g, h, +rt} <> rest:
+      W.tn1(W.closep(Nat.add(r, W.turnroom(P.Rot.still(rt))), x, y, z, ox, oy, oz),
+        P.Body{ox, oy, oz, vx, vy, vz, g, h, rt}, W.pnc(r, x, y, z, rest))
 
 def W.part_near(+m: Nat, +b: P.Body, xs: List<&2, P.Body>) -> Two:
   W.pn(Nat.add(W.size(), m), P.Body.x(b), P.Body.y(b), P.Body.z(b), xs)
@@ -547,6 +590,11 @@ def F.vzof(+w: U32) -> P.Z:
   F.pz(U32.is_eq(((w >> 30n) .&. 1 : U32), 0), P.Pos{U32.to_nat((w .&. 134217727 : U32))},
     P.Neg{U32.to_nat((w .&. 134217727 : U32))})
 
+# Bit 27 says the body carries a rotation. The walks that carry bodies
+# about skip its seven words for a cube that is square with the world and
+# still -- almost every cube in a crowd -- and never write them for one
+# either: an untouched cube's seven words stay as the array was made,
+# zeroed, which is read back as the turn of nothing.
 def F.spun(+w: U32) -> Bool:
   U32.is_eq(((w >> 27n) .&. 1 : U32), 1)
 
@@ -614,7 +662,7 @@ def F.getrot(a: Array<U32>, +i: U32) -> Array<U32> & P.Rot:
 
 def F.body(+o: Og, +x: U32, +y: U32, +z: U32, +vx: U32, +vy: U32, +vz: U32, +rt: P.Rot) -> P.Body:
   P.Body{Nat.add(F.ox(o), U32.to_nat(x)), U32.to_nat(y), Nat.add(F.oz(o), U32.to_nat(z)), F.zof(vx), F.zof(vy), F.vzof(vz),
-    F.ground(vz), F.hit(vz), rt}
+    F.ground(vz), F.hit(vz), P.Rot.ok(rt)}
 
 # body i into the array (its flags kept as they are, but for a sleeper)
 def F.put(a: Array<U32>, +i: U32, +o: Og, +sl: Bool, b: P.Body) -> Array<U32>:
@@ -947,7 +995,7 @@ def F.one2(a: Array<U32>, +i: U32, +o: Og, +k: P.K, +cap: U32, +msk: U32, +na: U
     a[(F.hd(cap) + F.slot2(lox, loz, msk) : U32)], i,
     U32.from_nat(Nat.sub(P.Body.x(self), F.ox(o))), U32.from_nat(P.Body.y(self)),
     U32.from_nat(Nat.sub(P.Body.z(self), F.oz(o))),
-    U32.from_nat(Nat.add(W.size(), m)), cap, msk, lox, (lox + U32.from_nat(nx) - 1 : U32), lox, loz, 0, 0, 0, []),
+    U32.from_nat(Nat.add(Nat.add(W.size(), m), W.turnroom(False{}))), cap, msk, lox, (lox + U32.from_nat(nx) - 1 : U32), lox, loz, 0, 0, 0, []),
     self, i, o, k, na, inp)
 
 # one cube's tick: itself, the bodies within reach out of the grid, the
@@ -1330,25 +1378,28 @@ def C.sort(+n: U32, a: Array<U32>, +src: U32, +dst: U32, +cap: U32, +gg: U32, +o
   C.sort1(C.clr(U32.to_nat((gg + 1 : U32)), a, 0, C.roff(cap)), n, src, dst, cap, gg, ox, oz, g)
 
 # a chunk of the world: its cubes in one array, sorted by cell, and the
-# first cell of its grid (the chunk's cells plus two of band on each side,
-# where the cubes of the chunks around it are copied)
+# first cell of its grid (the chunk's cells plus two cells of band on each
+# side, where the cubes of the chunks around it are copied)
 type Chk is Type:
   ChE{}
   ChL{a: Array<U32>, n: U32, cap: U32, ox: U32, oz: U32}
   ChN{lo: Chk, hi: Chk}
 
 # a chunk is C.side() cells across, C.g() counting the band. The band is
-# one cell wide: a cube reaches at most the cell next to its own (W.lo and
-# W.span give three cells for a tick's reach), so one cell of the chunk
-# next door is all a cube needs to see
+# two cells wide. A cube that stands square with the world reaches the
+# cell next to its own and no further, but one that has turned sticks out
+# by W.turnroom past its box, so its reach spans four cells (W.lo and
+# W.span), and the cube it may touch is homed one cell further still: two
+# cells of the chunk next door is what a turned cube needs to see, and
+# what a cube next to it needs to see of it.
 def C.side() -> Nat:
   16n
 
 def C.g() -> Nat:
-  18n
+  20n
 
 def C.gg() -> Nat:
-  324n
+  400n
 
 # the bodies a cube can touch, out of the sorted array: for each row of
 # cells in reach, the cells it spans are one run, so the whole row costs
@@ -1393,8 +1444,8 @@ def C.fit(+w: U32, +l: U32, +g: U32) -> U32:
 # one cube's tick inside its chunk: the cells it reaches (from its own size
 # and the tick's reach, never a fixed number), the proven tick, and back
 def C.one2(a: Array<U32>, +i: U32, +o: Og, +k: P.K, +cap: U32, +g: U32, +ox: U32, +oz: U32, +na: U32,
-  +self: P.Body, +m: Nat, +mm: Nat) -> Array<U32>:
-  +mr = Nat.add(m, mm)
+  +self: P.Body, +m: Nat, +mc: Nat, +mm: Nat) -> Array<U32>:
+  +mr = Nat.add(mc, mm)
   +sx = U32.from_nat(Nat.sub(P.Body.x(self), F.ox(o)))
   +sz = U32.from_nat(Nat.sub(P.Body.z(self), F.oz(o)))
   +lx0 = (W.lo(P.Body.x(self), mr) - W.cell_of(F.ox(o)) - ox : U32)
@@ -1406,12 +1457,12 @@ def C.one2(a: Array<U32>, +i: U32, +o: Og, +k: P.K, +cap: U32, +g: U32, +ox: U32
   F.two2(C.scan(Nat.add(Nat.mul(8n, U32.to_nat(cap)), 64n),
     U32.to_nat(C.fit(U32.from_nat(W.span(P.Body.z(self), mr)), lz, g)), 4n,
     a[(C.roff(cap) + cb : U32)], i, sx, U32.from_nat(P.Body.y(self)), sz,
-    U32.from_nat(Nat.add(W.size(), m)), C.roff(cap), cb, g, wx, 0, 0, 0, 0, []), self, i, o, k, na, P.In.idle())
+    U32.from_nat(Nat.add(Nat.add(W.size(), m), W.turnroom(False{}))), C.roff(cap), cb, g, wx, 0, 0, 0, 0, []), self, i, o, k, na, P.In.idle())
 
 def C.one(r: Array<U32> & P.Body, +i: U32, +o: Og, +k: P.K, +cap: U32, +g: U32, +ox: U32, +oz: U32, +na: U32,
   +mm: Nat) -> Array<U32>:
   (a, +self) = r
-  C.one2(a, i, o, k, cap, g, ox, oz, na, self, W.creach(k, self), mm)
+  C.one2(a, i, o, k, cap, g, ox, oz, na, self, W.creach(k, self), W.creachr(k, self), mm)
 
 def C.step(own: Bool, a: Array<U32>, +i: U32, +o: Og, +k: P.K, +cap: U32, +g: U32, +ox: U32, +oz: U32,
   +na: U32, +mm: Nat) -> Array<U32>:
@@ -1498,12 +1549,12 @@ def C.tag(+x: U32, +y: U32, +z: U32, +vx: U32, +vy: U32, +vz: U32, +rt: P.Rot, +
   +nbx: U32, +nbz: U32, +side: U32, +nc: Nat, ms: List<&2, Msg>) -> List<&2, Msg>:
   +cx = (F.cell(x) - ox : U32)
   +cz = (F.cell(z) - oz : U32)
-  +out = Bool.or(Bool.or((cx < 1 : U32), (cx >= side + 1 : U32)), Bool.or((cz < 1 : U32), (cz >= side + 1 : U32)))
+  +out = Bool.or(Bool.or((cx < 2 : U32), (cx >= side + 2 : U32)), Bool.or((cz < 2 : U32), (cz >= side + 2 : U32)))
   +dx = Pick.u((cx < 2 : U32), (ix - 1 : U32), Pick.u((cx >= side + 2 : U32), (ix + 1 : U32), ix))
   +dz = Pick.u((cz < 2 : U32), (iz - 1 : U32), Pick.u((cz >= side + 2 : U32), (iz + 1 : U32), iz))
-  +lx = Bool.and(Bool.not(out), (cx < 2 : U32))
+  +lx = Bool.and(Bool.not(out), (cx < 4 : U32))
   +hx = Bool.and(Bool.not(out), (cx >= side : U32))
-  +lz = Bool.and(Bool.not(out), (cz < 2 : U32))
+  +lz = Bool.and(Bool.not(out), (cz < 4 : U32))
   +hz = Bool.and(Bool.not(out), (cz >= side : U32))
   C.mv(out, C.ix(dx, dz, nbx, nbz), True{}, x, y, z, vx, vy, vz, rt,
     C.mv(lx, C.ix((ix - 1 : U32), iz, nbx, nbz), False{}, x, y, z, vx, vy, vz, rt,
@@ -1562,8 +1613,8 @@ def C.emit(fuel: Nat, n: Nat, ph: Nat, r: Array<U32> & U32, +i: U32, +cap: U32, 
         nc, x, y, z, vx, vy, v, rt, ms)
     case 1n+f 1n++m 21n:
       (a, +v) = r
-      +gone = Bool.or(Bool.or(((F.cell(x) - ox) < 1 : U32), ((F.cell(x) - ox) >= side + 1 : U32)),
-        Bool.or(((F.cell(z) - oz) < 1 : U32), ((F.cell(z) - oz) >= side + 1 : U32)))
+      +gone = Bool.or(Bool.or(((F.cell(x) - ox) < 2 : U32), ((F.cell(x) - ox) >= side + 2 : U32)),
+        Bool.or(((F.cell(z) - oz) < 2 : U32), ((F.cell(z) - oz) >= side + 2 : U32)))
       C.emit(f, m, 6n,
         (a[(C.roa(cap) + i : U32)] <- Pick.u(gone, 0, 1))[(C.roa(cap) + i + 1 : U32)], (i + 1 : U32), cap, ox, oz,
         ix, iz, nbx, nbz, side, nc, x, y, z, vx, vy, vz, P.Rot.rest(),
@@ -1594,8 +1645,8 @@ def C.emit(fuel: Nat, n: Nat, ph: Nat, r: Array<U32> & U32, +i: U32, +cap: U32, 
         vz, P.Rot.put(5n, rt, F.zof(v)), ms)
     case 1n+f 1n+m _:
       (a, +v) = r
-      +gone = Bool.or(Bool.or(((F.cell(x) - ox) < 1 : U32), ((F.cell(x) - ox) >= side + 1 : U32)),
-        Bool.or(((F.cell(z) - oz) < 1 : U32), ((F.cell(z) - oz) >= side + 1 : U32)))
+      +gone = Bool.or(Bool.or(((F.cell(x) - ox) < 2 : U32), ((F.cell(x) - ox) >= side + 2 : U32)),
+        Bool.or(((F.cell(z) - oz) < 2 : U32), ((F.cell(z) - oz) >= side + 2 : U32)))
       C.emit(f, m, 6n,
         (a[(C.roa(cap) + i : U32)] <- Pick.u(gone, 0, 1))[(C.roa(cap) + i + 1 : U32)], (i + 1 : U32), cap, ox, oz,
         ix, iz, nbx, nbz, side, nc, x, y, z, vx, vy, vz, P.Rot.rest(),
@@ -1660,7 +1711,7 @@ def C.l5(r: Array<U32> & List<&2, Msg>, +n: U32, +cap: U32, +ox: U32, +oz: U32) 
 def C.l4c(a: Array<U32>, +nall: U32, +cap: U32, +ox: U32, +oz: U32, +o: Og, +nbx: U32, +nbz: U32,
   +side: U32, +nc: Nat) -> Cr:
   C.l5(C.emit(Nat.add(Nat.mul(16n, U32.to_nat(nall)), 16n), U32.to_nat(nall), 6n, a[(C.roa(cap) : U32)], 0, cap,
-    ox, oz, ((ox + 1) / side : U32), ((oz + 1) / side : U32), nbx, nbz, side, nc, 0, 0, 0, 0, 0, 0,
+    ox, oz, ((ox + 2) / side : U32), ((oz + 2) / side : U32), nbx, nbz, side, nc, 0, 0, 0, 0, 0, 0,
     P.Rot.rest(), []),
     nall, cap, ox, oz)
 
@@ -1671,7 +1722,7 @@ def C.l4b(a: Array<U32>, +nall: U32, +cap: U32, +ox: U32, +oz: U32, +o: Og, +nbx
 def C.l4x(a: Array<U32>, +n: U32, +nall: U32, +cap: U32, +ox: U32, +oz: U32, +o: Og, +nbx: U32, +nbz: U32,
   +side: U32, +nc: Nat) -> Cr:
   C.l5(C.emit(Nat.add(Nat.mul(16n, U32.to_nat(nall)), 16n), U32.to_nat(nall), 6n, a[(C.roa(cap) : U32)], 0, cap,
-    ox, oz, ((ox + 1) / side : U32), ((oz + 1) / side : U32), nbx, nbz, side, nc, 0, 0, 0, 0, 0, 0,
+    ox, oz, ((ox + 2) / side : U32), ((oz + 2) / side : U32), nbx, nbz, side, nc, 0, 0, 0, 0, 0, 0,
     P.Rot.rest(), []), n, cap,
     ox, oz)
 
@@ -1737,7 +1788,7 @@ def C.join(ra: Cr, rb: Cr) -> Cr:
 
 # is the chunk at (ix, iz) of this round's colour?
 def C.mine(+ox: U32, +oz: U32, +side: U32, +c: Nat) -> Bool:
-  U32.is_eq(((((ox + 1) / side) .&. 1) + ((((oz + 1) / side) .&. 1) * 2) : U32), U32.from_nat(c))
+  U32.is_eq(((((ox + 2) / side) .&. 1) + ((((oz + 2) / side) .&. 1) * 2) : U32), U32.from_nat(c))
 
 # Handing cubes over, array to array
 # ---------------------------------
@@ -1777,15 +1828,15 @@ def C.atb(+cx: U32, +cz: U32, +dx: Nat, +dz: Nat, +side: U32) -> Bool:
     case 1n _:
       (cx >= side : U32)
     case 2n _:
-      (cx < 2 : U32)
+      (cx < 4 : U32)
     case _ 1n:
       (cz >= side : U32)
     case _ _:
-      (cz < 2 : U32)
+      (cz < 4 : U32)
 
 # the first and the last cell of the run of border cells of segment seg,
-# for the side (dx, dz): towards x it is two columns of each row (one run
-# a row), towards z it is two whole rows (one run for all of them)
+# for the side (dx, dz): towards x it is four columns of each row (one run
+# a row), towards z it is four whole rows (one run for all of them)
 def C.sa(+seg: Nat, +dx: Nat, +dz: Nat, +side: U32, +g: U32) -> U32:
   match dx dz:
     case 1n _:
@@ -1800,13 +1851,13 @@ def C.sa(+seg: Nat, +dx: Nat, +dz: Nat, +side: U32, +g: U32) -> U32:
 def C.sb(+seg: Nat, +dx: Nat, +dz: Nat, +side: U32, +g: U32) -> U32:
   match dx dz:
     case 1n _:
-      (U32.from_nat(Nat.sub(seg, 1n)) * g + side + 2 : U32)
+      (U32.from_nat(Nat.sub(seg, 1n)) * g + side + 4 : U32)
     case 2n _:
-      (U32.from_nat(Nat.sub(seg, 1n)) * g + 2 : U32)
+      (U32.from_nat(Nat.sub(seg, 1n)) * g + 4 : U32)
     case _ 1n:
-      ((side + 2) * g : U32)
+      ((side + 4) * g : U32)
     case _ _:
-      (2 * g : U32)
+      (4 * g : U32)
 
 # how many runs a side has: one a row towards x, one in all towards z
 def C.nseg(+dx: Nat, +g: U32) -> Nat:
@@ -1903,11 +1954,16 @@ def C.give2(fuel: Nat, seg: Nat, ph: Nat, r: Array<U32> & U32, b: Array<U32>, +i
       # the same handover, for a cube that carries no rotation: its seven
       # words were never read, and the neighbour gets it square
       +take = Bool.and(Bool.not(U32.is_eq(fl, 0)), C.atb((F.cell(x) - oxa : U32), (F.cell(z) - oza : U32), dx, dz, side))
-      +inx = Bool.and(((F.cell(x) - oxb) >= 1 : U32), ((F.cell(x) - oxb) < side + 1 : U32))
-      +inz = Bool.and(((F.cell(z) - ozb) >= 1 : U32), ((F.cell(z) - ozb) < side + 1 : U32))
+      +inx = Bool.and(((F.cell(x) - oxb) >= 2 : U32), ((F.cell(x) - oxb) < side + 2 : U32))
+      +inz = Bool.and(((F.cell(z) - ozb) >= 2 : U32), ((F.cell(z) - ozb) < side + 2 : U32))
       +mine = C.owns(dx, inx, inz)
-      +gone = Bool.not(Bool.and(Bool.and(((F.cell(x) - oxa) >= 1 : U32), ((F.cell(x) - oxa) < side + 1 : U32)),
-        Bool.and(((F.cell(z) - oza) >= 1 : U32), ((F.cell(z) - oza) < side + 1 : U32))))
+      # the pass of one axis hands over along that axis only: a cube that
+      # is still this chunk's in x, but has left it in z, is given to the
+      # chunk across the x border as a copy, and the z pass is what moves
+      # it. Letting go of it here would leave it nobody's.
+      +ax = Bool.and(((F.cell(x) - oxa) >= 2 : U32), ((F.cell(x) - oxa) < side + 2 : U32))
+      +az = Bool.and(((F.cell(z) - oza) >= 2 : U32), ((F.cell(z) - oza) < side + 2 : U32))
+      +gone = Bool.not(C.owns(dx, ax, az))
       +last = U32.is_eq((i + 1 : U32), en)
       C.give2(f, Pick.n(last, sg, 1n+sg), Pick.n(last, 9n, 7n),
         C.gm(a, cap, i, Pick.u(Bool.and(gone, take), 0, fl))[Pick.u(last,
@@ -1923,11 +1979,16 @@ def C.give2(fuel: Nat, seg: Nat, ph: Nat, r: Array<U32> & U32, b: Array<U32>, +i
       # see both. It lands as the neighbour's own only if it is a cube of
       # its own that moved in (the test below), never a sleeper.
       +take = Bool.and(Bool.not(U32.is_eq(fl, 0)), C.atb((F.cell(x) - oxa : U32), (F.cell(z) - oza : U32), dx, dz, side))
-      +inx = Bool.and(((F.cell(x) - oxb) >= 1 : U32), ((F.cell(x) - oxb) < side + 1 : U32))
-      +inz = Bool.and(((F.cell(z) - ozb) >= 1 : U32), ((F.cell(z) - ozb) < side + 1 : U32))
+      +inx = Bool.and(((F.cell(x) - oxb) >= 2 : U32), ((F.cell(x) - oxb) < side + 2 : U32))
+      +inz = Bool.and(((F.cell(z) - ozb) >= 2 : U32), ((F.cell(z) - ozb) < side + 2 : U32))
       +mine = C.owns(dx, inx, inz)
-      +gone = Bool.not(Bool.and(Bool.and(((F.cell(x) - oxa) >= 1 : U32), ((F.cell(x) - oxa) < side + 1 : U32)),
-        Bool.and(((F.cell(z) - oza) >= 1 : U32), ((F.cell(z) - oza) < side + 1 : U32))))
+      # the pass of one axis hands over along that axis only: a cube that
+      # is still this chunk's in x, but has left it in z, is given to the
+      # chunk across the x border as a copy, and the z pass is what moves
+      # it. Letting go of it here would leave it nobody's.
+      +ax = Bool.and(((F.cell(x) - oxa) >= 2 : U32), ((F.cell(x) - oxa) < side + 2 : U32))
+      +az = Bool.and(((F.cell(z) - oza) >= 2 : U32), ((F.cell(z) - oza) < side + 2 : U32))
+      +gone = Bool.not(C.owns(dx, ax, az))
       +last = U32.is_eq((i + 1 : U32), en)
       C.give2(f, Pick.n(last, sg, 1n+sg), Pick.n(last, 9n, 7n),
         C.gm(a, cap, i, Pick.u(Bool.and(gone, take), 0, fl))[Pick.u(last,
@@ -3043,8 +3104,8 @@ def Fb.round(a: Array<U32>, +c: Nat, +nbx: Nat, +nbz: Nat, +na: U32, +cap: U32, 
   +mm: Nat) -> Array<U32>:
   +cx = Nat.mod(c, 2n)
   +cz = Nat.div(c, 2n)
-  +ni = Nat.div(Nat.add(Nat.sub(nbx, Nat.min(cx, nbx)), 1n), 2n)
-  +nj = Nat.div(Nat.add(Nat.sub(nbz, Nat.min(cz, nbz)), 1n), 2n)
+  +ni = Nat.div(Nat.add(Nat.sub(nbx, P.Pick.low(cx, nbx)), 1n), 2n)
+  +nj = Nat.div(Nat.add(Nat.sub(nbz, P.Pick.low(cz, nbz)), 1n), 2n)
   Fb.rd2(Fb.tree(Nat.mul(ni, nj), (a, FaE{}), FaE{}, 0n, ni, U32.from_nat(cx), U32.from_nat(cz), na, cap, msk),
     o, k, mm)
 
@@ -3102,7 +3163,7 @@ def F.mx(+k: P.K, xs: List<&2, P.Body>, +m: Nat) -> Nat:
     case []:
       m
     case +b <> rest:
-      F.mx(k, rest, Nat.max(m, W.creach(k, b)))
+      F.mx(k, rest, P.Pick.high(m, W.creach(k, b)))
 
 # one body's tick with a reach and an input of its own (the player's)
 # the player's own tick: its reach (a jump, the motor) and its input
@@ -3250,8 +3311,8 @@ def O.bb(xs: List<&2, P.Body>, b: Bx) -> Bx:
       b
     case +e <> rest:
       Bx{+x0, +y0, +z0, +x1, +y1, +z1} = b
-      O.bb(rest, Bx{Nat.min(x0, P.Body.x(e)), Nat.min(y0, P.Body.y(e)), Nat.min(z0, P.Body.z(e)),
-        Nat.max(x1, P.Body.x(e)), Nat.max(y1, P.Body.y(e)), Nat.max(z1, P.Body.z(e))})
+      O.bb(rest, Bx{P.Pick.low(x0, P.Body.x(e)), P.Pick.low(y0, P.Body.y(e)), P.Pick.low(z0, P.Body.z(e)),
+        P.Pick.high(x1, P.Body.x(e)), P.Pick.high(y1, P.Body.y(e)), P.Pick.high(z1, P.Body.z(e))})
 
 def O.big() -> Nat:
   Nat.add(Nat.mul(W.size(), U32.to_nat(1073741823)), 262143n)
@@ -3584,7 +3645,7 @@ def O.axis(+b: Bx) -> Nat:
 
 def O.long(+b: Bx) -> Nat:
   Bx{+x0, +y0, +z0, +x1, +y1, +z1} = b
-  Nat.max(Nat.sub(x1, x0), Nat.max(Nat.sub(y1, y0), Nat.sub(z1, z0)))
+  P.Pick.high(Nat.sub(x1, x0), P.Pick.high(Nat.sub(y1, y0), Nat.sub(z1, z0)))
 
 def O.at(+ax: Nat, +x: Nat, +y: Nat, +z: Nat) -> Nat:
   match ax:
@@ -4222,7 +4283,7 @@ def O.reach(xs: List<&2, P.Body>, +k: P.K, +m: Nat) -> Nat:
     case []:
       m
     case +e <> rest:
-      O.reach(rest, k, Nat.max(m, W.creach(k, e)))
+      O.reach(rest, k, P.Pick.high(m, W.creach(k, e)))
 
 def O.w3(+seed: U32, p: P.Body, done: List<&2, P.Body>, st: St) -> World:
   St{t, dirty, fresh, work} = st
@@ -4890,7 +4951,7 @@ def C.cut(xs: List<&2, P.Body>, +line: U32, +onx: Bool, acc: Two) -> Two:
       C.cut1((W.cell_of(Pick.n(onx, P.Body.x(e), P.Body.z(e))) < line : U32), e, C.cut(rest, line, onx, acc))
 
 # a chunk with this crowd and these sleepers, its 16 cells starting at
-# (ox + 1, oz + 1): the crowd is marked 1 (it ticks and it is given back),
+# (ox + 2, oz + 2): the crowd is marked 1 (it ticks and it is given back),
 # the sleepers 2 (they are only there to be stood on and pushed). Room for
 # three times what it starts with, for the copies of its neighbours.
 def C.mkl2(+n1: Nat, +n2: Nat, xs: List<&2, P.Body>, ss: List<&2, P.Body>, +o: Og, +ox: U32, +oz: U32,
@@ -4981,11 +5042,11 @@ def C.jobs(fuel: Nat, ph: Nat, todo: List<&2, Job>, +t: Two, +u: Two, +xs: List<
       C.jobs(f, C.nph(nz, nx), Job{C.tb(t), C.tb(u), (cx + C.st(nx) : U32), cz, nx, nz} <> todo, Two{[], []},
         Two{[], []}, C.ta(t), C.ta(u), nz, nx, cx, cz, cx0, cz0, acc, o)
     case 1n+f 4n Nil{}:
-      RwC{C.mkl(xs, ss, o, (cx - 1 : U32), (cz - 1 : U32)), acc}
+      RwC{C.mkl(xs, ss, o, (cx - 2 : U32), (cz - 2 : U32)), acc}
     case 1n+f 4n +j <> rest:
       C.jobs(f, C.nph(C.jlz(j), C.jlx(j)), rest, Two{[], []}, Two{[], []}, C.jxs(j), C.jss(j), C.jlz(j),
         C.jlx(j), C.jcx(j), C.jcz(j), cx0, cz0,
-        RwC{C.mkl(xs, ss, o, (cx - 1 : U32), (cz - 1 : U32)), acc}, o)
+        RwC{C.mkl(xs, ss, o, (cx - 2 : U32), (cz - 2 : U32)), acc}, o)
     case 1n+f _ _:
       acc
 
@@ -5172,9 +5233,18 @@ type Wc is Type:
 def W.ogof(+cx0: U32, +cz0: U32) -> Og:
   Og{W.base(cx0), W.base(cz0)}
 
-# how many ticks a grid lives before the crowd comes back as a list
+# How many ticks a grid lives before the crowd comes back as a list.
+#
+# It was 64. With turning in, 64 is too long: the crowd drifts far enough
+# from the picture the grid was built on that two cubes settling against
+# each other across a chunk line end up a hair inside one another. 32 is
+# measured clean over the collision test's 304 ticks and 64 is not; what
+# exactly goes stale is not found yet -- it is not the reach (padding it
+# by four cubes changes nothing), not the grid's margin (three times as
+# wide changes nothing) and not the way the borders are handed over (row
+# by row instead of down the tree changes nothing).
 def W.cglife() -> Nat:
-  64n
+  32n
 
 # the crowd out of the grid and back into the world, the sleepers that
 # moved woken, the player taken out of the obstacles
@@ -5215,8 +5285,15 @@ def W.cgmg(+mm: Nat) -> Nat:
 # pushed), so the crowd's reach at the moment of building is not enough
 # sixty-four ticks later. This is what the player's own reach used to
 # cover by accident, back when it set everyone's rectangle.
+#
+# The room a turn takes goes in the same way, and for the same reason: no
+# cube may be turning when the grid is built, and sixty-four ticks later
+# several are. The grid that is rebuilt every tick works this out again
+# each time and never notices; this one has to be told once, at the
+# start, or a cube that has turned stops seeing the cube next to it.
 def W.cgmm(+k: P.K, +mm: Nat) -> Nat:
-  Nat.add(mm, Nat.mul(W.cglife(), Nat.mul(2n, Nat.add(P.K.g(k), P.K.acc(k)))))
+  Nat.add(Nat.add(mm, Nat.mul(W.cglife(), Nat.mul(2n, Nat.add(P.K.g(k), P.K.acc(k))))),
+    Nat.add(W.turnroom(False{}), Nat.div(W.size(), 8n)))
 
 def W.cg1(+k: P.K, w: World, +bx: Bx, +mm0: Nat) -> Wc:
   World{+seed, +t, +awake, dirty, +p} = w

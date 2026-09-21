@@ -1,29 +1,76 @@
 # Tarefa: rotação e queda de corpo rígido no Cubo Azul, com as leis provadas
 
-## Estado (20/09/2026)
+## Estado (21/09/2026)
 
-Executado até aqui; o que segue neste arquivo é o plano, que continua valendo
-para o que falta. O estado abaixo é o do `master` a partir de `386b75e`; a
-dinâmica de contato está no ramo `giro-dinamica`.
+Executado. O que segue neste arquivo é o plano; dele resta o passo 8. O estado
+abaixo é o da árvore em `giro-dinamica`, com `bend PROOF.bend` imprimindo
+**"All terms check."** e os testes verdes.
 
 | passo da ordem de trabalho | estado |
 |---|---|
 | 1. apagar o escorregão e suas leis | **feito** (`006b552`) |
-| 2. corpo rígido no `phys.bend`: giro, orientação, inércia isotrópica, integração livre + lei 1 | **feito** — giro como vetor **exato** (`Wv`), orientação como quatérnio em 2⁻¹⁵ (`Quat`), seno/cosseno próprios (`Trig`, erro 1,2·10⁻⁵, exatos nos quartos de volta). O corpo guarda o **canto**, não o centro de massa: o centro é canto + s/2, e as contas de braço já usam o centro. |
-| 3. empacotamento novo em `world.bend` | **feito** — 16 palavras por corpo (6 + 4 do quatérnio + 3 do giro + folga); cubo parado não escreve, lê nem copia as sete (bandeira no bit 27). Teste novo em `./chunks` soma os giros antes/depois. **Falta** o cabeçalho/shader desenhando orientado. |
-| 4. colisão OBB (SAT) no lugar da alinhada, com `no_clip` provado de novo | **feito** — `Geo.sat`, quinze eixos, igual ao teste de caixa enquanto nada girou (`./fast`, 3375 posições); `no_clip` reprovado e **mais forte**: cobra o corpo livre *virado do jeito que terminou*. |
-| 5. impulsos com braço e atrito de contato (leis 2, 3, 5) | **leis 2 e 3 provadas**; o impulso de contato está só no ramo `giro-dinamica` |
-| 6. contatos múltiplos, repouso e dormir (leis 6, 7, teste da pilha) | **não** |
-| 7. energia com rotação (lei 4) | **não** |
-| 8. voltar aos 100 mil a 64 ticks/s | **não** — caiu para 23,7 ms/tick (42/s); diagnóstico e conserto no README |
+| 2. corpo rígido no `phys.bend` | **feito** — giro como vetor exato (`Wv`), orientação em quatérnio 2⁻¹⁵, `Trig` próprio |
+| 3. empacotamento novo em `world.bend` | **feito** — 16 palavras por corpo; **falta** o cabeçalho/shader desenhando orientado |
+| 4. colisão OBB (SAT) com `no_clip` provado | **feito** — `./fast` com 0 diferenças em 3375 posições |
+| 5. impulsos com braço e atrito de contato (leis 2, 3, 5) | **feito** — o aperto do apoio fora do meio vira torque e o cubo tomba |
+| 6. contatos múltiplos, repouso e dormir (leis 6, 7) | **feito na física**; falta o teste da pilha |
+| 7. energia com rotação (lei 4) | **feito** — provada pela porta "uma volta nunca levanta o corpo", sem termo de rotação na energia |
+| 8. voltar aos 100 mil a 64 ticks/s | **não** — medido: 81,3 ms a tick (12 por segundo) |
 
-**O que trava o passo 5 em diante.** No ramo `giro-dinamica` o aperto do apoio
-fora do meio vira torque, e o cubo empoleirado **tomba e cai** (o teste `quina`
-passa). Mas ele fura o `no_clip` na multidão: `Geo.floor`, `Geo.rests`, o
-dormir, as células e o alcance dos chunks assumem caixa reta, e um cubo virado
-sobe e desce além da sua caixa (`Geo.top`/`Geo.sag` já estão escritos para
-isso). Concluir a rotação é refazer essa camada com o topo e o fundo reais —
-não é mais um pedaço de física, é a camada do mundo.
+**As 19 leis fecham.** Sem `?TODO`, sem `@unsafe` nas provas, sem axioma.
+`energy_never_grows` — a última — fecha porque o giro entra por duas peças
+separadas: o giro não levanta a energia do corpo (`turn_e2`, que vem da porta
+`Tick.place`) e deixa os obstáculos como estavam. Juntá-las num só passo não
+cabe: o checador teria de segurar quatro termos do tamanho de um tick de uma
+vez.
+
+**Testes: todos verdes.** `./clash`: os nove motores com 0 sobreposições e 586
+cubos. `./fast`: os quatro, `quina` inclusive — o cubo empoleirado tomba e
+acaba a 46 de 262144 por metro, isto é, no chão. `./chunks`: 0 sobreposições,
+432 cubos, a ida e volta pelo array conserva o giro exatamente, 431 cubos ainda
+girando depois de 300 ticks com 0 quatérnios zerados, e a grade viva com 5134
+cubos sem sobreposição.
+
+**Desempenho: 81,3 ms por tick nos 100 489 cubos (12 por segundo).** Longe dos
+64 por segundo do passo 8. Medido A/B intercalado antes: a vida da grade (32 em
+vez de 64) custa 8%; a folga de alcance da grade viva custa 5%; a faixa de duas
+células é mais rápida que a de uma. O grosso do custo não está isolado.
+
+**A pilha do checador.** Com a rotação dentro, o termo de um tick é grande e o
+checador o percorre inteiro em cada comparação. Os 8 MB que um shell dá não
+bastam, e `ulimit -s unlimited` não resolve (o Linux não expande a pilha
+principal). `./build.sh` agora pede um teto grande e finito (`ulimit -s
+1000000`) e passa `BUN_JSC_maxPerThreadStackUsage`; são precisos os dois. Sem
+isso o checador morre com "machine stack overflow" e **esconde erros de tipo
+reais** — foi o que escondeu `my_nc` e `turn2_nc` por um bom tempo.
+
+**Bugs de verdade achados no caminho.** `Nat.min` e `Nat.max` da Base andam em
+unário: recursam o menor dos dois argumentos. Com número do mundo — uma posição
+de 2⁴⁷, um quadrado de 2³², a meia aresta de 131 072 — isso estoura a pilha **em
+execução**, e era o que derrubava o `clash` em `Geo.sag2`. Trocados por uma
+escolha O(1) (`Pick.low`/`Pick.high`) nos 27 lugares. Além desses: a faixa de
+cada chunk era de uma célula e um cubo virado precisa de duas; na troca entre
+chunks um cubo que saía em z durante a passagem em x tinha a posse largada pelo
+remetente e não recolhida por ninguém; o alcance máximo da grade viva era fixado
+na montagem, antes de qualquer cubo girar.
+
+**O que a física teve de mudar para o checador** (nada numérico de propósito, e
+os testes confirmam): a diagonal da matriz virou diferença de quadrados; as
+divisões por 2¹⁶ viraram duas por 2⁸; `Quat.step` ganhou a guarda "sem giro, sem
+passo"; o giro e os estágios de movimento passaram a receber o corpo inteiro em
+vez de nove campos, e `Body.energy` passou a usar projeções — abrir um corpo que
+o checador não sabe calcular custa uma cópia por campo, e o tique abre um atrás
+do outro.
+
+**Toolchain.** Bend 2.0.22. Ele trocou `--version` por `bend version` (o
+`build.sh` aceita os dois) e mudou a API do `io_seal`, que agora recebe o cid da
+classe — `effs/screen.c` foi corrigido.
+
+**O que ficou por entender.** A grade viva envelhece: com 64 ticks de vida dois
+cubos que assentam encostados através de uma linha de chunk acabam um fio dentro
+do outro; com 32 não. A causa não foi achada — não é o alcance, não é a margem
+da grade, não é o caminho da troca de bordas. 32 é um limite **medido** sobre os
+304 ticks do teste, não uma prova.
 
 ## Contexto
 

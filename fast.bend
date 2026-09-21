@@ -11,7 +11,7 @@ def meets(+a: P.Body, xs: List<&2, P.Body>) -> Nat:
     case []:
       0n
     case +b <> rest:
-      Nat.add(M.Pick.n(P.Geo.meets(W.W.size(), P.Body.x(a), P.Body.y(a), P.Body.z(a), P.Rot.q(P.Body.rot(a)), b), 1n, 0n), meets(a, rest))
+      Nat.add(M.Pick.n(P.Geo.hits(W.W.size(), P.Body.x(a), P.Body.y(a), P.Body.z(a), P.Rot.q(P.Body.rot(a)), b), 1n, 0n), meets(a, rest))
 
 def clash(xs: List<&2, P.Body>) -> Nat:
   match xs:
@@ -57,7 +57,7 @@ def maxx(xs: List<&2, P.Body>, +m: Nat) -> Nat:
     case []:
       m
     case +b <> rest:
-      maxx(rest, Nat.max(m, P.Body.x(b)))
+      maxx(rest, P.Pick.high(m, P.Body.x(b)))
 
 def run(n: Nat, +bad: Nat, +w: W.World) -> String:
   match n:
@@ -85,7 +85,7 @@ def high(xs: List<&2, P.Body>, +m: Nat) -> Nat:
     case []:
       m
     case +b <> rest:
-      high(rest, Nat.max(m, P.Body.y(b)))
+      high(rest, P.Pick.high(m, P.Body.y(b)))
 
 # todos os cubos da regiao, acordados ou dormindo nas celulas
 def todos(w: W.World) -> List<&2, P.Body>:
@@ -93,12 +93,17 @@ def todos(w: W.World) -> List<&2, P.Body>:
   List.append(&2, P.Body, awake,
     W.W.rect(48n, t, seed, (W.W.origin() - 2 : U32), (W.W.origin() + 8 : U32), 6n))
 
+# no fim os dois cubos tem que estar no chao. "No chao" e por baixo de um
+# milimetro: um cubo que parou virado por uma fracao de grau apoia num
+# canto, e o canto o deixa algumas dezenas de unidades (decimos de
+# milimetro) acima do zero. Exigir zero exato seria exigir que ele
+# parasse perfeitamente quadrado com o mundo, o que nao e fisica.
 def tip(n: Nat, +bad: Nat, +w: W.World) -> String:
   match n:
     case 0n:
-      M.Pick.s(Bool.and(Nat.is_eq(bad, 0n), Nat.is_eq(high(todos(w), 0n), 0n)), "OK", "FAIL")
+      M.Pick.s(Bool.and(Nat.is_eq(bad, 0n), Nat.is_le(high(todos(w), 0n), 256n)), "OK", "FAIL")
         ++ ": " ++ Nat.show(bad) ++ " overlaps, o mais alto a "
-        ++ M.Fmt.dec2(high(todos(w), 0n), 262144n) ++ " m (tem que acabar em 0,00: o cubo"
+        ++ Nat.show(high(todos(w), 0n)) ++ " de 262144 por metro (tem que acabar no chao: o cubo"
         ++ " empoleirado tem que tombar e cair)"
     case 1n+m:
       tip(m, Nat.add(bad, clash(todos(w))), W.W.tick_flat(M.Knob.defaults(), P.In.idle(), w))

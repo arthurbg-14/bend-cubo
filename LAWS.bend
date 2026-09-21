@@ -26,7 +26,7 @@ law free_flight_energy:
   for +obs: List<&2, P.Body>
   for +b: P.Body
   for air: {P.Body.ground(b) == False{} : Bool}
-  for free: {P.Body.hit(P.Tick.body(P.Body.tick(k, obs, P.In.idle(), b))) == False{} : Bool}
+  for +free: {P.Body.hit(P.Tick.body(P.Body.tick(k, obs, P.In.idle(), b))) == False{} : Bool}
   b2 = P.Tick.body(P.Body.tick(k, obs, P.In.idle(), b))
   {P.Body.energy(P.K.g(k), b2) == P.Body.energy(P.K.g(k), b) : Nat}
 
@@ -39,7 +39,7 @@ law free_flight_kinematics:
   for +obs: List<&2, P.Body>
   for +b: P.Body
   for air: {P.Body.ground(b) == False{} : Bool}
-  for free: {P.Body.hit(P.Tick.body(P.Body.tick(k, obs, P.In.idle(), b))) == False{} : Bool}
+  for +free: {P.Body.hit(P.Tick.body(P.Body.tick(k, obs, P.In.idle(), b))) == False{} : Bool}
   b2 = P.Tick.body(P.Body.tick(k, obs, P.In.idle(), b))
   {Nat.add(Nat.add(P.Z.pos(P.Body.vy(b2)), P.Z.neg(P.Body.vy(b))), P.K.g(k))
     == Nat.add(P.Z.pos(P.Body.vy(b)), P.Z.neg(P.Body.vy(b2))) : Nat}
@@ -66,7 +66,7 @@ law flight_is_parabola:
   for +k: P.K
   for +obss: List<&2, List<&2, P.Body>>
   for +b: P.Body
-  for free: {P.Flight.clear(k, obss, b) == True{} : Bool}
+  for +free: {P.Flight.clear(k, obss, b) == True{} : Bool}
   n = List.length(&2, List<&2, P.Body>, obss)
   b2 = P.Flight.run(k, obss, b)
   {Nat.add(Nat.add(P.Z.pos(P.Body.vy(b2)), P.Z.neg(P.Body.vy(b))), Nat.mul(n, P.K.g(k)))
@@ -89,7 +89,7 @@ law jump_energy:
   for +obs: List<&2, P.Body>
   for +b: P.Body
   for stand: {P.Body.ground(b) == True{} : Bool}
-  for free: {P.Body.hit(P.Tick.body(P.Body.tick(k, obs, P.In{None{}, True{}}, b))) == False{} : Bool}
+  for +free: {P.Body.hit(P.Tick.body(P.Body.tick(k, obs, P.In{None{}, True{}}, b))) == False{} : Bool}
   b2 = P.Tick.body(P.Body.tick(k, obs, P.In{None{}, True{}}, b))
   {P.Body.energy(P.K.g(k), b2)
     == Nat.add(Nat.add(Nat.add(P.Z.sq(P.Body.vx(b2)), P.Z.sq(P.Body.vz(b2))), Nat.mul(P.K.jump(k), P.K.jump(k))),
@@ -100,7 +100,7 @@ law jump_energy:
 law no_air_jump:
   for +k: P.K
   for +obs: List<&2, P.Body>
-  for w: Maybe<&2, P.Wish>
+  for +w: Maybe<&2, P.Wish>
   for +b: P.Body
   for air: {P.Body.ground(b) == False{} : Bool}
   {P.Body.tick(k, obs, P.In{w, True{}}, b) == P.Body.tick(k, obs, P.In{w, False{}}, b) : P.Body & List<&2, P.Body>}
@@ -111,7 +111,7 @@ law no_air_jump:
 law no_air_control:
   for +k: P.K
   for +obs: List<&2, P.Body>
-  for w: Maybe<&2, P.Wish>
+  for +w: Maybe<&2, P.Wish>
   for +b: P.Body
   for air: {P.Body.ground(b) == False{} : Bool}
   {P.Body.tick(k, obs, P.In{w, False{}}, b) == P.Body.tick(k, obs, P.In.idle(), b) : P.Body & List<&2, P.Body>}
@@ -144,7 +144,7 @@ law friction_never_reverses:
   for +obs: List<&2, P.Body>
   for +b: P.Body
   for stand: {P.Body.ground(b) == True{} : Bool}
-  for free: {P.Body.hit(P.Tick.body(P.Body.tick(k, obs, P.In.idle(), b))) == False{} : Bool}
+  for +free: {P.Body.hit(P.Tick.body(P.Body.tick(k, obs, P.In.idle(), b))) == False{} : Bool}
   b2 = P.Tick.body(P.Body.tick(k, obs, P.In.idle(), b))
   {Nat.is_le(P.Z.pos(P.Body.vx(b2)), P.Z.pos(P.Body.vx(b))) == True{} : Bool}
   & {Nat.is_le(P.Z.neg(P.Body.vx(b2)), P.Z.neg(P.Body.vx(b))) == True{} : Bool}
@@ -159,7 +159,7 @@ law coulomb_friction:
   for +obs: List<&2, P.Body>
   for +b: P.Body
   for stand: {P.Body.ground(b) == True{} : Bool}
-  for free: {P.Body.hit(P.Tick.body(P.Body.tick(k, obs, P.In.idle(), b))) == False{} : Bool}
+  for +free: {P.Body.hit(P.Tick.body(P.Body.tick(k, obs, P.In.idle(), b))) == False{} : Bool}
   b2 = P.Tick.body(P.Body.tick(k, obs, P.In.idle(), b))
   fx = Nat.sub(P.Z.mag(P.Body.vx(b)), P.Z.mag(P.Body.vx(b2)))
   fz = Nat.sub(P.Z.mag(P.Body.vz(b)), P.Z.mag(P.Body.vz(b2)))
@@ -174,7 +174,7 @@ law friction_work:
   for +obs: List<&2, P.Body>
   for +b: P.Body
   for stand: {P.Body.ground(b) == True{} : Bool}
-  for free: {P.Body.hit(P.Tick.body(P.Body.tick(k, obs, P.In.idle(), b))) == False{} : Bool}
+  for +free: {P.Body.hit(P.Tick.body(P.Body.tick(k, obs, P.In.idle(), b))) == False{} : Bool}
   b2 = P.Tick.body(P.Body.tick(k, obs, P.In.idle(), b))
   ax = P.Z.mag(P.Body.vx(b))
   az = P.Z.mag(P.Body.vz(b))
@@ -189,20 +189,28 @@ law friction_work:
     == Nat.add(P.Body.z(b), Nat.add(P.Z.pos(P.Body.vz(b)), P.Z.pos(P.Body.vz(b2)))) : Nat}
   & {P.Body.y(b2) == P.Body.y(b) : Nat}
 
-# LAW: static friction: a body at rest on the ground (or on a cube), with
-# no input, stays exactly where it is.
+# LAW: static friction: a body at rest and held up, with no input and no
+# knock, stays exactly where it is -- the same place, the same nothing of
+# a velocity, still held. Only the way it is turned may change: what
+# holds a cube presses up on it, and where that press lands is what turns
+# it (Rot.held). A cube the press tips over is knocked, which is what the
+# no-knock hypothesis leaves out -- a cube that topples is not at rest.
 law rest_stays:
   for +k: P.K
   for +obs: List<&2, P.Body>
   for +x: Nat
   for +y: Nat
   for +z: Nat
-  for h: Bool
+  for +h: Bool
   for +rt: P.Rot
-  for on: {Bool.or(Nat.is_eq(y, 0n), P.Geo.rests(P.K.size(k), x, y, z, obs)) == True{} : Bool}
-  for clear: {P.Geo.free(P.K.size(k), x, y, z, P.Rot.q(rt), obs) == True{} : Bool}
+  for +on: {P.Geo.held(P.Quat.flat(P.Rot.q(rt)), P.K.size(k), x, y, z, P.Rot.q(rt), obs) == True{} : Bool}
+  for +clear: {P.Geo.free(P.K.size(k), x, y, z, P.Rot.q(rt), obs) == True{} : Bool}
+  for +free: {P.Body.hit(P.Tick.body(P.Body.tick(k, obs, P.In.idle(),
+    P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, rt}))) == False{} : Bool}
   {P.Body.tick(k, obs, P.In.idle(), P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, rt})
-    == (P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, False{}, rt}, obs) : P.Body & List<&2, P.Body>}
+    == (P.Body.setrot(P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, False{}, rt},
+         P.Body.rot(P.Tick.body(P.Body.tick(k, obs, P.In.idle(),
+           P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, rt})))), obs) : P.Body & List<&2, P.Body>}
 
 # Collisions and energy
 # ---------------------
@@ -228,13 +236,18 @@ law push_energy:
 # and everything it touched with at most the mechanical energy they had.
 # Flight keeps it, friction, landings and pushes spend it; only the
 # player's motor and jump add any.
+# the same words with a name on them, so that the proof can hand the law
+# back as it stands instead of having the whole tick worked out twice
+def EnergyAfter(+k: P.K, +obs: List<&2, P.Body>, +b: P.Body) -> Type:
+  r = P.Body.tick(k, obs, P.In.idle(), b)
+  {Nat.is_le(Nat.add(P.Body.energy(P.K.g(k), P.Tick.body(r)), P.Body.energies(P.K.g(k), P.Tick.obs(r))),
+             Nat.add(P.Body.energy(P.K.g(k), b), P.Body.energies(P.K.g(k), obs))) == True{} : Bool}
+
 law energy_never_grows:
   for +k: P.K
   for +obs: List<&2, P.Body>
   for +b: P.Body
-  r = P.Body.tick(k, obs, P.In.idle(), b)
-  {Nat.is_le(Nat.add(P.Body.energy(P.K.g(k), P.Tick.body(r)), P.Body.energies(P.K.g(k), P.Tick.obs(r))),
-             Nat.add(P.Body.energy(P.K.g(k), b), P.Body.energies(P.K.g(k), obs))) == True{} : Bool}
+  EnergyAfter(k, obs, b)
 
 # LAW: no clipping: a body clear of its obstacles is still clear of them
 # after a tick, whatever the input -- nothing walks, falls or is pushed
@@ -245,7 +258,7 @@ law energy_never_grows:
 law no_clip:
   for +k: P.K
   for +obs: List<&2, P.Body>
-  for inp: P.In
+  for +inp: P.In
   for +b: P.Body
   for clear: {P.Geo.free(P.K.size(k), P.Body.x(b), P.Body.y(b), P.Body.z(b), P.Rot.q(P.Body.rot(b)), obs)
     == True{} : Bool}
