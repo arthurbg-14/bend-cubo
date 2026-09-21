@@ -2718,8 +2718,8 @@ def Fb.round(a: Array<U32>, +c: Nat, +nbx: Nat, +nbz: Nat, +na: U32, +cap: U32, 
   +mm: Nat) -> Array<U32>:
   +cx = Nat.mod(c, 2n)
   +cz = Nat.div(c, 2n)
-  +ni = Nat.div(Nat.add(Nat.sub(nbx, Nat.min(cx, nbx)), 1n), 2n)
-  +nj = Nat.div(Nat.add(Nat.sub(nbz, Nat.min(cz, nbz)), 1n), 2n)
+  +ni = Nat.div(Nat.add(Nat.sub(nbx, P.Pick.low(cx, nbx)), 1n), 2n)
+  +nj = Nat.div(Nat.add(Nat.sub(nbz, P.Pick.low(cz, nbz)), 1n), 2n)
   Fb.rd2(Fb.tree(Nat.mul(ni, nj), (a, FaE{}), FaE{}, 0n, ni, U32.from_nat(cx), U32.from_nat(cz), na, cap, msk),
     o, k, mm)
 
@@ -2777,7 +2777,7 @@ def F.mx(+k: P.K, xs: List<&2, P.Body>, +m: Nat) -> Nat:
     case []:
       m
     case +b <> rest:
-      F.mx(k, rest, Nat.max(m, W.creach(k, b)))
+      F.mx(k, rest, P.Pick.high(m, W.creach(k, b)))
 
 # one body's tick with a reach and an input of its own (the player's)
 # the player's own tick: its reach (a jump, the motor) and its input
@@ -2925,8 +2925,8 @@ def O.bb(xs: List<&2, P.Body>, b: Bx) -> Bx:
       b
     case +e <> rest:
       Bx{+x0, +y0, +z0, +x1, +y1, +z1} = b
-      O.bb(rest, Bx{Nat.min(x0, P.Body.x(e)), Nat.min(y0, P.Body.y(e)), Nat.min(z0, P.Body.z(e)),
-        Nat.max(x1, P.Body.x(e)), Nat.max(y1, P.Body.y(e)), Nat.max(z1, P.Body.z(e))})
+      O.bb(rest, Bx{P.Pick.low(x0, P.Body.x(e)), P.Pick.low(y0, P.Body.y(e)), P.Pick.low(z0, P.Body.z(e)),
+        P.Pick.high(x1, P.Body.x(e)), P.Pick.high(y1, P.Body.y(e)), P.Pick.high(z1, P.Body.z(e))})
 
 def O.big() -> Nat:
   Nat.add(Nat.mul(W.size(), U32.to_nat(1073741823)), 262143n)
@@ -3259,7 +3259,7 @@ def O.axis(+b: Bx) -> Nat:
 
 def O.long(+b: Bx) -> Nat:
   Bx{+x0, +y0, +z0, +x1, +y1, +z1} = b
-  Nat.max(Nat.sub(x1, x0), Nat.max(Nat.sub(y1, y0), Nat.sub(z1, z0)))
+  P.Pick.high(Nat.sub(x1, x0), P.Pick.high(Nat.sub(y1, y0), Nat.sub(z1, z0)))
 
 def O.at(+ax: Nat, +x: Nat, +y: Nat, +z: Nat) -> Nat:
   match ax:
@@ -3897,7 +3897,7 @@ def O.reach(xs: List<&2, P.Body>, +k: P.K, +m: Nat) -> Nat:
     case []:
       m
     case +e <> rest:
-      O.reach(rest, k, Nat.max(m, W.creach(k, e)))
+      O.reach(rest, k, P.Pick.high(m, W.creach(k, e)))
 
 def O.w3(+seed: U32, p: P.Body, done: List<&2, P.Body>, st: St) -> World:
   St{t, dirty, fresh, work} = st

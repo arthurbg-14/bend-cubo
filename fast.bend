@@ -57,7 +57,7 @@ def maxx(xs: List<&2, P.Body>, +m: Nat) -> Nat:
     case []:
       m
     case +b <> rest:
-      maxx(rest, Nat.max(m, P.Body.x(b)))
+      maxx(rest, P.Pick.high(m, P.Body.x(b)))
 
 def run(n: Nat, +bad: Nat, +w: W.World) -> String:
   match n:
@@ -85,7 +85,7 @@ def high(xs: List<&2, P.Body>, +m: Nat) -> Nat:
     case []:
       m
     case +b <> rest:
-      high(rest, Nat.max(m, P.Body.y(b)))
+      high(rest, P.Pick.high(m, P.Body.y(b)))
 
 # todos os cubos da regiao, acordados ou dormindo nas celulas
 def todos(w: W.World) -> List<&2, P.Body>:

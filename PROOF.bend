@@ -1369,10 +1369,10 @@ def pick_le(ok: Bool, +t: Nat, +a: Nat, -h: Bool, e: {Bool.and(Nat.is_le(t, a), 
 
 # friction takes no more than the component has
 def take_le(+f: Nat, +a: Nat, +s: Nat) -> {Nat.is_le(P.Fric.take(f, a, s), a) == True{} : Bool}:
-  pick_le(Bool.and(Nat.is_le(Nat.min(a, Nat.div(Nat.mul(f, a), s)), a),
-      Nat.is_le(Nat.mul(Nat.min(a, Nat.div(Nat.mul(f, a), s)), s), Nat.mul(f, a))),
-    Nat.min(a, Nat.div(Nat.mul(f, a), s)), a,
-    Nat.is_le(Nat.mul(Nat.min(a, Nat.div(Nat.mul(f, a), s)), s), Nat.mul(f, a)), {==})
+  pick_le(Bool.and(Nat.is_le(P.Pick.low(a, Nat.div(Nat.mul(f, a), s)), a),
+      Nat.is_le(Nat.mul(P.Pick.low(a, Nat.div(Nat.mul(f, a), s)), s), Nat.mul(f, a))),
+    P.Pick.low(a, Nat.div(Nat.mul(f, a), s)), a,
+    Nat.is_le(Nat.mul(P.Pick.low(a, Nat.div(Nat.mul(f, a), s)), s), Nat.mul(f, a)), {==})
 
 # (y + x) - y == x
 def sub_back(+y: Nat, +x: Nat) -> {Nat.sub(Nat.add(y, x), y) == x : Nat}:
@@ -1594,9 +1594,9 @@ def pick_mul(ok: Bool, +t: Nat, +a: Nat, +s: Nat, +f: Nat,
       le_add(0n, Nat.mul(f, a))
 
 def take_ok(+f: Nat, +a: Nat, +s: Nat) -> {Nat.is_le(Nat.mul(P.Fric.take(f, a, s), s), Nat.mul(f, a)) == True{} : Bool}:
-  pick_mul(Bool.and(Nat.is_le(Nat.min(a, Nat.div(Nat.mul(f, a), s)), a),
-      Nat.is_le(Nat.mul(Nat.min(a, Nat.div(Nat.mul(f, a), s)), s), Nat.mul(f, a))),
-    Nat.min(a, Nat.div(Nat.mul(f, a), s)), a, s, f, {==})
+  pick_mul(Bool.and(Nat.is_le(P.Pick.low(a, Nat.div(Nat.mul(f, a), s)), a),
+      Nat.is_le(Nat.mul(P.Pick.low(a, Nat.div(Nat.mul(f, a), s)), s), Nat.mul(f, a))),
+    P.Pick.low(a, Nat.div(Nat.mul(f, a), s)), a, s, f, {==})
 
 # the speed is at least |(a, c)|: a^2 + c^2 <= s^2
 def speed_pick(ok: Bool, +n: Nat, +r: Nat, +ab: Nat,

@@ -26,6 +26,14 @@ def Pick.n(c: Bool, +a: Nat, +b: Nat) -> Nat:
     case False{}:
       b
 
+# the smaller and the larger of two, chosen and not counted: Nat.min and
+# Nat.max walk down in ones, and these are world numbers.
+def Pick.low(+a: Nat, +b: Nat) -> Nat:
+  Pick.n(Nat.is_le(a, b), a, b)
+
+def Pick.high(+a: Nat, +b: Nat) -> Nat:
+  Pick.n(Nat.is_le(a, b), b, a)
+
 # Numbers
 # -------
 
@@ -320,7 +328,7 @@ def Fric.speed(+a: Nat, +b: Nat) -> Nat:
 
 # what friction F takes from a component of size a, the speed being s
 def Fric.take(+f: Nat, +a: Nat, +s: Nat) -> Nat:
-  +t = Nat.min(a, Nat.div(Nat.mul(f, a), s))
+  +t = Pick.low(a, Nat.div(Nat.mul(f, a), s))
   Pick.n(Bool.and(Nat.is_le(t, a), Nat.is_le(Nat.mul(t, s), Nat.mul(f, a))), t, 0n)
 
 def Fric.apply(+f: Nat, +vx: Z, +vz: Z) -> Z & Z:
