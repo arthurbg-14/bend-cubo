@@ -495,6 +495,46 @@ law tipping_is_never_thrown_away_nz:
     P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, P.Rot{q, P.Wv.zero()}}))
   {Bool.or(Bool.not(P.Quat.same(P.Rot.q(P.Body.rot(a)), q)), P.Z.above(P.Pos{0n}, P.Wv.x(P.Rot.w(P.Body.rot(a))))) == True{} : Bool}
 
+# LAW: on a corner, it tips. A cube at rest on the floor, with nothing
+# else around it, stands on its lowest point: a corner, the middle of an
+# edge, or the middle of a face (P.Hold.low). When that point is off to
+# one side of its middle, its weight and the floor's press are a torque,
+# and the cube ends the tick turned (its orientation is not the one it
+# had) or turning the way its middle hangs -- never balanced on a corner
+# or an edge that nothing holds it on. Along x: the floor pressing up at
+# +x of the middle turns it about +z, so the turning and the arm have the
+# same sign. Along z: pressing up at +z turns it about -x, so they have
+# opposite signs.
+law on_a_corner_it_tips_x:
+  for +k: P.K
+  for +heavy: {Nat.is_lt(0n, P.K.g(k)) == True{} : Bool}
+  for +x: Nat
+  for +y: Nat
+  for +z: Nat
+  for +h: Bool
+  for +q: P.Quat
+  for +floor: {P.Geo.onfloor(P.K.size(k), y, q) == True{} : Bool}
+  for +held: {P.Tick.sinks(P.K.size(k), [], x, y, z, q) == False{} : Bool}
+  for +off: {Nat.is_lt(0n, P.Z.mag(P.Wv.x(P.Hold.low(P.Rot.mat(q), P.K.size(k))))) == True{} : Bool}
+  a = P.Tick.body(P.Body.tick(k, [], P.In.idle(),
+    P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, P.Rot{q, P.Wv.zero()}}))
+  {Bool.or(Bool.not(P.Quat.same(P.Rot.q(P.Body.rot(a)), q)), P.Z.above(P.Z.mul(P.Wv.x(P.Hold.low(P.Rot.mat(q), P.K.size(k))), P.Wv.z(P.Rot.w(P.Body.rot(a)))), P.Pos{0n})) == True{} : Bool}
+
+law on_a_corner_it_tips_z:
+  for +k: P.K
+  for +heavy: {Nat.is_lt(0n, P.K.g(k)) == True{} : Bool}
+  for +x: Nat
+  for +y: Nat
+  for +z: Nat
+  for +h: Bool
+  for +q: P.Quat
+  for +floor: {P.Geo.onfloor(P.K.size(k), y, q) == True{} : Bool}
+  for +held: {P.Tick.sinks(P.K.size(k), [], x, y, z, q) == False{} : Bool}
+  for +off: {Nat.is_lt(0n, P.Z.mag(P.Wv.z(P.Hold.low(P.Rot.mat(q), P.K.size(k))))) == True{} : Bool}
+  a = P.Tick.body(P.Body.tick(k, [], P.In.idle(),
+    P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, P.Rot{q, P.Wv.zero()}}))
+  {Bool.or(Bool.not(P.Quat.same(P.Rot.q(P.Body.rot(a)), q)), P.Z.above(P.Pos{0n}, P.Z.mul(P.Wv.z(P.Hold.low(P.Rot.mat(q), P.K.size(k))), P.Wv.x(P.Rot.w(P.Body.rot(a)))))) == True{} : Bool}
+
 # LAW: a push is a touch. A move along x that hands its velocity to an
 # obstacle has to have reached it: if the mover, where the move leaves
 # it, could still go one unit on the way it was going, nothing was in
