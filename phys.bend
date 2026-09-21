@@ -775,8 +775,22 @@ def Geo.sat(+s: Nat, +ax: Nat, +ay: Nat, +az: Nat, +qa: Quat, +bx: Nat, +by: Nat
   Geo.satw(s, ax, ay, az, qa, 0n, bx, by, bz, qb, 0n)
 
 # the arc a corner sweeps in one tick: half a side times the angle
+def Geo.sweep1(zero: Bool, +s: Nat, +w: Wv) -> Nat:
+  match zero:
+    case True{}:
+      0n
+    case False{}:
+      Nat.div(Nat.mul(Nat.div(Wv.mag(w), 256n), Nat.div(s, 2n)), 667544n)
+
+# Asked once for the size being nothing and once for it being something,
+# for the checker and not for the machine (a size of nothing sweeps
+# nothing, so the answer is the same). The checker counts a number that
+# big out one by one whenever it works out a term that holds it, and the
+# arc is in every gate a move goes through (Geo.meets): unfolded, each
+# lemma about a gate cost it a minute; folded until the size is known,
+# five seconds for the whole of them.
 def Geo.sweep(+s: Nat, +w: Wv) -> Nat:
-  Nat.div(Nat.mul(Nat.div(Wv.mag(w), 256n), Nat.div(s, 2n)), 667544n)
+  Geo.sweep1(Nat.is_eq(s, 0n), s, w)
 
 # the mechanical energy, kinetic plus potential: vx^2 + vy^2 + vz^2 + g y
 # said with projections, not by taking the body apart: a body the
@@ -860,8 +874,19 @@ def Geo.sag2(+s: Nat, m: Mat) -> Nat:
   +t = Nat.div(Nat.div(Nat.mul(h, Nat.add(Nat.add(Z.mag(axy), Z.mag(ayy)), Z.mag(azy))), 256n), 256n)
   Nat.sub(Pick.high(t, h), h)
 
+def Geo.sag1(zero: Bool, +s: Nat, +q: Quat) -> Nat:
+  match zero:
+    case True{}:
+      0n
+    case False{}:
+      Geo.sag2(s, Rot.mat(q))
+
+# Folded like Geo.sweep, for the checker: a size of nothing hangs nothing,
+# and until the size is known the sag stays a name. Every statement about
+# the floor carries the sag of the turn a body ends in, which is a
+# quaternion the checker would otherwise work out to the last unit.
 def Geo.sag(+s: Nat, +q: Quat) -> Nat:
-  Geo.sag2(s, Rot.mat(q))
+  Geo.sag1(Nat.is_eq(s, 0n), s, q)
 
 def Geo.sagq(flat: Bool, +s: Nat, +q: Quat) -> Nat:
   match flat:
@@ -1007,11 +1032,21 @@ def Tick.bis(n: Nat, fit: Bool, +axis: Nat, +dir: Z, +s: Nat, +obs: List<&2, Bod
       Tick.bis(m, Probe.at(axis, s, obs, x, y, z, q, Z.like(dir, Tick.half(lo, mid))), axis, dir, s, obs, x, y,
         z, q, lo, mid, Tick.half(lo, mid))
 
-def Tick.reach(+axis: Nat, +dir: Z, +s: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +q: Quat,
+def Tick.reach0(+axis: Nat, +dir: Z, +s: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +q: Quat,
   +lo: Nat, +hi: Nat) -> Nat:
   Tick.bis(Tick.bits(Nat.sub(Pick.high(hi, lo), lo)),
     Probe.at(axis, s, obs, x, y, z, q, Z.like(dir, Tick.half(lo, hi))), axis, dir, s, obs, x, y, z, q, lo, hi,
     Tick.half(lo, hi))
+
+# Written out once for each shape the obstacles can have, like Tick.drop:
+# for the checker, so the search stays folded until they are known.
+def Tick.reach(+axis: Nat, +dir: Z, +s: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +q: Quat,
+  +lo: Nat, +hi: Nat) -> Nat:
+  match obs:
+    case []:
+      Tick.reach0(axis, dir, s, [], x, y, z, q, lo, hi)
+    case o <> rest:
+      Tick.reach0(axis, dir, s, o <> rest, x, y, z, q, lo, hi)
 
 # Going down a cube at a time, and last by the whole drop q: the last drop
 # at which the body still fits (0 when not even the first does). A fall
@@ -1044,13 +1079,27 @@ def Tick.path(n: Nat, more: Bool, +s: Nat, +obs: List<&2, Body>, +x: Nat, +y: Na
 # How far the body can go down, at most q: down to where it touches, then
 # back up by the gap it keeps (Geo.gap). The answer is only a place to
 # look; the caller tests it.
-def Tick.drop(+s: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +qr: Quat, +q: Nat) -> Nat:
+def Tick.drop0(+s: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +qr: Quat, +q: Nat) -> Nat:
   +qq = Pick.low(q, y)
   +f = Pick.low(s, qq)
   +lo = Tick.block(64n, Tick.fits(s, obs, x, Nat.sub(y, f), z, qr), Nat.is_eq(f, qq), s, obs, x, y, z, qr, qq,
     0n, f)
   +d0 = Tick.reach(1n, Neg{0n}, s, obs, x, y, z, qr, lo, Pick.low(Nat.add(lo, s), qq))
   Nat.sub(Pick.high(d0, Geo.gap(qr)), Geo.gap(qr))
+
+# The drop asked for once for each shape the obstacles can have, like the
+# turn (Tick.turn): for the checker and not for the machine. Asked this
+# way the search cannot be unfolded until the obstacles are known, so it
+# stays folded in every proof that carries a drop around. Unfolded, the
+# checker works out its sixty-four steps in each proof that mentions the
+# turn about a contact: the same lemma took over two minutes instead of
+# five seconds.
+def Tick.drop(+s: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +qr: Quat, +q: Nat) -> Nat:
+  match obs:
+    case []:
+      Tick.drop0(s, [], x, y, z, qr, q)
+    case o <> rest:
+      Tick.drop0(s, o <> rest, x, y, z, qr, q)
 
 # The same sideways: how far along d the body gets before it touches,
 # less than the whole of d (the whole of d is what was refused).
@@ -1866,12 +1915,27 @@ def Tick.boost(big: Bool, +w: Wv) -> Wv:
 
 # the turn about the point a: the turning the body carries, taken at
 # least at the size above when a is far off its middle
-def Tick.pivota(md: Mat, +s: Nat, +g: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +vx: Z, +vy: Z, +vz: Z,
+def Tick.pivota0(md: Mat, +s: Nat, +g: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +vx: Z, +vy: Z, +vz: Z,
   +gr: Bool, +hit: Bool, +rt: Rot, +r2: Rot, a: Wv) -> Body:
   Wv{+ax, +ay, +az} = a
   +w2 = Tick.boost(Nat.is_le(Nat.div(s, 32n), Nat.add(Z.mag(ax), Z.mag(az))), Rot.w(rt))
   Tick.pivot(Rot.mat(Quat.half(Quat.step(w2, Wv.mag(w2)))), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt,
     Rot{Rot.turn(Rot.q(rt), w2), Rot.w(rt)}, ax, ay, az)
+
+# The same turn, written out once for each shape the obstacles can have,
+# like Tick.turn and Tick.drop: for the checker and not for the machine.
+# The arm a is often a value the checker can open (Hold.low builds its
+# arm out of the matrix without asking anything of it), and opened, the
+# whole turn -- the boost, the matrix, the search for the contact -- lands
+# in every proof that only carries the turn around. Asked this way it
+# stays folded until the obstacles are known.
+def Tick.pivota(md: Mat, +s: Nat, +g: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +vx: Z, +vy: Z, +vz: Z,
+  +gr: Bool, +hit: Bool, +rt: Rot, +r2: Rot, a: Wv) -> Body:
+  match obs:
+    case []:
+      Tick.pivota0(md, s, g, [], x, y, z, vx, vy, vz, gr, hit, rt, r2, a)
+    case o <> rest:
+      Tick.pivota0(md, s, g, o <> rest, x, y, z, vx, vy, vz, gr, hit, rt, r2, a)
 
 # Turning about a contact is a knock: the cube is leaning on something,
 # and that is what hit says. Marking it is not bookkeeping -- it is what
