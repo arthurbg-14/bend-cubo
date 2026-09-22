@@ -1470,7 +1470,8 @@ def keepw_fs(+tip: Bool, moved: Bool, +b: P.Body, +s: Nat, +g: Nat, +obs: List<&
 
 def pivota0_fs(md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
   +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, a: P.Wv,
-  +heavy: {Nat.is_lt(0n, g) == True{} : Bool}, +f: FS(P.Body{x, y, z, vx, vy, vz, gr, hit, rt}))
+  +heavy: {Nat.is_lt(0n, g) == True{} : Bool},
+  +f: {Bool.or(Nat.is_lt(0n, P.Z.neg(vy)), gr) == True{} : Bool})
   -> FS(P.Tick.pivota0(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, a)):
   P.Wv{+ax, +ay, +az} = a
   +w2 = P.Tick.boost(Nat.is_le(Nat.div(s, 32n), Nat.add(P.Z.mag(ax), P.Z.mag(az))), P.Rot.w(rt))
@@ -3951,7 +3952,7 @@ def keepw_nc(+tip: Bool, moved: Bool, +b: P.Body, +s: Nat, +g: Nat, +obs: List<&
 
 def pivota0_nc(md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z,
   +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, a: P.Wv,
-  +h: FREE(s, obs, P.Body{x, y, z, vx, vy, vz, gr, hit, rt}))
+  +h: {P.Geo.free(s, x, y, z, P.Rot.q(rt), obs) == True{} : Bool})
   -> FREE(s, obs, P.Tick.pivota0(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, a)):
   P.Wv{+ax, +ay, +az} = a
   +w2 = P.Tick.boost(Nat.is_le(Nat.div(s, 32n), Nat.add(P.Z.mag(ax), P.Z.mag(az))), P.Rot.w(rt))
@@ -4404,7 +4405,7 @@ def keepw_fl(+tip: Bool, moved: Bool, +b: P.Body, +s: Nat, +g: Nat, +obs: List<&
       hb
 
 def pivota0_fl(md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z,
-  +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, a: P.Wv, h: {Nat.is_le(P.Geo.sag(s, P.Rot.q(rt)), y) == True{} : Bool})
+  +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, a: P.Wv, +h: {Nat.is_le(P.Geo.sag(s, P.Rot.q(rt)), y) == True{} : Bool})
   -> FL(s, P.Tick.pivota0(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, a)):
   P.Wv{+ax, +ay, +az} = a
   +w2 = P.Tick.boost(Nat.is_le(Nat.div(s, 32n), Nat.add(P.Z.mag(ax), P.Z.mag(az))), P.Rot.w(rt))
@@ -4615,7 +4616,7 @@ def keepw_sh(+tip: Bool, moved: Bool, +b: P.Body, +s: Nat, +g: Nat, +obs: List<&
       hb
 
 def pivota0_sh(md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z,
-  +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, a: P.Wv, h: {Bool.and(gr, P.Tick.sinks(s, obs, x, y, z, P.Rot.q(rt))) == False{} : Bool})
+  +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, a: P.Wv, +h: {Bool.and(gr, P.Tick.sinks(s, obs, x, y, z, P.Rot.q(rt))) == False{} : Bool})
   -> SH(s, obs, P.Tick.pivota0(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, a)):
   P.Wv{+ax, +ay, +az} = a
   +w2 = P.Tick.boost(Nat.is_le(Nat.div(s, 32n), Nat.add(P.Z.mag(ax), P.Z.mag(az))), P.Rot.w(rt))
