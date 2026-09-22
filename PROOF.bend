@@ -4801,3 +4801,281 @@ def Laws.a_push_is_a_touch_z(s, obs, v0, b, room):
     case P.Body{+x, +y, +z, +vx, +vy, +vz, +gr, +hit, +rt}:
       zgo_obs(Bool.and(P.Z.fits(z, P.Z.add(v0, vz)), P.Geo.free(s, x, y, P.Z.shift(z, P.Z.add(v0, vz)), P.Rot.q(rt), obs)), s, obs,
         P.Z.add(v0, vz), P.Z.shift(z, P.Z.add(v0, vz)), x, y, z, vx, vy, vz, gr, hit, rt, room)
+
+# On a corner, it tips: the sign of the torque
+# ==============================================
+# The mathematical core of Laws.on_a_corner_it_tips_{x,z} and, by the same
+# chain with Hold.arm(Geo.foot(...)) in place of Hold.low, of the
+# past_the_edge_it_tips_* and tipping_is_never_thrown_away_* families
+# (PROMPT-TOMBAR.md has the physics derivation and the pitfalls below).
+
+def lt_zero_r(+x: Nat) -> {Nat.is_lt(x, 0n) == False{} : Bool}:
+  match x:
+    case 0n:
+      {==}
+    case 1n+p:
+      {==}
+
+def mul_pos(+a: Nat, +ha: {Nat.is_lt(0n, a) == True{} : Bool}, +g: Nat, +hg: {Nat.is_lt(0n, g) == True{} : Bool})
+  -> {Nat.is_lt(0n, Nat.mul(a, g)) == True{} : Bool}:
+  match a:
+    case 0n:
+      Empty.absurd({Nat.is_lt(0n, Nat.mul(0n, g)) == True{} : Bool}, clash2(ha))
+    case 1n+p:
+      match g:
+        case 0n:
+          Empty.absurd({Nat.is_lt(0n, Nat.mul(1n+p, 0n)) == True{} : Bool}, clash2(hg))
+        case 1n+q:
+          {==}
+
+def le_zero_l(+x: Nat) -> {Nat.is_le(0n, x) == True{} : Bool}:
+  match x:
+    case 0n:
+      {==}
+    case 1n+p:
+      {==}
+
+# is_le(a, b) -> is_le(a, 1n+b): weaken the upper bound by one
+def le_weaken_r(+a: Nat, +b: Nat, +h: {Nat.is_le(a, b) == True{} : Bool}) -> {Nat.is_le(a, 1n+b) == True{} : Bool}:
+  match a:
+    case 0n:
+      {==}
+    case 1n+ap:
+      match b:
+        case 0n:
+          Empty.absurd({Nat.is_le(1n+ap, 1n+0n) == True{} : Bool}, clash2(h))
+        case 1n+bp:
+          le_weaken_r(ap, bp, h)
+
+# is_le(1n+d, x) -> is_le(d, x)
+def le_weaken_s(+d: Nat, +x: Nat, +h: {Nat.is_le(1n+d, x) == True{} : Bool}) -> {Nat.is_le(d, x) == True{} : Bool}:
+  match x:
+    case 0n:
+      Empty.absurd({Nat.is_le(d, 0n) == True{} : Bool}, clash2(h))
+    case 1n+xp:
+      le_weaken_r(d, xp, h)
+
+# is_le(d, x) -> is_lt(d, 1n+x)
+def le_to_lt_s(+d: Nat, +x: Nat, +h: {Nat.is_le(d, x) == True{} : Bool}) -> {Nat.is_lt(d, 1n+x) == True{} : Bool}:
+  match d:
+    case 0n:
+      {==}
+    case 1n+dp:
+      match x:
+        case 0n:
+          Empty.absurd({Nat.is_lt(1n+dp, 1n+0n) == True{} : Bool}, clash2(h))
+        case 1n+xp:
+          le_to_lt_s(dp, xp, h)
+
+# is_le(1n+d, x) -> is_lt(d, x)
+def le_s_to_lt(+d: Nat, +x: Nat, +h: {Nat.is_le(1n+d, x) == True{} : Bool}) -> {Nat.is_lt(d, x) == True{} : Bool}:
+  match x:
+    case 0n:
+      Empty.absurd({Nat.is_lt(d, 0n) == True{} : Bool}, clash2(h))
+    case 1n+xp:
+      le_to_lt_s(d, xp, h)
+
+# the div-mod accumulator only grows
+def go_mono(+n: Nat, +m: Nat, +d: Nat, +r: Nat) -> {Nat.is_le(d, Nat.div.fin(Nat.divmod.go(n, m, d, r))) == True{} : Bool}:
+  match n:
+    case 0n:
+      le_refl(d)
+    case 1n+np:
+      match m:
+        case 0n:
+          le_weaken_s(d, Nat.div.fin(Nat.divmod.go(np, r, 1n+d, 0n)), go_mono(np, r, 1n+d, 0n))
+        case 1n+mp:
+          go_mono(np, mp, d, 1n+r)
+
+# enough fuel (n > m) makes the div-mod accumulator strictly grow
+def go_pos(+n: Nat, +m: Nat, +d: Nat, +r: Nat, +h: {Nat.is_le(1n+m, n) == True{} : Bool})
+  -> {Nat.is_lt(d, Nat.div.fin(Nat.divmod.go(n, m, d, r))) == True{} : Bool}:
+  match n:
+    case 0n:
+      Empty.absurd({Nat.is_lt(d, Nat.div.fin(Nat.divmod.go(0n, m, d, r))) == True{} : Bool}, clash2(h))
+    case 1n+np:
+      match m:
+        case 0n:
+          le_s_to_lt(d, Nat.div.fin(Nat.divmod.go(np, r, 1n+d, 0n)), go_mono(np, r, 1n+d, 0n))
+        case 1n+mp:
+          go_pos(np, mp, d, 1n+r, h)
+
+def div_pos(+a: Nat, +b: Nat, +hb: {Nat.is_lt(0n, b) == True{} : Bool}, +h: {Nat.is_le(b, a) == True{} : Bool})
+  -> {Nat.is_lt(0n, Nat.div(a, b)) == True{} : Bool}:
+  match b:
+    case 0n:
+      Empty.absurd({Nat.is_lt(0n, Nat.div(a, 0n)) == True{} : Bool}, clash2(hb))
+    case 1n+bp:
+      go_pos(a, bp, 0n, 0n, h)
+
+def pick_n_pos(c: Bool, +x: Nat, +hx: {Nat.is_lt(0n, x) == True{} : Bool}, +y: Nat,
+  +hy: {Nat.is_lt(0n, y) == True{} : Bool}) -> {Nat.is_lt(0n, P.Pick.n(c, x, y)) == True{} : Bool}:
+  match c:
+    case True{}:
+      hx
+    case False{}:
+      hy
+
+def pick_high_1_pos(+d: Nat) -> {Nat.is_lt(0n, P.Pick.high(d, 1n)) == True{} : Bool}:
+  match d:
+    case 0n:
+      {==}
+    case 1n+dp:
+      pick_n_pos(Nat.is_le(1n+dp, 1n), 1n, {==}, 1n+dp, {==})
+
+def sub_zero_r(+x: Nat) -> {Nat.sub(x, 0n) == x : Nat}:
+  match x:
+    case 0n:
+      {==}
+    case 1n+p:
+      {==}
+
+def le_add_l(+x: Nat, +y: Nat) -> {Nat.is_le(x, Nat.add(y, x)) == True{} : Bool}:
+  match y:
+    case 0n:
+      le_refl(x)
+    case 1n+yp:
+      le_weaken_r(x, Nat.add(yp, x), le_add_l(x, yp))
+
+def divc_numerator_ge(+n: Nat, +hn: {Nat.is_lt(0n, n) == True{} : Bool}, +e: Nat)
+  -> {Nat.is_le(e, Nat.add(n, Nat.sub(e, 1n))) == True{} : Bool}:
+  match n:
+    case 0n:
+      Empty.absurd({Nat.is_le(e, Nat.add(0n, Nat.sub(e, 1n))) == True{} : Bool}, clash2(hn))
+    case 1n+np:
+      match e:
+        case 0n:
+          le_zero_l(Nat.add(1n+np, 0n))
+        case 1n+ep:
+          %Equal.sym(Nat, Nat.sub(ep, 0n), ep, sub_zero_r(ep)) : {Nat.is_le(1n+ep, Nat.add(1n+np, _)) == True{} : Bool}
+          le_add_l(ep, np)
+
+def divc_mag_pos(+n: Nat, +hn: {Nat.is_lt(0n, n) == True{} : Bool}, +d: Nat)
+  -> {Nat.is_lt(0n, Nat.div(Nat.add(n, Nat.sub(P.Pick.high(d, 1n), 1n)), P.Pick.high(d, 1n))) == True{} : Bool}:
+  div_pos(Nat.add(n, Nat.sub(P.Pick.high(d, 1n), 1n)), P.Pick.high(d, 1n), pick_high_1_pos(d),
+    divc_numerator_ge(n, hn, P.Pick.high(d, 1n)))
+
+# Z zero-absorption kit (Pos{0n} and Neg{0n} are different terms as written:
+# Z.add(v, Pos{0n}) == v is FALSE for v == Neg{0n}. Only proved for v of
+# known-nonzero magnitude, except Z.add(v, Neg{0n}) == v, which is
+# unconditional.)
+# ---------------------------------------------------------------------------
+
+def Z_add_r_pos0(+v: P.Z, +hv: {Nat.is_lt(0n, P.Z.mag(v)) == True{} : Bool}) -> {P.Z.add(v, P.Pos{0n}) == v : P.Z}:
+  match v:
+    case P.Pos{n}:
+      %R.add_zero(n) : {P.Pos{Nat.add(n, 0n)} == P.Pos{_} : P.Z}
+      {==}
+    case P.Neg{n}:
+      %Equal.sym(Bool, Nat.is_lt(0n, n), True{}, hv) : {P.Z.diff(_, 0n, n) == P.Neg{n} : P.Z}
+      %sub_zero_r(n) : {P.Neg{Nat.sub(n, 0n)} == P.Neg{_} : P.Z}
+      {==}
+
+def Z_add_r_neg0(+v: P.Z) -> {P.Z.add(v, P.Neg{0n}) == v : P.Z}:
+  match v:
+    case P.Pos{n}:
+      %Equal.sym(Bool, Nat.is_lt(n, 0n), False{}, lt_zero_r(n)) : {P.Z.diff(_, n, 0n) == P.Pos{n} : P.Z}
+      %sub_zero_r(n) : {P.Pos{Nat.sub(n, 0n)} == P.Pos{_} : P.Z}
+      {==}
+    case P.Neg{n}:
+      %R.add_zero(n) : {P.Neg{Nat.add(n, 0n)} == P.Neg{_} : P.Z}
+      {==}
+
+def Z_add_l_pos0(+v: P.Z, +hv: {Nat.is_lt(0n, P.Z.mag(v)) == True{} : Bool}) -> {P.Z.add(P.Pos{0n}, v) == v : P.Z}:
+  match v:
+    case P.Pos{n}:
+      {==}
+    case P.Neg{n}:
+      %Equal.sym(Bool, Nat.is_lt(0n, n), True{}, hv) : {P.Z.diff(_, 0n, n) == P.Neg{n} : P.Z}
+      %sub_zero_r(n) : {P.Neg{Nat.sub(n, 0n)} == P.Neg{_} : P.Z}
+      {==}
+
+# Rot.crz(ax, ay, 0, g) is exactly ax * g (the ay*0 term always cancels)
+# -------------------------------------------------------------------------
+
+def Z_mul_pos_mag(+ax: P.Z, +ha: {Nat.is_lt(0n, P.Z.mag(ax)) == True{} : Bool}, +g: Nat,
+  +hg: {Nat.is_lt(0n, g) == True{} : Bool}) -> {Nat.is_lt(0n, P.Z.mag(P.Z.mul(ax, P.Pos{g}))) == True{} : Bool}:
+  match ax:
+    case P.Pos{a}:
+      mul_pos(a, ha, g, hg)
+    case P.Neg{a}:
+      mul_pos(a, ha, g, hg)
+
+def crz_eq(+ax: P.Z, +ha: {Nat.is_lt(0n, P.Z.mag(ax)) == True{} : Bool}, +ay: P.Z, +g: Nat,
+  +hg: {Nat.is_lt(0n, g) == True{} : Bool}) -> {P.Rot.crz(ax, ay, P.Pos{0n}, P.Pos{g}) == P.Z.mul(ax, P.Pos{g}) : P.Z}:
+  match ay:
+    case P.Pos{a}:
+      %Equal.sym(Nat, Nat.mul(a, 0n), 0n, R.mul_zero(a))
+        : {P.Z.sub(P.Z.mul(ax, P.Pos{g}), P.Pos{_}) == P.Z.mul(ax, P.Pos{g}) : P.Z}
+      Z_add_r_neg0(P.Z.mul(ax, P.Pos{g}))
+    case P.Neg{a}:
+      %Equal.sym(Nat, Nat.mul(a, 0n), 0n, R.mul_zero(a))
+        : {P.Z.sub(P.Z.mul(ax, P.Pos{g}), P.Neg{_}) == P.Z.mul(ax, P.Pos{g}) : P.Z}
+      Z_add_r_pos0(P.Z.mul(ax, P.Pos{g}), Z_mul_pos_mag(ax, ha, g, hg))
+
+# The sign of the torque about z: ax * w.z > 0 whenever ax != 0, g > 0.
+# This is the mathematical core of the on_a_corner_it_tips_x and (by the
+# same chain, past_the_edge_it_tips_*) family: Body.step sets the new spin
+# w' via Rot.kickd(Rot.about(s,ax,ay,az), ax,ay,az, Pos{0},Pos{g},Pos{0}),
+# so w'.z == Z.divc(Rot.crz(ax,ay,Pos{0},Pos{g}), Rot.about(s,ax,ay,az)),
+# and Rot.about always has the form Nat.add(8n, Y) for some Y -- opaque,
+# never expand it, just its positivity (D below stands for it).
+# ---------------------------------------------------------------------------
+
+def kickzsign(+ax: P.Z, +ha: {Nat.is_lt(0n, P.Z.mag(ax)) == True{} : Bool}, +ay: P.Z, +g: Nat,
+  +hg: {Nat.is_lt(0n, g) == True{} : Bool}, +D: Nat, +hD: {Nat.is_lt(0n, D) == True{} : Bool})
+  -> {P.Z.above(P.Z.mul(ax, P.Z.divc(P.Rot.crz(ax, ay, P.Pos{0n}, P.Pos{g}), D)), P.Pos{0n}) == True{} : Bool}:
+  match ax:
+    case P.Pos{a}:
+      %Equal.sym(P.Z, P.Rot.crz(P.Pos{a}, ay, P.Pos{0n}, P.Pos{g}), P.Z.mul(P.Pos{a}, P.Pos{g}),
+        crz_eq(P.Pos{a}, ha, ay, g, hg)) : {P.Z.above(P.Z.mul(P.Pos{a}, P.Z.divc(_, D)), P.Pos{0n}) == True{} : Bool}
+      mul_pos(a, ha, Nat.div(Nat.add(Nat.mul(a, g), Nat.sub(P.Pick.high(D, 1n), 1n)), P.Pick.high(D, 1n)),
+        divc_mag_pos(Nat.mul(a, g), mul_pos(a, ha, g, hg), D))
+    case P.Neg{a}:
+      %Equal.sym(P.Z, P.Rot.crz(P.Neg{a}, ay, P.Pos{0n}, P.Pos{g}), P.Z.mul(P.Neg{a}, P.Pos{g}),
+        crz_eq(P.Neg{a}, ha, ay, g, hg)) : {P.Z.above(P.Z.mul(P.Neg{a}, P.Z.divc(_, D)), P.Pos{0n}) == True{} : Bool}
+      mul_pos(a, ha, Nat.div(Nat.add(Nat.mul(a, g), Nat.sub(P.Pick.high(D, 1n), 1n)), P.Pick.high(D, 1n)),
+        divc_mag_pos(Nat.mul(a, g), mul_pos(a, ha, g, hg), D))
+
+def about_pos(+s: Nat, +rx: P.Z, +ry: P.Z, +rz: P.Z) -> {Nat.is_lt(0n, P.Rot.about(s, rx, ry, rz)) == True{} : Bool}:
+  {==}
+
+# both Pick.n branches equal: the value does not depend on the condition
+def pick_same(c: Bool, +v: Nat) -> {P.Pick.n(c, v, v) == v : Nat}:
+  match c:
+    case True{}:
+      {==}
+    case False{}:
+      {==}
+
+# Body.step1 on a body at rest (v=0), idle input, no obstacles: a no-op on
+# x, y, z, vx, vy, vz -- only the spin (Rot.w) moves, via Rot.held. Proved
+# in three pieces (drive, then the x/z moves) because unfolding Body.step1
+# whole balloons combinatorially in the checker.
+
+def drive_idle0(+k: P.K, +x: Nat, +y: Nat, +z: Nat, +h: Bool, +rt: P.Rot)
+  -> {P.Body.drive(k, P.In.idle(), P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, rt})
+      == P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, False{}, rt} : P.Body}:
+  match k:
+    case P.K{g, mu, jump, acc, size}:
+      %Equal.sym(Nat,
+        P.Pick.n(Cmp.is_le(Nat.cmp(0n, Nat.mul(Nat.div.fin(Nat.divmod.go(Nat.mul(mu, g), 255n, 0n, 0n)), 0n))), 0n, 0n),
+        0n,
+        pick_same(Cmp.is_le(Nat.cmp(0n, Nat.mul(Nat.div.fin(Nat.divmod.go(Nat.mul(mu, g), 255n, 0n, 0n)), 0n))), 0n))
+        : {P.Body{x, y, z, P.Pos{Nat.sub(0n, _)}, P.Pos{0n}, P.Pos{Nat.sub(0n, _)}, True{}, False{}, rt}
+            == P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, False{}, rt} : P.Body}
+      {==}
+
+def movex_idle0(+s: Nat, +x: Nat, +y: Nat, +z: Nat, +h: Bool, +rt: P.Rot)
+  -> {P.Move.x(s, [], P.Pos{0n}, P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, rt})
+      == (P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, rt}, []) : P.Body & List<&2, P.Body>}:
+  %R.add_zero(x) : {(P.Body{Nat.add(x, 0n), y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, rt}, [])
+    == (P.Body{_, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, rt}, []) : P.Body & List<&2, P.Body>}
+  {==}
+
+def movez_idle0(+s: Nat, +x: Nat, +y: Nat, +z: Nat, +h: Bool, +rt: P.Rot)
+  -> {P.Move.z(s, [], P.Pos{0n}, P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, rt})
+      == (P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, rt}, []) : P.Body & List<&2, P.Body>}:
+  %R.add_zero(z) : {(P.Body{x, y, Nat.add(z, 0n), P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, rt}, [])
+    == (P.Body{x, y, _, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, rt}, []) : P.Body & List<&2, P.Body>}
+  {==}
