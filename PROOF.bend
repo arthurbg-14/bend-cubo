@@ -5247,3 +5247,29 @@ def wv_null_false_z(+v: P.Wv, +hz: {Nat.is_eq(P.Z.mag(P.Wv.z(v)), 0n) == False{}
       %Equal.sym(Bool, Bool.and(Nat.is_eq(P.Z.mag(vy), 0n), False{}), False{}, and_false_r(Nat.is_eq(P.Z.mag(vy), 0n)))
         : {Bool.and(Nat.is_eq(P.Z.mag(vx), 0n), _) == False{} : Bool}
       and_false_r(Nat.is_eq(P.Z.mag(vx), 0n))
+
+# The turn about a contact, threaded through Body.spin: never compare
+# against Tick.turn1b/Tick.turn2/Tick.pivota/Tick.pivota0/Tick.shrink via
+# {==} (or Equal.cong/Equal.trans, which is {==} underneath) -- even
+# trivial reflexivity on a term that drags one of those in hangs, since
+# {==} fully normalizes and Tick.shrink is a 7-level recursive search
+# with a 64-step Tick.drop bisection inside each level. Match on the
+# SAME parameter the return type already mentions instead (like
+# keepw_fs's own `moved`), so the checker only ever takes the single,
+# non-recursive step Body.spin's own match needs. See PROMPT-TOMBAR.md.
+# ---------------------------------------------------------------------------
+
+def WZ(+q: P.Quat, +ax: P.Z, +rt: P.Rot, -b: P.Body) -> Type:
+  {Bool.or(Bool.not(P.Quat.same(P.Rot.q(P.Body.rot(b)), q)),
+    P.Z.above(P.Z.mul(ax, P.Wv.z(P.Rot.w(P.Body.rot(b)))), P.Pos{0n})) == True{} : Bool}
+
+def spin_wz(moved: Bool, +ax: P.Z, +q: P.Quat, +rt: P.Rot, +b: P.Body,
+  hmoved: {moved == Bool.not(P.Quat.same(P.Rot.q(P.Body.rot(b)), q)) : Bool},
+  hw: {P.Z.above(P.Z.mul(ax, P.Wv.z(P.Rot.w(rt))), P.Pos{0n}) == True{} : Bool})
+  -> WZ(q, ax, rt, P.Body.spin(True{}, moved, b, rt)):
+  match moved:
+    case True{}:
+      or_here(Bool.not(P.Quat.same(P.Rot.q(P.Body.rot(b)), q)), P.Z.above(P.Z.mul(ax, P.Wv.z(P.Rot.w(P.Body.rot(b)))), P.Pos{0n}),
+        Equal.sym(Bool, True{}, Bool.not(P.Quat.same(P.Rot.q(P.Body.rot(b)), q)), hmoved))
+    case False{}:
+      or_there(Bool.not(P.Quat.same(P.Rot.q(P.Body.rot(b)), q)), P.Z.above(P.Z.mul(ax, P.Wv.z(P.Rot.w(rt))), P.Pos{0n}), hw)

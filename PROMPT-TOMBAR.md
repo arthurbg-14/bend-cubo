@@ -561,3 +561,182 @@ já são genéricos em `ax`/`ay` (não sabem de onde o braço veio), só a
 via `Geo.leanf` usando a hipótese `past`, ainda não derivado.
 `tipping_is_never_thrown_away_*4` compõe `past_the_edge` com o mesmo
 argumento moved-ou-mantido do passo 6 acima.
+
+## Sessão de 22/09/2026 (parte 2): `{==}` explode em cima de
+## `Tick.turn1b`/`Tick.pivota0`/`Tick.shrink` — a técnica certa é a mesma
+## do `_fs` (casar por parâmetro, nunca comparar por igualdade)
+
+**Achado crítico, custou muitas iterações**: qualquer `{==}` (ou
+`Equal.cong`/`Equal.trans`, que por baixo também é `{==}`) que compare
+algo contra `Tick.turn1b(...)`/`Tick.turn2(...)`/`Tick.pivota(...)`/
+`Tick.pivota0(...)` **trava** (não erra, trava — CPU alto, RAM baixa e
+estável, sem terminar em minutos) — **mesmo para reflexividade trivial
+`X==X` com o `X` literalmente idêntico dos dois lados**. Reproduzido
+isolado (arquivos de uma função só): `{P.Tick.turn1(False{}, s, g, [], b)
+== P.Tick.turn1(False{}, s, g, [], b) : P.Body}` prova por `{==}` TRAVA
+quando `b` é uma chamada de função (`Corner.body2(x,y,z,q)`) em vez de um
+parâmetro puro — porque para checar `{==}`, o `bend` parece normalizar o
+termo por completo, e `Tick.turn1b` puxa `Tick.turn2`→`Tick.pivota`→
+`Tick.pivota0`→`Tick.shrink` (recursão de 7 níveis, cada um com um
+`Tick.cand`→`Tick.pivot`→`Tick.place`→`Tick.put`→`Tick.drop` — mais
+64 passos de bisseção lá dentro) — para `x,y,z,q,s` opacos isso é
+literalmente a mesma explosão que o comentário do `Tick.drop` em
+`phys.bend` já avisa ("a mesma lema levou mais de dois minutos em vez de
+cinco segundos" quando desenrolado sem cuidado) — só que pior, porque meu
+caso não tinha CUIDADO NENHUM.
+
+**A técnica que já funciona no arquivo (família `_fs`/`_nc`/`_fl`/`_sh`,
+todas já provadas) nunca usa `{==}` perto dessa recursão.** Ela usa
+CASAMENTO POR PARÂMETRO: uma função cujo TIPO DE RETORNO já menciona o
+parâmetro que vai ser casado (`keepw_fs(...) -> FS(P.Body.spin(tip,
+moved, b, rt))`, com `moved` sendo o PRÓPRIO parâmetro que o `match
+moved:` decide) — o checador ESPECIALIZA o tipo esperado sozinho, em
+cada ramo do `match`, com UM PASSO de redução (a própria definição de
+`Body.spin`, que NÃO é recursiva) — nunca precisa normalizar
+`Tick.shrink`/`Tick.pivota0` por dentro. Reproduzi essa técnica do zero
+para uma propriedade nova (o sinal do giro, não a `FS`/`FREE` antigas) e
+funcionou RÁPIDO:
+
+```
+def WZ(+q: P.Quat, +ax: P.Z, +rt: P.Rot, -b: P.Body) -> Type:
+  {Bool.or(Bool.not(P.Quat.same(P.Rot.q(P.Body.rot(b)), q)),
+    P.Z.above(P.Z.mul(ax, P.Wv.z(P.Rot.w(P.Body.rot(b)))), P.Pos{0n})) == True{} : Bool}
+
+def spin_wz(moved: Bool, +ax: P.Z, +q: P.Quat, +rt: P.Rot, +b: P.Body,
+  hmoved: {moved == Bool.not(P.Quat.same(P.Rot.q(P.Body.rot(b)), q)) : Bool},
+  hw: {P.Z.above(P.Z.mul(ax, P.Wv.z(P.Rot.w(rt))), P.Pos{0n}) == True{} : Bool})
+  -> WZ(q, ax, rt, P.Body.spin(True{}, moved, b, rt)):
+  match moved:
+    case True{}:
+      or_here(Bool.not(P.Quat.same(P.Rot.q(P.Body.rot(b)), q)), P.Z.above(P.Z.mul(ax, P.Wv.z(P.Rot.w(P.Body.rot(b)))), P.Pos{0n}),
+        Equal.sym(Bool, True{}, Bool.not(P.Quat.same(P.Rot.q(P.Body.rot(b)), q)), hmoved))
+    case False{}:
+      or_there(Bool.not(P.Quat.same(P.Rot.q(P.Body.rot(b)), q)), P.Z.above(P.Z.mul(ax, P.Wv.z(P.Rot.w(rt))), P.Pos{0n}), hw)
+```
+(`WZ` já é a conclusão da lei inteira, `Bool.or(não-mudou-quatérnio,
+sinal-certo)`; `tip` fica travado em `True{}` porque na lei ele sempre é
+— `off` implica `tip` via `lt_add`, ver abaixo. `or_here`/`or_there`
+provam `Bool.or` a partir de um dos dois lados, já no kit.) **Verificado
+isolado, rápido (segundos), sem travar** — a peça que faltava desde a
+parte 1 desta sessão.
+
+`pivota0_wz` (compor `spin_wz` com o `Tick.pivota0` de verdade, mesma
+estrutura de `+w2`/`+b0`/`+bf` que `pivota0_fs` já usa) **não fecha — e
+agora está isolado O PORQUÊ, com evidência, não só suspeita**:
+
+**Diagnóstico confirmado por teste diferencial.** Escrevi `WZ2`/
+`keepw_wz2`/`pivota0_wz2` — CÓPIA BYTE-A-BYTE da estrutura de
+`pivota0_fs` (mesmos `+heavy`/`+f`, mesma forma inline sem `+b0`/`+bf`,
+mesma recursão), só trocando o predicado `FS` por um IGUALMENTE simples
+que eu escrevi (`Bool.or(Nat.is_lt(0n,Z.neg(vy)),ground)` — só
+`Body.vy`/`Body.ground`, sem tocar rotação). **Isso ficou pequeno e
+estável (~100-150MB, oscilando, nunca passou de 160MB em 2 minutos)** —
+igual a `pivota0_fs` isolada (testada à parte: ~150-170MB por 12 minutos
+inteiros, terminando ou não, mas NUNCA explodindo). Troquei só o
+predicado de volta pro `WZ` real (que projeta `Rot.q(Body.rot(b))` e
+`Rot.w(Body.rot(b))`) mantendo TUDO o resto idêntico (testei com
+`+b0`/`+bf` como lets reusáveis, sem eles/inline, com `obs` genérico e
+com `obs:=[]` fixo — quatro variações) — **todas as quatro explodiram**:
+RAM saindo de ~130MB pra 1.3GB pra 2.7GB em 30-40 segundos (tive que
+matar na mão duas vezes, uma quase esgotou a RAM da máquina inteira,
+14GB usados/300MB livres — mate rápido se isso acontecer de novo, não
+deixe rodar "só mais um pouco").
+
+**Conclusão: não é a técnica de prova (casar por parâmetro está
+certa — `WZ2` prova isso), é o PREDICADO.** `Rot.q`/`Rot.w` de um corpo
+que veio da busca do `Tick.shrink` força o checker a avaliar a
+ARITMÉTICA DE QUATÉRNIO INTEIRA (`Quat.step`/`Rot.turn`, multiplicações
+repetidas de `Z` — Pos/Neg envolvendo Nats) atravessando os até 7 níveis
+da busca, pra só então extrair um campo do quatérnio final — isso é uma
+EXPLOSÃO DE TERMO genuína (provavelmente exponencial no número de
+níveis), não um bug de como a prova foi escrita. `FS`/`WZ2` só olham
+`vy`/`ground`, que `Body.spin` (e a cadeia toda: `Tick.put`→`Tick.letv`/
+`Tick.stands`) parecem deixar baratos de extrair mesmo vindos da busca —
+só o quatérnio é caro.
+
+```
+-- variação que EXPLODIU (uma das quatro testadas, a mais próxima de
+-- pivota0_fs -- as outras três variam só obs genérico/fixo e lets vs
+-- inline, todas com o mesmo resultado):
+def pivota0_wz(md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
+  +vz: P.Z, +gr: Bool, +hit: Bool, +q: P.Quat, +rt: P.Rot, +r2: P.Rot, a: P.Wv,
+  +off: {Nat.is_lt(0n, P.Z.mag(P.Wv.x(a))) == True{} : Bool},
+  hrt: {P.Rot.q(rt) == q : P.Quat},
+  hw: {P.Z.above(P.Z.mul(P.Wv.x(a), P.Wv.z(P.Rot.w(rt))), P.Pos{0n}) == True{} : Bool})
+  -> WZ(q, P.Wv.x(a), rt, P.Tick.pivota0(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, a)):
+  P.Wv{+ax, +ay, +az} = a
+  +w2 = P.Tick.boost(Nat.is_le(Nat.div(s, 32n), Nat.add(P.Z.mag(ax), P.Z.mag(az))), P.Rot.w(rt))
+  spin_wz(
+    P.Tick.moved(P.Tick.shrink(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt),
+    ax, q, rt,
+    P.Tick.shrink(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az),
+    {==}, hw)
+```
+`WZ`/`spin_wz` (a parte 2 acima) continuam corretas e ficam no kit —
+`spin_wz` sozinha (com `b`/`moved` como parâmetros abertos, nunca
+derivados de `Tick.pivota0`) é rápida e útil; o problema é só na
+COMPOSIÇÃO com a busca de verdade.
+
+### O problema real a resolver (não é mais "achar a técnica", é isto)
+
+Preciso de um jeito de saber o SINAL de `Wv.z(Rot.w(a_final))` **sem
+pedir pro checker extrair `Rot.q`/`Rot.w` de um corpo que atravessou
+`Tick.shrink`**. Duas direções possíveis, nenhuma tentada ainda:
+
+1. **Provar a invariante SOBRE `Rot.w`, não sobre o corpo inteiro,
+   ANTES da busca decidir nada — como uma equação, não como um campo
+   extraído.** A busca (`Tick.shrink`/`Tick.cand`/`Tick.pivot`) SÓ MEXE
+   no quatérnio `q` (via `Rot.turn`) — o giro (`Rot.w`) nunca muda
+   durante a busca (`Tick.cand` monta `Rot{Rot.turn(Rot.q(rt),w),
+   Rot.w(rt)}` — o `Rot.w(rt)` original, intacto, em TODO candidato).
+   Então `Rot.w(Body.rot(bf)) == Rot.w(rt)` deveria valer
+   INCONDICIONALMENTE, ANTES de saber se `moved` é True ou False — se
+   eu conseguir provar ISSO (uma equação sobre `Rot.w` apenas, LIVRE do
+   quatérnio) por indução em `n` do jeito que `shrink_fs` faz (recursão
+   estrutural em `n`, nunca `{==}` contra o resultado cheio), talvez
+   `Rot.w` fique tão barato de extrair quanto `vy`/`ground` — porque a
+   prova nunca PRECISA olhar pro quatérnio, só pro `Wv` que nunca é
+   tocado. Vale a pena tentar um `shrink_rotw`/`cand_rotw` mirror da
+   família `_fs`, com um predicado `ROTW(+w0: Wv, -b: Body) -> Type:
+   {Wv.same(Rot.w(Body.rot(b)), w0) == True{} : Bool}` (ou até
+   `Rot.w(Body.rot(b)) == w0` direto, se `Wv` permitir `{==}` estrutural
+   sem cair na mesma armadilha — testar pequeno primeiro).
+2. **Achar se existe uma versão "opaca" de `Tick.pivota0` que devolve
+   o giro e o quatérnio SEPARADOS** (ou construir uma) — se o giro
+   nunca muda na busca, pode dar pra reescrever a lei usando uma função
+   auxiliar que só devolve `Rot.w`, sem nunca materializar o quatérnio
+   final — mas isso mexe em `phys.bend`, não é só prova, então é uma
+   mudança maior (parar e perguntar antes).
+
+Ambas ainda precisam ser tentadas isoladas (arquivo pequeno,
+`bend --check-only`, nunca `PROOF.bend` inteiro) com monitoramento de
+RSS (a forma seca que funcionou nesta sessão:
+```
+BPID=$(nohup bend arquivo.bend --check-only > out.txt 2>&1 & echo $!)
+# then poll: ps -o rss= -p $BPID, matar se passar de ~2GB
+```
+) — **nunca deixe um `bend --check-only` novo rodar sem monitorar RSS
+depois do que aconteceu nesta sessão** (chegou a 14GB usados / <300MB
+livres na máquina inteira uma vez, por eu não ter monitorado rápido o
+suficiente).
+
+### Próximo passo exato (revisado de novo)
+
+1. Tentar a direção 1 acima (`ROTW`/`shrink_rotw` — giro é invariante da
+   busca, provar por indução em `n`, nunca por igualdade contra o
+   resultado cheio). Se isso ficar barato (Rot.w SEM precisar do
+   quatérnio), o resto do plano das sessões anteriores (turn1b_wz,
+   turn0_wz, compor com step_pair/wz_step) segue igual, só trocando
+   `spin_wz`/`WZ` pra usar esse fato em vez de reconstruir `Rot.w` via
+   `Tick.pivota0` inteiro.
+2. Se a direção 1 também esbarrar em custo (o quatérnio pode aparecer
+   em outro lugar que eu não previ), considerar a direção 2 — mas essa
+   é uma decisão de escopo maior (mexe em `phys.bend`), não decidir
+   sozinho, perguntar antes.
+3. Uma vez resolvido o sinal do giro sem tocar o quatérnio: `turn1b_wz`
+   (`Tick.turn2` caso `True,True`, braço `Hold.low(Rot.mat(q),s)`),
+   `turn0_wz` (`Wv.null`, já pronto em `wv_null_pressw`), compor com
+   `step_pair`/`wz_step` (RASO, já funciona) → `Laws.on_a_corner_it_tips_x`.
+4. Depois: `on_a_corner_it_tips_z` (espelha x↔z), `past_the_edge_it_tips_*4`
+   (troca `Hold.low` por `Hold.arm(Geo.foot(...))`), `tipping_is_never_
+   thrown_away_*4` (compõe com o argumento moved-ou-mantido).
