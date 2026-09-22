@@ -2049,17 +2049,23 @@ def Pick.w(c: Bool, a: Wv, b: Wv) -> Wv:
 # Body.setrot never opens what it does not touch, so this costs nothing to
 # carry through a fact about hit, energy or the floor -- only a fact about
 # the turning itself has to look inside.
-def Body.spin(tip: Bool, moved: Bool, +b: Body, +rt: Rot) -> Body:
+def Body.spin.rot(+tip: Bool, +moved: Bool, +b: Body, +rt: Rot) -> Rot:
   match moved:
     case True{}:
-      b
+      Body.rot(b)
     case False{}:
-      Body.setrot(b, Rot{Rot.q(Body.rot(b)), Pick.w(tip, Rot.w(rt), Wv.zero())})
+      Body.rot(Body.setrot(b, Rot{Rot.q(Body.rot(b)), Pick.w(tip, Rot.w(rt), Wv.zero())}))
+
+def Body.spin(+tip: Bool, +moved: Bool, +b: Body, +rt: Rot) -> Body:
+  Body{Body.x(b), Body.y(b), Body.z(b), Body.vx(b), Body.vy(b), Body.vz(b), Body.ground(b), Body.hit(b), Body.spin.rot(tip, moved, b, rt)}
+
+def Tick.pivota0.w2(+s: Nat, +rt: Rot, a: Wv) -> Wv:
+  Wv{+ax, +ay, +az} = a
+  Tick.boost(Nat.is_le(Nat.div(s, 32n), Nat.add(Z.mag(ax), Z.mag(az))), Rot.w(rt))
 
 def Tick.pivota0(md: Mat, +s: Nat, +g: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +vx: Z, +vy: Z, +vz: Z,
-  +gr: Bool, +hit: Bool, +rt: Rot, +r2: Rot, a: Wv) -> Body:
+  +gr: Bool, +hit: Bool, +rt: Rot, +r2: Rot, +w2: Wv, a: Wv) -> Body:
   Wv{+ax, +ay, +az} = a
-  +w2 = Tick.boost(Nat.is_le(Nat.div(s, 32n), Nat.add(Z.mag(ax), Z.mag(az))), Rot.w(rt))
   +b0 = Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az)
   +bf = Tick.shrink(7n, Tick.moved(b0, rt), b0, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az)
   Body.spin(Nat.is_lt(0n, Nat.add(Z.mag(ax), Z.mag(az))), Tick.moved(bf, rt), bf, rt)
@@ -2072,12 +2078,12 @@ def Tick.pivota0(md: Mat, +s: Nat, +g: Nat, +obs: List<&2, Body>, +x: Nat, +y: N
 # in every proof that only carries the turn around. Asked this way it
 # stays folded until the obstacles are known.
 def Tick.pivota(md: Mat, +s: Nat, +g: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +vx: Z, +vy: Z, +vz: Z,
-  +gr: Bool, +hit: Bool, +rt: Rot, +r2: Rot, a: Wv) -> Body:
+  +gr: Bool, +hit: Bool, +rt: Rot, +r2: Rot, +a: Wv) -> Body:
   match obs:
     case []:
-      Tick.pivota0(md, s, g, [], x, y, z, vx, vy, vz, gr, hit, rt, r2, a)
+      Tick.pivota0(md, s, g, [], x, y, z, vx, vy, vz, gr, hit, rt, r2, Tick.pivota0.w2(s, rt, a), a)
     case o <> rest:
-      Tick.pivota0(md, s, g, o <> rest, x, y, z, vx, vy, vz, gr, hit, rt, r2, a)
+      Tick.pivota0(md, s, g, o <> rest, x, y, z, vx, vy, vz, gr, hit, rt, r2, Tick.pivota0.w2(s, rt, a), a)
 
 # Turning about a contact is a knock: the cube is leaning on something,
 # and that is what hit says. Marking it is not bookkeeping -- it is what
