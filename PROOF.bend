@@ -5080,3 +5080,170 @@ def movez_idle0(+s: Nat, +x: Nat, +y: Nat, +z: Nat, +h: Bool, +rt: P.Rot)
   %R.add_zero(z) : {(P.Body{x, y, Nat.add(z, 0n), P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, rt}, [])
     == (P.Body{x, y, _, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, rt}, []) : P.Body & List<&2, P.Body>}
   {==}
+
+# Composing Body.step for an idle, resting, obstacle-free body: the drive,
+# the two horizontal moves and the vertical hold, chained through
+# Equal.cong/Equal.trans instead of rewriting the checker's own
+# eagerly-unfolded (and, for an opaque k, unreadable) normal form directly.
+# See PROMPT-TOMBAR.md for why this shape was needed.
+# ---------------------------------------------------------------------------
+
+def wz_after_pressw(+rt: P.Rot, +s: Nat, +a: P.Wv, +g: Nat)
+  -> {P.Wv.z(P.Rot.w(P.Rot.pressw(rt, s, a, g)))
+      == P.Z.add(P.Wv.z(P.Rot.w(rt)), P.Z.divc(P.Rot.crz(P.Wv.x(a), P.Wv.y(a), P.Pos{0n}, P.Pos{g}),
+          P.Rot.about(s, P.Wv.x(a), P.Wv.y(a), P.Wv.z(a)))) : P.Z}:
+  {==}
+
+def movey_stay0(+s: Nat, +g: Nat, +x: Nat, +y: Nat, +z: Nat, +h: Bool, +q: P.Quat,
+  +held: {P.Tick.sinks(s, [], x, y, z, q) == False{} : Bool},
+  +floor: {P.Geo.onfloor(s, y, q) == True{} : Bool})
+  -> {P.Move.y(s, g, [], P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, P.Rot{q, P.Wv.zero()}})
+      == P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h,
+          P.Rot.pressw(P.Rot{q, P.Wv.zero()}, s, P.Hold.low(P.Rot.mat(q), s), g)} : P.Body}:
+  %Equal.sym(Bool, P.Tick.sinks(s, [], x, y, z, q), False{}, held)
+    : {P.Move.stay(Bool.not(_), s, g, [], x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, h, P.Rot{q, P.Wv.zero()})
+        == P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h,
+            P.Rot.pressw(P.Rot{q, P.Wv.zero()}, s, P.Hold.low(P.Rot.mat(q), s), g)} : P.Body}
+  %Equal.sym(Bool, P.Geo.onfloor(s, y, q), True{}, floor)
+    : {P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, P.Rot.held(_, P.Rot{q, P.Wv.zero()}, s, x, y, z, g, [])}
+        == P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h,
+            P.Rot.pressw(P.Rot{q, P.Wv.zero()}, s, P.Hold.low(P.Rot.mat(q), s), g)} : P.Body}
+  {==}
+
+def step_body(+k: P.K, +x: Nat, +y: Nat, +z: Nat, +h: Bool, +q: P.Quat,
+  +held: {P.Tick.sinks(P.K.size(k), [], x, y, z, q) == False{} : Bool},
+  +floor: {P.Geo.onfloor(P.K.size(k), y, q) == True{} : Bool})
+  -> {P.Tick.body(P.Body.step(k, [], P.In.idle(), P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, P.Rot{q, P.Wv.zero()}}))
+      == P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, False{},
+          P.Rot.pressw(P.Rot{q, P.Wv.zero()}, P.K.size(k), P.Hold.low(P.Rot.mat(q), P.K.size(k)), P.K.g(k))} : P.Body}:
+  +s = P.K.size(k)
+  +g2 = P.K.g(k)
+  +rt = {P.Rot{q, P.Wv.zero()} : P.Rot}
+  +bd = {P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, False{}, rt} : P.Body}
+  +e_drive = drive_idle0(k, x, y, z, h, rt)
+  +e_x = Equal.trans(P.Body & List<&2, P.Body>,
+    P.Move.x(s, [], P.Pos{0n}, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, rt})),
+    P.Move.x(s, [], P.Pos{0n}, bd), (bd, []),
+    Equal.cong(P.Body, P.Body & List<&2, P.Body>, (b: P.Body) => P.Move.x(s, [], P.Pos{0n}, b),
+      P.Body.drive(k, P.In.idle(), P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, rt}), bd, e_drive),
+    movex_idle0(s, x, y, z, False{}, rt))
+  +e_movez_cong = Equal.cong(P.Body & List<&2, P.Body>, P.Body & List<&2, P.Body>, (r: P.Body & List<&2, P.Body>) => P.Tick.y(s, g2, r),
+    P.Move.z(s, [], P.Pos{0n}, bd), (bd, []), movez_idle0(s, x, y, z, False{}, rt))
+  +e_movez_final = Equal.trans(P.Body & List<&2, P.Body>,
+    P.Tick.y(s, g2, P.Move.z(s, [], P.Pos{0n}, bd)), P.Tick.y(s, g2, (bd, [])), (P.Move.y(s, g2, [], bd), []),
+    e_movez_cong, {==})
+  +e_z = Equal.trans(P.Body & List<&2, P.Body>,
+    P.Tick.z(s, g2, P.Pos{0n}, P.Move.x(s, [], P.Pos{0n}, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, rt}))),
+    P.Tick.z(s, g2, P.Pos{0n}, (bd, [])), (P.Move.y(s, g2, [], bd), []),
+    Equal.cong(P.Body & List<&2, P.Body>, P.Body & List<&2, P.Body>, (r: P.Body & List<&2, P.Body>) => P.Tick.z(s, g2, P.Pos{0n}, r),
+      P.Move.x(s, [], P.Pos{0n}, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, rt})), (bd, []), e_x),
+    e_movez_final)
+  +e_final_body = Equal.trans(P.Body,
+    P.Tick.body(P.Tick.z(s, g2, P.Pos{0n}, P.Move.x(s, [], P.Pos{0n}, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, rt})))),
+    P.Tick.body((P.Move.y(s, g2, [], bd), [])), P.Move.y(s, g2, [], bd),
+    Equal.cong(P.Body & List<&2, P.Body>, P.Body, (r: P.Body & List<&2, P.Body>) => P.Tick.body(r),
+      P.Tick.z(s, g2, P.Pos{0n}, P.Move.x(s, [], P.Pos{0n}, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, rt}))),
+      (P.Move.y(s, g2, [], bd), []), e_z),
+    {==})
+  Equal.trans(P.Body,
+    P.Tick.body(P.Body.step(k, [], P.In.idle(), P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, rt})),
+    P.Move.y(s, g2, [], bd),
+    P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, False{}, P.Rot.pressw(rt, s, P.Hold.low(P.Rot.mat(q), s), g2)},
+    e_final_body, movey_stay0(s, g2, x, y, z, False{}, q, held, floor))
+
+def step_pair(+k: P.K, +x: Nat, +y: Nat, +z: Nat, +h: Bool, +q: P.Quat,
+  +held: {P.Tick.sinks(P.K.size(k), [], x, y, z, q) == False{} : Bool},
+  +floor: {P.Geo.onfloor(P.K.size(k), y, q) == True{} : Bool})
+  -> {P.Body.step(k, [], P.In.idle(), P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, P.Rot{q, P.Wv.zero()}})
+      == (P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, False{},
+          P.Rot.pressw(P.Rot{q, P.Wv.zero()}, P.K.size(k), P.Hold.low(P.Rot.mat(q), P.K.size(k)), P.K.g(k))}, []) : P.Body & List<&2, P.Body>}:
+  +s = P.K.size(k)
+  +g2 = P.K.g(k)
+  +rt = {P.Rot{q, P.Wv.zero()} : P.Rot}
+  +bd = {P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, False{}, rt} : P.Body}
+  +e_drive = drive_idle0(k, x, y, z, h, rt)
+  +e_x = Equal.trans(P.Body & List<&2, P.Body>,
+    P.Move.x(s, [], P.Pos{0n}, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, rt})),
+    P.Move.x(s, [], P.Pos{0n}, bd), (bd, []),
+    Equal.cong(P.Body, P.Body & List<&2, P.Body>, (b: P.Body) => P.Move.x(s, [], P.Pos{0n}, b),
+      P.Body.drive(k, P.In.idle(), P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, rt}), bd, e_drive),
+    movex_idle0(s, x, y, z, False{}, rt))
+  +e_movez_cong = Equal.cong(P.Body & List<&2, P.Body>, P.Body & List<&2, P.Body>, (r: P.Body & List<&2, P.Body>) => P.Tick.y(s, g2, r),
+    P.Move.z(s, [], P.Pos{0n}, bd), (bd, []), movez_idle0(s, x, y, z, False{}, rt))
+  +e_movez_final = Equal.trans(P.Body & List<&2, P.Body>,
+    P.Tick.y(s, g2, P.Move.z(s, [], P.Pos{0n}, bd)), P.Tick.y(s, g2, (bd, [])), (P.Move.y(s, g2, [], bd), []),
+    e_movez_cong, {==})
+  +e_z = Equal.trans(P.Body & List<&2, P.Body>,
+    P.Tick.z(s, g2, P.Pos{0n}, P.Move.x(s, [], P.Pos{0n}, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, rt}))),
+    P.Tick.z(s, g2, P.Pos{0n}, (bd, [])), (P.Move.y(s, g2, [], bd), []),
+    Equal.cong(P.Body & List<&2, P.Body>, P.Body & List<&2, P.Body>, (r: P.Body & List<&2, P.Body>) => P.Tick.z(s, g2, P.Pos{0n}, r),
+      P.Move.x(s, [], P.Pos{0n}, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, rt})), (bd, []), e_x),
+    e_movez_final)
+  Equal.trans(P.Body & List<&2, P.Body>,
+    P.Body.step(k, [], P.In.idle(), P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, rt}),
+    (P.Move.y(s, g2, [], bd), []),
+    (P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, False{}, P.Rot.pressw(rt, s, P.Hold.low(P.Rot.mat(q), s), g2)}, []),
+    e_z,
+    Equal.cong(P.Body, P.Body & List<&2, P.Body>, (b: P.Body) => (b, []),
+      P.Move.y(s, g2, [], bd), P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, False{}, P.Rot.pressw(rt, s, P.Hold.low(P.Rot.mat(q), s), g2)},
+      movey_stay0(s, g2, x, y, z, False{}, q, held, floor)))
+
+def wz_after_pressw0(+q: P.Quat, +s: Nat, +a: P.Wv, +g: Nat)
+  -> {P.Wv.z(P.Rot.w(P.Rot.pressw(P.Rot{q, P.Wv.zero()}, s, a, g)))
+      == P.Z.add(P.Pos{0n}, P.Z.divc(P.Rot.crz(P.Wv.x(a), P.Wv.y(a), P.Pos{0n}, P.Pos{g}),
+          P.Rot.about(s, P.Wv.x(a), P.Wv.y(a), P.Wv.z(a)))) : P.Z}:
+  wz_after_pressw(P.Rot{q, P.Wv.zero()}, s, a, g)
+
+def wz_step(+k: P.K, +x: Nat, +y: Nat, +z: Nat, +h: Bool, +q: P.Quat,
+  +held: {P.Tick.sinks(P.K.size(k), [], x, y, z, q) == False{} : Bool},
+  +floor: {P.Geo.onfloor(P.K.size(k), y, q) == True{} : Bool})
+  -> {P.Wv.z(P.Rot.w(P.Body.rot(P.Tick.body(P.Body.step(k, [], P.In.idle(), P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, P.Rot{q, P.Wv.zero()}})))))
+      == P.Z.add(P.Pos{0n}, P.Z.divc(P.Rot.crz(P.Wv.x(P.Hold.low(P.Rot.mat(q), P.K.size(k))), P.Wv.y(P.Hold.low(P.Rot.mat(q), P.K.size(k))), P.Pos{0n}, P.Pos{P.K.g(k)}),
+          P.Rot.about(P.K.size(k), P.Wv.x(P.Hold.low(P.Rot.mat(q), P.K.size(k))), P.Wv.y(P.Hold.low(P.Rot.mat(q), P.K.size(k))), P.Wv.z(P.Hold.low(P.Rot.mat(q), P.K.size(k)))))) : P.Z}:
+  Equal.trans(P.Z,
+    P.Wv.z(P.Rot.w(P.Body.rot(P.Tick.body(P.Body.step(k, [], P.In.idle(), P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, P.Rot{q, P.Wv.zero()}}))))),
+    P.Wv.z(P.Rot.w(P.Rot.pressw(P.Rot{q, P.Wv.zero()}, P.K.size(k), P.Hold.low(P.Rot.mat(q), P.K.size(k)), P.K.g(k)))),
+    P.Z.add(P.Pos{0n}, P.Z.divc(P.Rot.crz(P.Wv.x(P.Hold.low(P.Rot.mat(q), P.K.size(k))), P.Wv.y(P.Hold.low(P.Rot.mat(q), P.K.size(k))), P.Pos{0n}, P.Pos{P.K.g(k)}),
+        P.Rot.about(P.K.size(k), P.Wv.x(P.Hold.low(P.Rot.mat(q), P.K.size(k))), P.Wv.y(P.Hold.low(P.Rot.mat(q), P.K.size(k))), P.Wv.z(P.Hold.low(P.Rot.mat(q), P.K.size(k)))))),
+    Equal.cong(P.Body, P.Z, (b: P.Body) => P.Wv.z(P.Rot.w(P.Body.rot(b))),
+      P.Tick.body(P.Body.step(k, [], P.In.idle(), P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, P.Rot{q, P.Wv.zero()}})),
+      P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, False{},
+        P.Rot.pressw(P.Rot{q, P.Wv.zero()}, P.K.size(k), P.Hold.low(P.Rot.mat(q), P.K.size(k)), P.K.g(k))},
+      step_body(k, x, y, z, h, q, held, floor)),
+    wz_after_pressw0(q, P.K.size(k), P.Hold.low(P.Rot.mat(q), P.K.size(k)), P.K.g(k)))
+
+def and_false_r(a: Bool) -> {Bool.and(a, False{}) == False{} : Bool}:
+  match a:
+    case True{}:
+      {==}
+    case False{}:
+      {==}
+
+def lt_neq0(+n: Nat, +h: {Nat.is_lt(0n, n) == True{} : Bool}) -> {Nat.is_eq(n, 0n) == False{} : Bool}:
+  match n:
+    case 0n:
+      Empty.absurd({Nat.is_eq(0n, 0n) == False{} : Bool}, clash2(h))
+    case 1n+p:
+      {==}
+
+def kickzsign_mag(+ax: P.Z, +ha: {Nat.is_lt(0n, P.Z.mag(ax)) == True{} : Bool}, +ay: P.Z, +g: Nat,
+  +hg: {Nat.is_lt(0n, g) == True{} : Bool}, +D: Nat)
+  -> {Nat.is_lt(0n, P.Z.mag(P.Z.divc(P.Rot.crz(ax, ay, P.Pos{0n}, P.Pos{g}), D))) == True{} : Bool}:
+  match ax:
+    case P.Pos{a}:
+      %Equal.sym(P.Z, P.Rot.crz(P.Pos{a}, ay, P.Pos{0n}, P.Pos{g}), P.Z.mul(P.Pos{a}, P.Pos{g}),
+        crz_eq(P.Pos{a}, ha, ay, g, hg)) : {Nat.is_lt(0n, P.Z.mag(P.Z.divc(_, D))) == True{} : Bool}
+      divc_mag_pos(Nat.mul(a, g), mul_pos(a, ha, g, hg), D)
+    case P.Neg{a}:
+      %Equal.sym(P.Z, P.Rot.crz(P.Neg{a}, ay, P.Pos{0n}, P.Pos{g}), P.Z.mul(P.Neg{a}, P.Pos{g}),
+        crz_eq(P.Neg{a}, ha, ay, g, hg)) : {Nat.is_lt(0n, P.Z.mag(P.Z.divc(_, D))) == True{} : Bool}
+      divc_mag_pos(Nat.mul(a, g), mul_pos(a, ha, g, hg), D)
+
+def wv_null_false_z(+v: P.Wv, +hz: {Nat.is_eq(P.Z.mag(P.Wv.z(v)), 0n) == False{} : Bool}) -> {P.Wv.null(v) == False{} : Bool}:
+  match v:
+    case P.Wv{vx, vy, vz}:
+      %Equal.sym(Bool, Nat.is_eq(P.Z.mag(vz), 0n), False{}, hz)
+        : {Bool.and(Nat.is_eq(P.Z.mag(vx), 0n), Bool.and(Nat.is_eq(P.Z.mag(vy), 0n), _)) == False{} : Bool}
+      %Equal.sym(Bool, Bool.and(Nat.is_eq(P.Z.mag(vy), 0n), False{}), False{}, and_false_r(Nat.is_eq(P.Z.mag(vy), 0n)))
+        : {Bool.and(Nat.is_eq(P.Z.mag(vx), 0n), _) == False{} : Bool}
+      and_false_r(Nat.is_eq(P.Z.mag(vx), 0n))

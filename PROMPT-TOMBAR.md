@@ -368,3 +368,196 @@ verificou o commit `646f180` originalmente, ou investigar se é uma
 regressão real do compilador, ou reportar upstream. Sem isso, nenhuma
 sessão futura vai conseguir ver "All terms check." do `PROOF.bend`
 inteiro, mesmo terminando todas as 10 leis.
+
+## Sessão de 22/09/2026: o bug era nosso, não do compilador, e a técnica
+## para compor o "encaixe mecânico" (resolvido)
+
+**O bug do `pivota0_fs` acima era real, mas não é do `bend`** (testado em
+2.0.24 E 2.0.25, idêntico nos dois — não é regressão de versão).
+`pivota0_fs`/`pivota0_nc` tinham um parâmetro `FS(...)`/`FREE(...)`
+(devolve `Type`, ver `def FS(...) -> Type:`) marcado `+` (reuso), mas
+`+` exige `Data` (`bend guide`: "Reusable variables require Data"), e as
+outras seis funções irmãs (`put_fs`, `place_fs`, `pivot_fs`, `pivota_fs`,
+`turn2_fs`, `keepw_fs`'s `hb`) nunca marcam um parâmetro `FS(...)`/
+`FREE(...)` com `+` — só a versão *crua* do predicado (`{...==True{}:
+Bool}`, que É `Data`) quando precisa ser reusada. Corrigido em `_fs`/`_nc`
+trocando o tipo do parâmetro para a forma crua (como `cand_fs`/`shrink_fs`/
+`start_fs` já faziam); em `_fl`/`_sh` só faltava o `+` (o tipo já era cru).
+`bend PROOF.bend` inteiro agora atravessa o arquivo e para exatamente em
+"10 TODOs found" — as 10 leis do tombo, nada mais quebrado. Rodar isso
+ainda leva ~alguns minutos (busca de giro do `Tick.shrink`, documentado
+acima) — **não repita esse full-run a cada edição pequena**, é exatamente
+o erro que essa sessão cometeu no começo (quatro full-runs de ~40min só
+para achar esse bug, um por família `_fs`/`_nc`/`_fl`/`_sh` — dava para
+ter lido o código das seis famílias de uma vez e comparado).
+
+### A técnica que faltava: `Equal.cong` + `Equal.trans`, não `%e : T` direto no `Body.step`
+
+O `?g`/`%drive_idle0(...) : T` direto em cima de `Tick.body(Body.step(k,
+...))` (k opaco) **não funciona** — o checador, ao comparar `T` com o
+goal, deixa `Body.drive(k,...)` se expandir sozinho (via `Drive.go`/
+`Drive.ground`) numa expressão gigante e ilegível (`Pick.n(Cmp.is_le(...),
+0n,0n)` por todo canto, da fricção não simplificada) **antes** de eu
+conseguir escrever `T` certo — tentar adivinhar essa forma expandida à
+mão (mesmo copiando do "expected" do erro) é uma armadilha: `match k:
+case P.K{...}:` no topo da prova NÃO evita isso, só faz a expansão
+acontecer com os campos de `k` nomeados em vez de projeções — o problema
+nunca foi opacidade de `k`.
+
+**A saída**: construir a igualdade por congruência, functor de cada vez,
+sem nunca deixar o checador normalizar o `Body.step(k,...)` inteiro:
+
+```
+Equal.cong(A, B, f, a, b, e)   -- e : {a==b:A}  dá  {f(a)==f(b):B}
+Equal.trans(A, a, b, c, ab, bc) -- ab:{a==b}, bc:{b==c}  dá  {a==c}
+```
+
+Para cada passo do pipeline (`Body.drive` → `Move.x` → `Tick.z`/`Move.z`
+→ `Tick.body`/`Move.y`), envolva o fato já provado (`drive_idle0`,
+`movex_idle0`, `movez_idle0`, `movey_stay0`) com `Equal.cong` usando uma
+LAMBDA como `f` (ex.: `(b: P.Body) => P.Move.x(s, [], P.Pos{0n}, b)`) e
+encadeie com `Equal.trans` — cada perna intermediária ou é um `cong` de
+um lema já prontoou é `{==}` puro (quando os dois lados de uma perna são
+literalmente a mesma forma reduzida, tipo `Tick.z(s,g,v,(bd,[]))` contra
+`Tick.y(s,g,Move.z(s,[],v,bd))`, que são iguais por definição, sem
+precisar de lema nenhum). O checador nunca precisa expandir
+`Body.drive(k,...)` sozinho — cada `cong`/`trans` só compara as formas
+que EU escrevi, todas curtas. Isso desbloqueou `step_body` (o `Body.step`
+inteiro, parado, idle, sem obstáculo, vira o corpo com o giro trocado por
+`Rot.pressw(...)`) e `step_pair` (a mesma coisa, mas o par
+`Body&List<&2,Body>` inteiro, para alimentar `Tick.spin`/`Tick.moved`
+depois) — ambos provados e colados em `PROOF.bend`.
+
+**Duas armadilhas de sintaxe que custaram tempo**:
+- `+x = Rot{...}` (um `let` que CONSTRÓI um record, não desestrutura)
+  falha com "an annotated term (cannot infer)" — Bend consegue *checar*
+  `Rot{...}` contra um tipo esperado, mas não consegue *sintetizar* o
+  tipo de um construtor sozinho fora de um `let` sem anotação. A anotação
+  é `{expr : T}` (chaves), **não** `(expr : T)` (parênteses — isso é só
+  para operadores `+ - * /` sobre `T`). `+rt = {P.Rot{q, P.Wv.zero()} :
+  P.Rot}` resolve.
+- Direção do `%e : T` (para quem for usar de novo): dado `e : {a==b:T}`,
+  escreva `T` = "o goal atual com uma ocorrência de `b` marcada `_`" —
+  **`b` precisa já aparecer no goal**, sintaticamente, antes da reescrita
+  (não `a`). Quando o que está preso no goal é `a` (ex.: uma hipótese
+  `h: {Tick.sinks(...)==False{}}` e o goal tem `Bool.not(Tick.sinks(...))`
+  — `Tick.sinks(...)` É o `a`, não o `b`), inverta primeiro com
+  `Equal.sym(T, a, b, e) : {b==a:T}` e marque a NOVA posição de `b`
+  (que agora é o lado direito do sym, i.e. o `a` original) — ver
+  `Z_add_r_pos0`/`movey_stay0` como referência. Errar a direção não dá
+  erro de sintaxe, dá um "expected/observed" gigante e ilegível (o
+  checador tenta normalizar o goal inteiro para comparar) — se isso
+  acontecer, suspeite da direção antes de qualquer outra coisa.
+
+### O que está provado agora (além do `kickzsign` de ontem)
+
+Tudo em `PROOF.bend`, verificado isolado num `scratch_corner.bend`
+(apagado ao final, não commitado — recrie a partir do bloco entre
+`lt_zero_r` e `wv_null_false_z` em `PROOF.bend` se precisar iterar de
+novo rápido) antes de colar:
+
+- `wz_after_pressw`/`wz_after_pressw0`: `Wv.z(Rot.w(Rot.pressw(rt,s,a,g)))
+  == Z.add(Wv.z(Rot.w(rt)), Z.divc(Rot.crz(Wv.x(a),Wv.y(a),Pos0,Pos{g}),
+  Rot.about(s,...)))` — puro `{==}`, sem match nenhum (record achatado
+  reduz livre quando não precisa decidir um Bool).
+- `movey_stay0`: `Move.y` de um corpo parado, idle, sem obstáculo, dadas
+  `held`/`floor`, vira o corpo com `Rot.pressw(rt,s,Hold.low(Rot.mat(q),
+  s),g)` no lugar do giro.
+- `step_body`/`step_pair`: o `Body.step` inteiro (drive+movex+movez+
+  movey), mesma hipótese, monta o resultado acima — a peça que a
+  PROMPT-TOMBAR de ontem apontava como "o próximo passo real".
+- `wz_step`: compõe `step_body` com `wz_after_pressw0` — dá `Wv.z(Rot.w(
+  Body.rot(Tick.body(Body.step(...)))))` já na forma que o `kickzsign` de
+  ontem espera.
+- `kickzsign_mag`/`wv_null_false_z`/`and_false_r`/`lt_neq0`: a magnitude
+  do `w'.z` é positiva (extraído do meio da prova do `kickzsign`, mesma
+  ideia) e isso basta para `Wv.null(w')==False{}` (só o componente z
+  importa, `Wv.null` é um `Bool.and` de três `is_eq(mag,0)`).
+
+### Próximo passo exato para fechar `Laws.on_a_corner_it_tips_x`
+
+Falta só a "montagem mecânica" que a sessão de ontem já tinha mapeado por
+leitura de código (sem matemática nova), agora com a técnica de
+`Equal.cong`/`Equal.trans` para não travar em `Tick.shrink`/`Tick.cand`
+opacos. `Body.tick(k,[],idle,B0) = Tick.spin(s,g,Body.step(k,[],idle,
+B0))`, `Tick.spin(s,g,r)=(Tick.turn(s,g,obs,b),obs)` com `(b,obs)=r` —
+usar `step_pair` (o resultado já é um par LITERAL `(FINAL_BODY,[])`, que
+destroi direto) para chegar em `Tick.turn(s,g,[],FINAL_BODY)`.
+
+1. `Tick.turn(s,g,[],FINAL_BODY) = Tick.turn0(s,g,[],FINAL_BODY)` (`obs=[]`,
+   caso direto) `= Tick.turn1(Wv.null(Rot.w(Body.rot(FINAL_BODY))),...)`.
+   `Body.rot(FINAL_BODY) = Rot.pressw(rt,s,a,g)` direto (projeção do
+   record que `step_body`/`step_pair` já constroem), então
+   `Wv.null(Rot.w(Rot.pressw(rt,s,a,g)))==False{}` sai direto de
+   `wz_after_pressw0` + `kickzsign_mag` + `Z_add_l_pos0` (magnitude) +
+   `wv_null_false_z` — vale a pena empacotar isso num lema
+   `wv_null_pressw(q,s,a,g,...)` antes de `wz_step` (não precisa do
+   `Tick.body(Body.step(...))` por fora, `Body.rot(FINAL_BODY)` já É
+   `Rot.pressw(...)` direto).
+2. `Tick.turn1(False{},...) = Tick.turn1b(s,g,[],FINAL_BODY)` (caso
+   direto). `Tick.turn1b` destrói `FINAL_BODY` (literal) e chama
+   `Tick.turn2(gr=True{}, Geo.onfloor(s,y,Rot.q(Rot.pressw(...))), ...,
+   Rot.pressw(...), Rot.free(Rot.pressw(...)), MAT_OPACO)`.
+   `Rot.q(Rot.pressw(rt,s,a,g))=q` direto (`Rot.press` só mexe no `w`) —
+   `Geo.onfloor(s,y,q)` é EXATAMENTE a hipótese `floor` de novo. `MAT_OPACO`
+   nunca precisa ser calculado (ver abaixo).
+3. `Tick.turn2(True{},True{},...)` cai no caso `True{} True{}`:
+   `Tick.pivota(md,s,g,[],x,y,z,Pos0,Pos0,Pos0,True{},True{},rt2,r2,
+   Hold.low(Rot.mat(Rot.q(rt2)),s))` com `rt2=Rot.pressw(...)` — o braço
+   aqui é de novo `Hold.low(Rot.mat(q),s)` (mesmo `a` de sempre, já que
+   `Rot.q(rt2)=q`). **`md` nunca é usado por `Tick.pivota0`** (confirmado
+   por leitura: `Tick.pivota0(md,...)` não referencia `md` no corpo) —
+   não perca tempo calculando o `Rot.mat(Quat.half(Quat.step(...)))` que
+   `Tick.turn1b` monta pra ele, o valor passa por `Equal.cong`/`Equal.trans`
+   como um termo opaco de tipo `P.Mat`, sem nunca ser avaliado.
+4. `Tick.pivota(md,s,g,[],...) = Tick.pivota0(md,s,g,[],...)` (`obs=[]`,
+   caso direto). `Tick.pivota0` desmonta `a=Wv{ax,ay,az}`, monta
+   `w2=Tick.boost(...)`, `b0=Tick.cand(...)`, `bf=Tick.shrink(7n,
+   Tick.moved(b0,rt2),b0,...)`, e devolve `Body.spin(tip, Tick.moved(bf,
+   rt2), bf, rt2)` com `tip=Nat.is_lt(0n,Nat.add(mag(ax),mag(az)))`.
+   `tip=True{}` sai de `off` via `lt_add` (já no kit: `lt_add(mag(ax),
+   mag(az), off) : {0 < mag(ax)+mag(az)}`).
+5. **Não dá pra evitar nomear `b0`/`bf` por extenso** (são termos
+   concretos, não hipóteses) — mas como em nenhum ponto abaixo o valor de
+   `bf` é realmente inspecionado (só `Tick.moved(bf,rt2)` como Bool, e
+   `Rot.q(bf)`/`Body.setrot(bf,...)` tratados opacos), o `match
+   Tick.moved(bf,rt2):` de baixo é o único lugar que realmente decide
+   algo — os termos `w2`, `b0`, `bf` só precisam ser escritos (copiados
+   de `Tick.pivota0`'s corpo em `phys.bend`), nunca avaliados.
+6. `match Tick.moved(bf,rt2):`
+   - `case True{}`: `Body.spin(tip,True{},bf,rt2)=bf` (`Body.spin`'s
+     próprio `match moved: case True{}: b`, direto). O primeiro
+     disjunto da lei é `Bool.not(Quat.same(Rot.q(Body.rot(a_final)),q))`
+     — com `a_final=bf` aqui e `Rot.q(rt2)=q`, isso é `Tick.moved(bf,
+     rt2)` **por definição** (`Tick.moved(b,rt)=Bool.not(Quat.same(
+     Rot.q(Body.rot(b)),Rot.q(rt)))`) — que já é `True{}` (hipótese do
+     `case`). De graça, `Bool.or(True{},_)=True{}` fecha (usar
+     `or_here`, já no kit).
+   - `case False{}`: `Body.spin(True{},False{},bf,rt2) = Body.setrot(bf,
+     Rot{Rot.q(bf),Pick.w(True{},Rot.w(rt2),Wv.zero())}) = Body.setrot(
+     bf,Rot{Rot.q(bf),Rot.w(rt2)})` (`Pick.w(True{},a,b)=a`, direto).
+     `Rot.w(Body.rot(Body.setrot(bf,R)))=Rot.w(R)=Rot.w(rt2)` (`Body.setrot`
+     só troca o campo `rot`, `Rot.w` projeta o record literal `R` que EU
+     construí). Então `Wv.z(Rot.w(a_final))=Wv.z(Rot.w(rt2))` — que
+     `wz_after_pressw0`/`wz_step` já calculam. Fechar com `kickzsign`
+     (que dá `Z.mul(ax,Z.divc(...)) above Pos0`) + `Z_add_l_pos0` (pra
+     absorver o `Z.add(Pos0,·)` que sobra, usando `kickzsign_mag` pra
+     magnitude ≠0) — o segundo disjunto da lei
+     (`Z.above(Z.mul(Wv.x(a),Wv.z(w')),Pos0)`) fecha com `or_there`
+     (já no kit).
+7. Montar `Laws.on_a_corner_it_tips_x(k,heavy,x,y,z,h,q,floor,held,off)`
+   juntando 1-6 via `Equal.cong`/`Equal.trans` (cada passo acima vira uma
+   perna do encadeamento, igual `step_body` fez) + o `match` final do
+   passo 6. Rodar `bend PROOF.bend` inteiro só no final, uma vez.
+
+Depois disso: `on_a_corner_it_tips_z` é a MESMA cadeia trocando x↔z
+(checar sinal do right-hand-rule no comentário da lei, `LAWS.bend:523`);
+`past_the_edge_it_tips_*4` troca `Hold.low(Rot.mat(q),s)` por
+`Hold.arm(Geo.foot(...),Rot.mat(q),s)` — o `kickzsign`/`kickzsign_mag`
+já são genéricos em `ax`/`ay` (não sabem de onde o braço veio), só a
+"montagem mecânica" (passos 1-3 acima) muda de forma (o `held=False`/
+`floor=True` branch de `Tick.turn2` vira `held=True,floor=False`, usa
+`Hold.arm` em vez de `Hold.low`) — precisa também fixar o sinal do braço
+via `Geo.leanf` usando a hipótese `past`, ainda não derivado.
+`tipping_is_never_thrown_away_*4` compõe `past_the_edge` com o mesmo
+argumento moved-ou-mantido do passo 6 acima.
