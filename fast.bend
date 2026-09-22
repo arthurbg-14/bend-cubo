@@ -68,6 +68,9 @@ def run(n: Nat, +bad: Nat, +w: W.World) -> String:
     case 1n+m:
       run(m, Nat.add(bad, clash(awake(w))), W.W.tick_flat(M.Knob.defaults(), P.In.idle(), w))
 
+# (Perto do meio da beirada, saliencia 0,50 a 0,52, o torque e quase nada e o
+# cubo leva segundos para vencer a folga do giro: e o ponto de equilibrio,
+# instavel. Por isso os testes comecam em 0,55.)
 # Um cubo equilibrado na quina de outro: o meio dele fica para fora do
 # apoio, entao ele tem que escorregar da beirada e cair no chao. Antes
 # ficava pendurado para sempre, porque qualquer encostada segurava.
@@ -215,7 +218,6 @@ def main() -> IO(Unit):
     b : Unit <- IO.print("rotacao no array: " ++ turn())
     c : Unit <- IO.print("quinze eixos x caixa: " ++ axes())
     IO.print("quina:          " ++ tip(200n, 0n, perched()))
-    IO.print("saliencia 0,50: " ++ tip(200n, 0n, perch(131072n)))
     IO.print("saliencia 0,55: " ++ tip(200n, 0n, perch(144179n)))
     IO.print("saliencia 0,60: " ++ tip(200n, 0n, perch(157286n)))
     IO.print("saliencia 0,70: " ++ tip(200n, 0n, perch(183500n)))

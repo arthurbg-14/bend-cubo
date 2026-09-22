@@ -1183,32 +1183,72 @@ def Geo.laph(+s: Nat, +a: Nat, +b: Nat) -> Nat:
 # right under the middle while the middle is over it -- nothing to turn
 # the body -- and at the edge of it the moment the middle goes past,
 # which is what tips a cube over a ledge.
-def Geo.foot2(on: Bool, up: Bool, +s: Nat, +x: Nat, +z: Nat, +ox: Nat, +oz: Nat, +top: Nat,
+# The body that stands is not its box: a turned cube stands on what its
+# shadow on the ground covers, and that reaches past the box -- a cube
+# swung out over an edge still rests on it long after its box corner has
+# gone beyond. Asked of the box alone, the foot came out empty the tick the
+# corner passed the edge, the hold pressed at a corner of the box, and a
+# cube that was tipping straight began to wobble sideways for nothing.
+# The shadow is the box made d wider on each side (d is nothing for a cube
+# square with the world, and then everything below is the box's own).
+def Geo.lapd(+s: Nat, +d: Nat, +a: Nat, +b: Nat) -> Nat:
+  +lo = Pick.high(Nat.sub(a, d), b)
+  +hi = Pick.low(Nat.add(Nat.add(a, s), d), Nat.add(b, s))
+  Nat.sub(Pick.high(hi, lo), lo)
+
+def Geo.laplw(+s: Nat, +d: Nat, +a: Nat, +b: Nat) -> Nat:
+  Nat.sub(Pick.high(Nat.sub(a, d), b), a)
+
+def Geo.laphw(+s: Nat, +d: Nat, +a: Nat, +b: Nat) -> Nat:
+  Nat.sub(Pick.high(Pick.low(Nat.add(Nat.add(a, s), d), Nat.add(b, s)), a), a)
+
+# how much wider than its box a turned cube's shadow is, along x (or z),
+# on each side: half a side times what its three axes lean into that
+# direction (in 2^-16), less half a side
+def Geo.widex(+s: Nat, m: Mat) -> Nat:
+  Mat{+axx, axy, axz, +ayx, ayy, ayz, +azx, azy, azz} = m
+  Nat.sub(Nat.div(Nat.div(Nat.mul(Nat.div(s, 2n), Nat.add(Nat.add(Z.mag(axx), Z.mag(ayx)), Z.mag(azx))), 256n), 256n),
+    Nat.div(s, 2n))
+
+def Geo.widez(+s: Nat, m: Mat) -> Nat:
+  Mat{axx, axy, +axz, ayx, ayy, +ayz, azx, azy, +azz} = m
+  Nat.sub(Nat.div(Nat.div(Nat.mul(Nat.div(s, 2n), Nat.add(Nat.add(Z.mag(axz), Z.mag(ayz)), Z.mag(azz))), 256n), 256n),
+    Nat.div(s, 2n))
+
+def Geo.foot2(on: Bool, up: Bool, +s: Nat, +dx: Nat, +dz: Nat, +x: Nat, +z: Nat, +ox: Nat, +oz: Nat, +top: Nat,
   +f: Foot) -> Foot:
   match on up:
     case False{} _:
       f
     case True{} True{}:
-      Foot{1n, Geo.lapl(s, x, ox), Geo.laph(s, x, ox), Geo.lapl(s, z, oz), Geo.laph(s, z, oz), top}
+      Foot{1n, Geo.laplw(s, dx, x, ox), Geo.laphw(s, dx, x, ox), Geo.laplw(s, dz, z, oz), Geo.laphw(s, dz, z, oz), top}
     case True{} False{}:
-      Foot{Nat.add(Foot.n(f), 1n), Pick.low(Foot.lx(f), Geo.lapl(s, x, ox)),
-        Pick.high(Foot.hx(f), Geo.laph(s, x, ox)), Pick.low(Foot.lz(f), Geo.lapl(s, z, oz)),
-        Pick.high(Foot.hz(f), Geo.laph(s, z, oz)), Foot.ty(f)}
+      Foot{Nat.add(Foot.n(f), 1n), Pick.low(Foot.lx(f), Geo.laplw(s, dx, x, ox)),
+        Pick.high(Foot.hx(f), Geo.laphw(s, dx, x, ox)), Pick.low(Foot.lz(f), Geo.laplw(s, dz, z, oz)),
+        Pick.high(Foot.hz(f), Geo.laphw(s, dz, z, oz)), Foot.ty(f)}
 
-def Geo.foot1(+s: Nat, +x: Nat, +y: Nat, +z: Nat, o: Body, +f: Foot) -> Foot:
+def Geo.foot1(+s: Nat, +dx: Nat, +dz: Nat, +x: Nat, +y: Nat, +z: Nat, o: Body, +f: Foot) -> Foot:
   Body{+ox, +oy, +oz, vx, vy, vz, ground, hit, +rt} = o
   +top = Geo.top(s, oy, rt)
   +under = Bool.and(Nat.is_le(top, Nat.add(y, Nat.div(s, 2n))),
-    Bool.and(Nat.is_lt(0n, Geo.lap(s, x, ox)), Nat.is_lt(0n, Geo.lap(s, z, oz))))
+    Bool.and(Nat.is_lt(0n, Geo.lapd(s, dx, x, ox)), Nat.is_lt(0n, Geo.lapd(s, dz, z, oz))))
   Geo.foot2(Bool.and(under, Bool.or(Nat.is_eq(Foot.n(f), 0n), Nat.is_le(Foot.ty(f), top))),
-    Bool.or(Nat.is_eq(Foot.n(f), 0n), Nat.is_lt(Foot.ty(f), top)), s, x, z, ox, oz, top, f)
+    Bool.or(Nat.is_eq(Foot.n(f), 0n), Nat.is_lt(Foot.ty(f), top)), s, dx, dz, x, z, ox, oz, top, f)
 
-def Geo.foot(+s: Nat, +x: Nat, +y: Nat, +z: Nat, obs: List<&2, Body>, f: Foot) -> Foot:
+def Geo.footw(+s: Nat, +dx: Nat, +dz: Nat, +x: Nat, +y: Nat, +z: Nat, obs: List<&2, Body>, f: Foot) -> Foot:
   match obs:
     case []:
       f
     case o <> rest:
-      Geo.foot(s, x, y, z, rest, Geo.foot1(s, x, y, z, o, f))
+      Geo.footw(s, dx, dz, x, y, z, rest, Geo.foot1(s, dx, dz, x, y, z, o, f))
+
+# the foot of the body at (x, y, z) turned by q, on the obstacles obs
+def Geo.foot(+s: Nat, +x: Nat, +y: Nat, +z: Nat, +q: Quat, obs: List<&2, Body>, f: Foot) -> Foot:
+  match obs:
+    case []:
+      f
+    case o <> rest:
+      Geo.footw(s, Geo.widex(s, Rot.mat(q)), Geo.widez(s, Rot.mat(q)), x, y, z, o <> rest, f)
 
 # the middle held down to the hold's reach, as an arm from the middle
 def Geo.lean(+c: Nat, +lo: Nat, +hi: Nat) -> Z:
@@ -1253,16 +1293,20 @@ def Z.sgnop(v: Z) -> Z:
       Pick.z(Nat.is_eq(n, 0n), Pos{0n}, Pos{1n})
 
 # -1, 0 or 1: the sign of v turned about, with a dead zone. Along an axis
-# of the cube that lies within half a degree of level, both of its ends
-# are as low as each other, and the body stands on both: the middle of
-# them. That is how a cube lying on a face stands on the middle of the
-# face, and one on an edge on the middle of the edge.
+# of the cube that lies within a twentieth of a degree of level (the
+# rounding a turned cube carries), both of its ends are as low as each
+# other, and the body stands on both: the middle of them. That is how a
+# cube lying on a face stands on the middle of the face, and one on an
+# edge on the middle of the edge. The zone is that narrow because a wider
+# one has the body pressed at the middle of a face that is tilted -- off
+# its middle by the tilt, on the side that turns it further from level --
+# and a cube that lands a little off square then never lies flat.
 def Z.dead(v: Z) -> Z:
   match v:
     case Pos{+n}:
-      Pick.z(Nat.is_lt(n, 512n), Pos{0n}, Neg{1n})
+      Pick.z(Nat.is_lt(n, 64n), Pos{0n}, Neg{1n})
     case Neg{+n}:
-      Pick.z(Nat.is_lt(n, 512n), Pos{0n}, Pos{1n})
+      Pick.z(Nat.is_lt(n, 64n), Pos{0n}, Pos{1n})
 
 # one coordinate of the arm from the middle to the body's lowest point:
 # half a side along each axis of the cube, the way that axis leans down
@@ -1271,13 +1315,32 @@ def Tip.arm(+h: Nat, +sx: Z, +sy: Z, +sz: Z, +ax: Z, +ay: Z, +az: Z) -> Z:
 
 # the arm from the middle to the lowest point of the body: its lowest
 # corner, or the middle of its lowest edge or face
+#
+# A cube on a face -- one axis of it pointing down, the other two level --
+# stands on the whole face, and the floor's press can land anywhere on it:
+# nothing turns it. Its lowest point is taken to be the middle of the face
+# straight under its middle, whatever the tilt inside the dead zone puts
+# the face's own middle sideways. Left to that, a cube lying a hair off
+# square was pressed off its middle on the side that turns it further off.
+def Hold.face(face: Bool, a: Z) -> Z:
+  match face:
+    case True{}:
+      Pos{0n}
+    case False{}:
+      a
+
+def Hold.low2(+face: Bool, +h: Nat, +sx: Z, +sy: Z, +sz: Z, +axx: Z, +axy: Z, +axz: Z, +ayx: Z, +ayy: Z, +ayz: Z,
+  +azx: Z, +azy: Z, +azz: Z) -> Wv:
+  Wv{Hold.face(face, Tip.arm(h, sx, sy, sz, axx, ayx, azx)), Tip.arm(h, sx, sy, sz, axy, ayy, azy),
+    Hold.face(face, Tip.arm(h, sx, sy, sz, axz, ayz, azz))}
+
 def Hold.low(m: Mat, +s: Nat) -> Wv:
   Mat{+axx, +axy, +axz, +ayx, +ayy, +ayz, +azx, +azy, +azz} = m
-  +h = Nat.div(s, 2n)
   +sx = Z.dead(axy)
   +sy = Z.dead(ayy)
   +sz = Z.dead(azy)
-  Wv{Tip.arm(h, sx, sy, sz, axx, ayx, azx), Tip.arm(h, sx, sy, sz, axy, ayy, azy), Tip.arm(h, sx, sy, sz, axz, ayz, azz)}
+  Hold.low2(Nat.is_eq(Nat.add(Nat.add(Z.mag(sx), Z.mag(sy)), Z.mag(sz)), 1n), Nat.div(s, 2n), sx, sy, sz,
+    axx, axy, axz, ayx, ayy, ayz, azx, azy, azz)
 
 # a point a held inside [lo, hi], as an arm from the middle c
 def Geo.leanf(+c: Nat, +a: Nat, +lo: Nat, +hi: Nat) -> Z:
@@ -1311,7 +1374,7 @@ def Rot.held(floor: Bool, +rt: Rot, +s: Nat, +x: Nat, +y: Nat, +z: Nat, +j: Nat,
     case True{}:
       Rot.pressw(rt, s, Hold.low(Rot.mat(Rot.q(rt)), s), j)
     case False{}:
-      Rot.pressw(rt, s, Hold.arm(Geo.foot(s, x, y, z, obs, Foot.none()), Rot.mat(Rot.q(rt)), s), j)
+      Rot.pressw(rt, s, Hold.arm(Geo.foot(s, x, y, z, Rot.q(rt), obs, Foot.none()), Rot.mat(Rot.q(rt)), s), j)
 
 # Friction
 # --------
@@ -1803,7 +1866,9 @@ def Tick.z(+s: Nat, +g: Nat, +vz0: Z, r: Body & List<&2, Body>) -> Body & List<&
 # back does. Keeping it instead left cubes lying still with a turning
 # they could never take, and a body that is turning claims the room its
 # turn sweeps: its neighbours hung in the air beside it or were shoved
-# from across the room.
+# from across the room. The one turn that is never spent is a hold that
+# leans (Wv.keep): it hands the turning back every tick anyway, and
+# spending it is what kept a perched cube from ever tipping.
 #
 # A body that stood, and that the turn carried off what held it, stands
 # no more: standing is asked again wherever the body ends up.
@@ -1844,7 +1909,7 @@ def Tick.put(ok: Bool, +s: Nat, +g: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat,
       +st = Tick.stands(gr, s, obs, nx, ny, nz, Rot.q(r2))
       Body{nx, ny, nz, vx, Tick.letv(gr, st, g, Nat.sub(y, ny), vy), vz, st, hit, r2}
     case False{}:
-      Body{x, y, z, vx, vy, vz, gr, True{}, Rot{Rot.q(rt), Wv.zero()}}
+      Body{x, y, z, vx, vy, vz, gr, True{}, rt}
 
 # the gate of a turn: no higher than the body was, clear of everything
 # and of the floor, and not carried off its hold without going down
@@ -1856,6 +1921,11 @@ def Tick.place(+s: Nat, +g: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat
   Tick.put(Tick.turnok(s, obs, y, nx, ny, nz, Rot.q(r2), gr), s, g, obs,
     x, y, z, nx, ny, nz, vx, vy, vz, gr, hit, rt, r2)
 
+# The turning a refused turn leaves the body with (Tick.put hands back the
+# body it is given): none, as a knock stops the turning -- unless the hold
+# is leaning, its arm off the middle, and then all of it. The hold gives
+# that turning back every tick it leans, so spending it on a turn the
+# rounding refused kept a perched cube from ever starting to tip.
 # where one coordinate of the middle lands when the body turns about an
 # arm: the arm turns with it, so the middle moves by r - M r
 def Pivot.c(+c: Nat, +r: Z, +ax: Z, +ay: Z, +az: Z, +rx: Z, +ry: Z, +rz: Z) -> Nat:
@@ -1899,6 +1969,18 @@ def Wv.stretch(w: Wv, +m: Nat, +t: Nat) -> Wv:
   Wv{+a, +b, +c} = w
   Wv{Z.stretch(a, m, t), Z.stretch(b, m, t), Z.stretch(c, m, t)}
 
+# half of v, toward 0
+def Z.half(v: Z) -> Z:
+  match v:
+    case Pos{+n}:
+      Pos{Nat.div(n, 2n)}
+    case Neg{+n}:
+      Neg{Nat.div(n, 2n)}
+
+def Wv.half(w: Wv) -> Wv:
+  Wv{+a, +b, +c} = w
+  Wv{Z.half(a), Z.half(b), Z.half(c)}
+
 def Tick.boost2(small: Bool, +w: Wv, +m: Nat) -> Wv:
   match small:
     case True{}:
@@ -1913,14 +1995,74 @@ def Tick.boost(big: Bool, +w: Wv) -> Wv:
     case False{}:
       w
 
+# the turn about the point (rx, ry, rz) by the turning w, the body it
+# leaves: the one Tick.place lets through, or the one it keeps
+def Tick.cand(+s: Nat, +g: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +vx: Z, +vy: Z, +vz: Z,
+  +gr: Bool, +hit: Bool, +rt: Rot, +w: Wv, +rx: Z, +ry: Z, +rz: Z) -> Body:
+  Tick.pivot(Rot.mat(Quat.half(Quat.step(w, Wv.mag(w)))), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt,
+    Rot{Rot.turn(Rot.q(rt), w), Rot.w(rt)}, rx, ry, rz)
+
+# did the turn go through? Then the body is turned another way
+def Tick.moved(b: Body, rt: Rot) -> Bool:
+  Bool.not(Quat.same(Rot.q(Body.rot(b)), Rot.q(rt)))
+
+# The biggest turn that fits: the turn asked for, and if the gate refuses
+# it, half of it, and half of that, down to a hundred and twenty-eighth. A
+# cube that lands a little off square, or stands on a corner with the
+# rest of it a little above the floor, can only turn as far as the next
+# edge it meets; refusing the whole turn left it standing on the corner
+# for good. Every candidate goes through the same gate (Tick.place), so
+# nothing a candidate does is trusted: b is the body the last one left,
+# ok whether it went through.
+def Tick.shrink(n: Nat, ok: Bool, +b: Body, +s: Nat, +g: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat,
+  +vx: Z, +vy: Z, +vz: Z, +gr: Bool, +hit: Bool, +rt: Rot, +w: Wv, +rx: Z, +ry: Z, +rz: Z) -> Body:
+  match n ok:
+    case _ True{}:
+      b
+    case 0n False{}:
+      b
+    case 1n+m False{}:
+      +nb = Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, Wv.half(w), rx, ry, rz)
+      Tick.shrink(m, Tick.moved(nb, rt), nb, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, Wv.half(w), rx, ry, rz)
+
 # the turn about the point a: the turning the body carries, taken at
 # least at the size above when a is far off its middle
+def Body.setrot(+b: Body, r: Rot) -> Body:
+  Body{Body.x(b), Body.y(b), Body.z(b), Body.vx(b), Body.vy(b), Body.vz(b), Body.ground(b), Body.hit(b), r}
+
+def Pick.w(c: Bool, a: Wv, b: Wv) -> Wv:
+  match c:
+    case True{}:
+      a
+    case False{}:
+      b
+
+# The turning a refused turn leaves the body with, given whole: unlike
+# Tick.put (which only ever zeroes it, one candidate at a time), this asks
+# once, after the search over candidates is done, whether the ORIENTATION
+# moved at all. A search that moved keeps exactly what Tick.put already
+# gave it (the candidate's own turning, r2's, carried through untouched);
+# one that never moved -- every candidate refused -- gets its turning
+# back only where the hold leans (tip); square, it is spent, as it always
+# was. Asking this once outside the search, instead of inside every
+# candidate Tick.pivot tries, is what a proof about the search can afford:
+# Body.setrot never opens what it does not touch, so this costs nothing to
+# carry through a fact about hit, energy or the floor -- only a fact about
+# the turning itself has to look inside.
+def Body.spin(tip: Bool, moved: Bool, +b: Body, +rt: Rot) -> Body:
+  match moved:
+    case True{}:
+      b
+    case False{}:
+      Body.setrot(b, Rot{Rot.q(Body.rot(b)), Pick.w(tip, Rot.w(rt), Wv.zero())})
+
 def Tick.pivota0(md: Mat, +s: Nat, +g: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat, +vx: Z, +vy: Z, +vz: Z,
   +gr: Bool, +hit: Bool, +rt: Rot, +r2: Rot, a: Wv) -> Body:
   Wv{+ax, +ay, +az} = a
   +w2 = Tick.boost(Nat.is_le(Nat.div(s, 32n), Nat.add(Z.mag(ax), Z.mag(az))), Rot.w(rt))
-  Tick.pivot(Rot.mat(Quat.half(Quat.step(w2, Wv.mag(w2)))), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt,
-    Rot{Rot.turn(Rot.q(rt), w2), Rot.w(rt)}, ax, ay, az)
+  +b0 = Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az)
+  +bf = Tick.shrink(7n, Tick.moved(b0, rt), b0, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az)
+  Body.spin(Nat.is_lt(0n, Nat.add(Z.mag(ax), Z.mag(az))), Tick.moved(bf, rt), bf, rt)
 
 # The same turn, written out once for each shape the obstacles can have,
 # like Tick.turn and Tick.drop: for the checker and not for the machine.
@@ -1946,10 +2088,10 @@ def Tick.turn2(held: Bool, floor: Bool, +s: Nat, +g: Nat, +obs: List<&2, Body>, 
   +vz: Z, +gr: Bool, +hit: Bool, +rt: Rot, +r2: Rot, +md: Mat) -> Body:
   match held floor:
     case False{} _:
-      Tick.place(s, g, obs, x, y, z, x, y, z, vx, vy, vz, gr, hit, rt, r2)
+      Tick.place(s, g, obs, x, y, z, x, y, z, vx, vy, vz, gr, hit, Rot{Rot.q(rt), Wv.zero()}, r2)
     case True{} False{}:
       Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, r2,
-        Hold.arm(Geo.foot(s, x, y, z, obs, Foot.none()), Rot.mat(Rot.q(rt)), s))
+        Hold.arm(Geo.foot(s, x, y, z, Rot.q(rt), obs, Foot.none()), Rot.mat(Rot.q(rt)), s))
     case True{} True{}:
       Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, r2, Hold.low(Rot.mat(Rot.q(rt)), s))
 
@@ -2016,9 +2158,6 @@ def Body.tick(+k: K, +obs: List<&2, Body>, inp: In, b: Body) -> Body & List<&2, 
 
 # the same body, turned another way: what a tick without a knock does to
 # a cube, and nothing else
-def Body.setrot(+b: Body, r: Rot) -> Body:
-  Body{Body.x(b), Body.y(b), Body.z(b), Body.vx(b), Body.vy(b), Body.vz(b), Body.ground(b), Body.hit(b), r}
-
 def Share.fst(r: Z & Z) -> Z:
   (a, b) = r
   a

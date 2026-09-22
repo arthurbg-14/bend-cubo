@@ -853,13 +853,46 @@ def pivot_hit(m: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: N
   +d = P.Tick.drop(s, obs, nx, y, nz, P.Rot.q(r2), Nat.add(Nat.sub(y, P.Pick.low(ny, y)), Nat.div(s, 256n)))
   place_hit(s, g, obs, x, y, z, nx, Nat.sub(y, d), nz, vx, vy, vz, gr, rt, r2)
 
+def cand_hit(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z)
+  -> {P.Body.hit(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, w, rx, ry, rz)) == True{} : Bool}:
+  pivot_hit(P.Rot.mat(P.Quat.half(P.Quat.step(w, P.Wv.mag(w)))), s, g, obs, x, y, z, vx, vy, vz, gr, rt,
+    P.Rot{P.Rot.turn(P.Rot.q(rt), w), P.Rot.w(rt)}, rx, ry, rz)
+
+def shrink_hit(n: Nat, ok: Bool, +b: P.Body, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z,
+  hb: {P.Body.hit(b) == True{} : Bool})
+  -> {P.Body.hit(P.Tick.shrink(n, ok, b, s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, w, rx, ry, rz)) == True{} : Bool}:
+  match n ok:
+    case 0n True{}:
+      hb
+    case 1n+m True{}:
+      hb
+    case 0n False{}:
+      hb
+    case 1n+m False{}:
+      shrink_hit(m, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, P.Wv.half(w), rx, ry, rz), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, P.Wv.half(w), rx, ry, rz), s, g, obs, x, y, z, vx, vy, vz, gr, rt, P.Wv.half(w), rx, ry, rz,
+        cand_hit(s, g, obs, x, y, z, vx, vy, vz, gr, rt, P.Wv.half(w), rx, ry, rz))
+
+def start_hit(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z)
+  -> {P.Body.hit(P.Tick.shrink(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, w, rx, ry, rz), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, w, rx, ry, rz), s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, w, rx, ry, rz)) == True{} : Bool}:
+  shrink_hit(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, w, rx, ry, rz), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, w, rx, ry, rz), s, g, obs, x, y, z, vx, vy, vz, gr, rt, w, rx, ry, rz,
+    cand_hit(s, g, obs, x, y, z, vx, vy, vz, gr, rt, w, rx, ry, rz))
+
+def keepw_hit(+tip: Bool, moved: Bool, +b: P.Body, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +rt: P.Rot,
+  hb: {P.Body.hit(b) == True{} : Bool})
+  -> {P.Body.hit(P.Body.spin(tip, moved, b, rt)) == True{} : Bool}:
+  match moved:
+    case True{}:
+      hb
+    case False{}:
+      hb
+
 def pivota0_hit(md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
   +vz: P.Z, +gr: Bool, +rt: P.Rot, +r2: P.Rot, a: P.Wv)
   -> {P.Body.hit(P.Tick.pivota0(md, s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, r2, a)) == True{} : Bool}:
   P.Wv{+ax, +ay, +az} = a
   +w2 = P.Tick.boost(Nat.is_le(Nat.div(s, 32n), Nat.add(P.Z.mag(ax), P.Z.mag(az))), P.Rot.w(rt))
-  pivot_hit(P.Rot.mat(P.Quat.half(P.Quat.step(w2, P.Wv.mag(w2)))), s, g, obs, x, y, z, vx, vy, vz, gr, rt,
-    P.Rot{P.Rot.turn(P.Rot.q(rt), w2), P.Rot.w(rt)}, ax, ay, az)
+  keepw_hit(Nat.is_lt(0n, Nat.add(P.Z.mag(ax), P.Z.mag(az))), P.Tick.moved(P.Tick.shrink(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, w2, ax, ay, az), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, w2, ax, ay, az), rt), P.Tick.shrink(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, w2, ax, ay, az), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, rt,
+    start_hit(s, g, obs, x, y, z, vx, vy, vz, gr, rt, w2, ax, ay, az))
 
 def pivota_hit(md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
   +vz: P.Z, +gr: Bool, +rt: P.Rot, +r2: P.Rot, a: P.Wv)
@@ -880,8 +913,8 @@ def put_eq(ok: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat,
     case True{}:
       {==}
     case False{}:
-      Empty.absurd({P.Body{x, y, z, vx, vy, vz, False{}, True{}, P.Rot{P.Rot.q(rt), P.Wv.zero()}}
-          == P.Body.setrot(P.Body{x, y, z, vx, vy, vz, False{}, hit, rt}, P.Rot{P.Rot.q(rt), P.Wv.zero()}) : P.Body},
+      Empty.absurd({P.Body{x, y, z, vx, vy, vz, False{}, True{}, rt}
+          == P.Body.setrot(P.Body{x, y, z, vx, vy, vz, False{}, hit, rt}, rt) : P.Body},
         clash(free))
 
 def turn2_eq(held: Bool, floor: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z,
@@ -892,13 +925,13 @@ def turn2_eq(held: Bool, floor: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, 
            P.Body.rot(P.Tick.turn2(held, floor, s, g, obs, x, y, z, vx, vy, vz, held, hit, rt, r2, md))) : P.Body}:
   match held floor:
     case False{} _:
-      put_eq(P.Tick.turnok(s, obs, y, x, y, z, P.Rot.q(r2), False{}), s, g, obs, x, y, z, vx, vy, vz, hit, rt, r2, free)
+      put_eq(P.Tick.turnok(s, obs, y, x, y, z, P.Rot.q(r2), False{}), s, g, obs, x, y, z, vx, vy, vz, hit, P.Rot{P.Rot.q(rt), P.Wv.zero()}, r2, free)
     case True{} False{}:
-      Empty.absurd({P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s)) == P.Body.setrot(P.Body{x, y, z, vx, vy, vz, True{}, hit, rt}, P.Body.rot(P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s)))) : P.Body},
+      Empty.absurd({P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, P.Rot.q(rt), obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s)) == P.Body.setrot(P.Body{x, y, z, vx, vy, vz, True{}, hit, rt}, P.Body.rot(P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, P.Rot.q(rt), obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s)))) : P.Body},
         clash(Equal.trans(Bool, True{},
-          P.Body.hit(P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s))), False{},
-          Equal.sym(Bool, P.Body.hit(P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s))), True{},
-            pivota_hit(md, s, g, obs, x, y, z, vx, vy, vz, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s))),
+          P.Body.hit(P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, P.Rot.q(rt), obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s))), False{},
+          Equal.sym(Bool, P.Body.hit(P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, P.Rot.q(rt), obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s))), True{},
+            pivota_hit(md, s, g, obs, x, y, z, vx, vy, vz, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, P.Rot.q(rt), obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s))),
           free)))
     case True{} True{}:
       Empty.absurd({P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, P.Hold.low(P.Rot.mat(P.Rot.q(rt)), s)) == P.Body.setrot(P.Body{x, y, z, vx, vy, vz, True{}, hit, rt}, P.Body.rot(P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, P.Hold.low(P.Rot.mat(P.Rot.q(rt)), s)))) : P.Body},
@@ -991,13 +1024,13 @@ def turn2_q(held: Bool, floor: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +
       == P.Rot.q(r2) : P.Quat}:
   match held floor:
     case False{} _:
-      put_q(P.Tick.turnok(s, obs, y, x, y, z, P.Rot.q(r2), False{}), s, g, obs, x, y, z, vx, vy, vz, hit, rt, r2, free)
+      put_q(P.Tick.turnok(s, obs, y, x, y, z, P.Rot.q(r2), False{}), s, g, obs, x, y, z, vx, vy, vz, hit, P.Rot{P.Rot.q(rt), P.Wv.zero()}, r2, free)
     case True{} False{}:
-      Empty.absurd({P.Rot.q(P.Body.rot(P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s)))) == P.Rot.q(r2) : P.Quat},
+      Empty.absurd({P.Rot.q(P.Body.rot(P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, P.Rot.q(rt), obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s)))) == P.Rot.q(r2) : P.Quat},
         clash(Equal.trans(Bool, True{},
-          P.Body.hit(P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s))), False{},
-          Equal.sym(Bool, P.Body.hit(P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s))), True{},
-            pivota_hit(md, s, g, obs, x, y, z, vx, vy, vz, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s))),
+          P.Body.hit(P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, P.Rot.q(rt), obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s))), False{},
+          Equal.sym(Bool, P.Body.hit(P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, P.Rot.q(rt), obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s))), True{},
+            pivota_hit(md, s, g, obs, x, y, z, vx, vy, vz, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, P.Rot.q(rt), obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s))),
           free)))
     case True{} True{}:
       Empty.absurd({P.Rot.q(P.Body.rot(P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, P.Hold.low(P.Rot.mat(P.Rot.q(rt)), s)))) == P.Rot.q(r2) : P.Quat},
@@ -1069,7 +1102,7 @@ def put_w(ok: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, 
     case True{}:
       {==}
     case False{}:
-      Empty.absurd({P.Wv.zero() == P.Rot.w(r2) : P.Wv}, clash(free))
+      Empty.absurd({P.Rot.w(rt) == P.Rot.w(r2) : P.Wv}, clash(free))
 
 def turn2_w(held: Bool, floor: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z,
   +vy: P.Z, +vz: P.Z, +hit: Bool, +rt: P.Rot, +r2: P.Rot, +md: P.Mat,
@@ -1078,13 +1111,13 @@ def turn2_w(held: Bool, floor: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +
       == P.Rot.w(r2) : P.Wv}:
   match held floor:
     case False{} _:
-      put_w(P.Tick.turnok(s, obs, y, x, y, z, P.Rot.q(r2), False{}), s, g, obs, x, y, z, vx, vy, vz, hit, rt, r2, free)
+      put_w(P.Tick.turnok(s, obs, y, x, y, z, P.Rot.q(r2), False{}), s, g, obs, x, y, z, vx, vy, vz, hit, P.Rot{P.Rot.q(rt), P.Wv.zero()}, r2, free)
     case True{} False{}:
-      Empty.absurd({P.Rot.w(P.Body.rot(P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s)))) == P.Rot.w(r2) : P.Wv},
+      Empty.absurd({P.Rot.w(P.Body.rot(P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, P.Rot.q(rt), obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s)))) == P.Rot.w(r2) : P.Wv},
         clash(Equal.trans(Bool, True{},
-          P.Body.hit(P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s))), False{},
-          Equal.sym(Bool, P.Body.hit(P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s))), True{},
-            pivota_hit(md, s, g, obs, x, y, z, vx, vy, vz, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s))),
+          P.Body.hit(P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, P.Rot.q(rt), obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s))), False{},
+          Equal.sym(Bool, P.Body.hit(P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, P.Rot.q(rt), obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s))), True{},
+            pivota_hit(md, s, g, obs, x, y, z, vx, vy, vz, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, P.Rot.q(rt), obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s))),
           free)))
     case True{} True{}:
       Empty.absurd({P.Rot.w(P.Body.rot(P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, True{}, True{}, rt, r2, P.Hold.low(P.Rot.mat(P.Rot.q(rt)), s)))) == P.Rot.w(r2) : P.Wv},
@@ -1398,14 +1431,51 @@ def pivot_fs(m: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Na
   +d = P.Tick.drop(s, obs, nx, y, nz, P.Rot.q(r2), Nat.add(Nat.sub(y, P.Pick.low(ny, y)), Nat.div(s, 256n)))
   place_fs(s, g, obs, x, y, z, nx, Nat.sub(y, d), nz, vx, vy, vz, gr, hit, rt, r2, heavy, f)
 
+def cand_fs(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z,
+  +heavy: {Nat.is_lt(0n, g) == True{} : Bool}, +f: {Bool.or(Nat.is_lt(0n, P.Z.neg(vy)), gr) == True{} : Bool})
+  -> FS(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz)):
+  pivot_fs(P.Rot.mat(P.Quat.half(P.Quat.step(w, P.Wv.mag(w)))), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt,
+    P.Rot{P.Rot.turn(P.Rot.q(rt), w), P.Rot.w(rt)}, rx, ry, rz, heavy, f)
+
+def shrink_fs(n: Nat, ok: Bool, +b: P.Body, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z,
+  +heavy: {Nat.is_lt(0n, g) == True{} : Bool}, +f: {Bool.or(Nat.is_lt(0n, P.Z.neg(vy)), gr) == True{} : Bool},
+  hb: FS(b))
+  -> FS(P.Tick.shrink(n, ok, b, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz)):
+  match n ok:
+    case 0n True{}:
+      hb
+    case 1n+m True{}:
+      hb
+    case 0n False{}:
+      hb
+    case 1n+m False{}:
+      shrink_fs(m, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz, heavy, f,
+        cand_fs(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz, heavy, f))
+
+def start_fs(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z,
+  +heavy: {Nat.is_lt(0n, g) == True{} : Bool}, +f: {Bool.or(Nat.is_lt(0n, P.Z.neg(vy)), gr) == True{} : Bool})
+  -> FS(P.Tick.shrink(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz)):
+  shrink_fs(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz, heavy, f,
+    cand_fs(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz, heavy, f))
+
+def keepw_fs(+tip: Bool, moved: Bool, +b: P.Body, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot,
+  +heavy: {Nat.is_lt(0n, g) == True{} : Bool}, +f: {Bool.or(Nat.is_lt(0n, P.Z.neg(vy)), gr) == True{} : Bool},
+  hb: FS(b))
+  -> FS(P.Body.spin(tip, moved, b, rt)):
+  match moved:
+    case True{}:
+      hb
+    case False{}:
+      hb
+
 def pivota0_fs(md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
   +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, a: P.Wv,
-  heavy: {Nat.is_lt(0n, g) == True{} : Bool}, f: FS(P.Body{x, y, z, vx, vy, vz, gr, hit, rt}))
+  +heavy: {Nat.is_lt(0n, g) == True{} : Bool}, +f: FS(P.Body{x, y, z, vx, vy, vz, gr, hit, rt}))
   -> FS(P.Tick.pivota0(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, a)):
   P.Wv{+ax, +ay, +az} = a
   +w2 = P.Tick.boost(Nat.is_le(Nat.div(s, 32n), Nat.add(P.Z.mag(ax), P.Z.mag(az))), P.Rot.w(rt))
-  pivot_fs(P.Rot.mat(P.Quat.half(P.Quat.step(w2, P.Wv.mag(w2)))), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt,
-    P.Rot{P.Rot.turn(P.Rot.q(rt), w2), P.Rot.w(rt)}, ax, ay, az, heavy, f)
+  keepw_fs(Nat.is_lt(0n, Nat.add(P.Z.mag(ax), P.Z.mag(az))), P.Tick.moved(P.Tick.shrink(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), P.Tick.shrink(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, heavy, f,
+    start_fs(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az, heavy, f))
 
 def pivota_fs(md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
   +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, a: P.Wv,
@@ -1423,9 +1493,9 @@ def turn2_fs(held: Bool, floor: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, 
   -> FS(P.Tick.turn2(held, floor, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, md)):
   match held floor:
     case False{} _:
-      place_fs(s, g, obs, x, y, z, x, y, z, vx, vy, vz, gr, hit, rt, r2, heavy, f)
+      place_fs(s, g, obs, x, y, z, x, y, z, vx, vy, vz, gr, hit, P.Rot{P.Rot.q(rt), P.Wv.zero()}, r2, heavy, f)
     case True{} False{}:
-      pivota_fs(md, s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s), heavy, f)
+      pivota_fs(md, s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, P.Rot.q(rt), obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s), heavy, f)
     case True{} True{}:
       pivota_fs(md, s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, r2, P.Hold.low(P.Rot.mat(P.Rot.q(rt)), s), heavy, f)
 
@@ -3275,14 +3345,53 @@ def pivot_e2(m: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Na
   +d = P.Tick.drop(s, obs, nx, y, nz, P.Rot.q(r2), Nat.add(Nat.sub(y, P.Pick.low(ny, y)), Nat.div(s, 256n)))
   place_e2(s, g, obs, x, y, z, nx, Nat.sub(y, d), nz, vx, vy, vz, gr, hit, rt, r2)
 
+def cand_e2(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z)
+  -> {Nat.is_le(P.Body.energy(g, P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz)),
+       P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == True{} : Bool}:
+  pivot_e2(P.Rot.mat(P.Quat.half(P.Quat.step(w, P.Wv.mag(w)))), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt,
+    P.Rot{P.Rot.turn(P.Rot.q(rt), w), P.Rot.w(rt)}, rx, ry, rz)
+
+def shrink_e2(n: Nat, ok: Bool, +b: P.Body, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z,
+  hb: {Nat.is_le(P.Body.energy(g, b),
+       P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == True{} : Bool})
+  -> {Nat.is_le(P.Body.energy(g, P.Tick.shrink(n, ok, b, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz)),
+       P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == True{} : Bool}:
+  match n ok:
+    case 0n True{}:
+      hb
+    case 1n+m True{}:
+      hb
+    case 0n False{}:
+      hb
+    case 1n+m False{}:
+      shrink_e2(m, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz,
+        cand_e2(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz))
+
+def start_e2(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z)
+  -> {Nat.is_le(P.Body.energy(g, P.Tick.shrink(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz)),
+       P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == True{} : Bool}:
+  shrink_e2(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz,
+    cand_e2(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz))
+
+def keepw_e2(+tip: Bool, moved: Bool, +b: P.Body, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot,
+  hb: {Nat.is_le(P.Body.energy(g, b),
+       P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == True{} : Bool})
+  -> {Nat.is_le(P.Body.energy(g, P.Body.spin(tip, moved, b, rt)),
+       P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == True{} : Bool}:
+  match moved:
+    case True{}:
+      hb
+    case False{}:
+      hb
+
 def pivota0_e2(md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
   +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, a: P.Wv)
   -> {Nat.is_le(P.Body.energy(g, P.Tick.pivota0(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, a)),
        P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == True{} : Bool}:
   P.Wv{+ax, +ay, +az} = a
   +w2 = P.Tick.boost(Nat.is_le(Nat.div(s, 32n), Nat.add(P.Z.mag(ax), P.Z.mag(az))), P.Rot.w(rt))
-  pivot_e2(P.Rot.mat(P.Quat.half(P.Quat.step(w2, P.Wv.mag(w2)))), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt,
-    P.Rot{P.Rot.turn(P.Rot.q(rt), w2), P.Rot.w(rt)}, ax, ay, az)
+  keepw_e2(Nat.is_lt(0n, Nat.add(P.Z.mag(ax), P.Z.mag(az))), P.Tick.moved(P.Tick.shrink(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), P.Tick.shrink(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt,
+    start_e2(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az))
 
 def pivota_e2(md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
   +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, a: P.Wv)
@@ -3300,9 +3409,9 @@ def turn2_e2(held: Bool, floor: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, 
        P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == True{} : Bool}:
   match held floor:
     case False{} _:
-      place_e2(s, g, obs, x, y, z, x, y, z, vx, vy, vz, gr, hit, rt, r2)
+      place_e2(s, g, obs, x, y, z, x, y, z, vx, vy, vz, gr, hit, P.Rot{P.Rot.q(rt), P.Wv.zero()}, r2)
     case True{} False{}:
-      pivota_e2(md, s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s))
+      pivota_e2(md, s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, P.Rot.q(rt), obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s))
     case True{} True{}:
       pivota_e2(md, s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, r2, P.Hold.low(P.Rot.mat(P.Rot.q(rt)), s))
 
@@ -3803,14 +3912,51 @@ def pivot_nc(m: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Na
   +d = P.Tick.drop(s, obs, nx, y, nz, P.Rot.q(r2), Nat.add(Nat.sub(y, P.Pick.low(ny, y)), Nat.div(s, 256n)))
   place_nc(s, g, obs, x, y, z, nx, Nat.sub(y, d), nz, vx, vy, vz, gr, hit, rt, r2, h)
 
+def cand_nc(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z,
+  +h: {P.Geo.free(s, x, y, z, P.Rot.q(rt), obs) == True{} : Bool})
+  -> FREE(s, obs, P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz)):
+  pivot_nc(P.Rot.mat(P.Quat.half(P.Quat.step(w, P.Wv.mag(w)))), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt,
+    P.Rot{P.Rot.turn(P.Rot.q(rt), w), P.Rot.w(rt)}, rx, ry, rz, h)
+
+def shrink_nc(n: Nat, ok: Bool, +b: P.Body, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z,
+  +h: {P.Geo.free(s, x, y, z, P.Rot.q(rt), obs) == True{} : Bool},
+  hb: FREE(s, obs, b))
+  -> FREE(s, obs, P.Tick.shrink(n, ok, b, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz)):
+  match n ok:
+    case 0n True{}:
+      hb
+    case 1n+m True{}:
+      hb
+    case 0n False{}:
+      hb
+    case 1n+m False{}:
+      shrink_nc(m, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz, h,
+        cand_nc(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz, h))
+
+def start_nc(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z,
+  +h: {P.Geo.free(s, x, y, z, P.Rot.q(rt), obs) == True{} : Bool})
+  -> FREE(s, obs, P.Tick.shrink(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz)):
+  shrink_nc(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz, h,
+    cand_nc(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz, h))
+
+def keepw_nc(+tip: Bool, moved: Bool, +b: P.Body, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot,
+  +h: {P.Geo.free(s, x, y, z, P.Rot.q(rt), obs) == True{} : Bool},
+  hb: FREE(s, obs, b))
+  -> FREE(s, obs, P.Body.spin(tip, moved, b, rt)):
+  match moved:
+    case True{}:
+      hb
+    case False{}:
+      hb
+
 def pivota0_nc(md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z,
   +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, a: P.Wv,
-  h: FREE(s, obs, P.Body{x, y, z, vx, vy, vz, gr, hit, rt}))
+  +h: FREE(s, obs, P.Body{x, y, z, vx, vy, vz, gr, hit, rt}))
   -> FREE(s, obs, P.Tick.pivota0(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, a)):
   P.Wv{+ax, +ay, +az} = a
   +w2 = P.Tick.boost(Nat.is_le(Nat.div(s, 32n), Nat.add(P.Z.mag(ax), P.Z.mag(az))), P.Rot.w(rt))
-  pivot_nc(P.Rot.mat(P.Quat.half(P.Quat.step(w2, P.Wv.mag(w2)))), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt,
-    P.Rot{P.Rot.turn(P.Rot.q(rt), w2), P.Rot.w(rt)}, ax, ay, az, h)
+  keepw_nc(Nat.is_lt(0n, Nat.add(P.Z.mag(ax), P.Z.mag(az))), P.Tick.moved(P.Tick.shrink(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), P.Tick.shrink(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, h,
+    start_nc(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az, h))
 
 def pivota_nc(md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z,
   +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, a: P.Wv,
@@ -3828,9 +3974,9 @@ def turn2_nc(held: Bool, floor: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, 
   -> FREE(s, obs, P.Tick.turn2(held, floor, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, md)):
   match held floor:
     case False{} _:
-      place_nc(s, g, obs, x, y, z, x, y, z, vx, vy, vz, gr, hit, rt, r2, h)
+      place_nc(s, g, obs, x, y, z, x, y, z, vx, vy, vz, gr, hit, P.Rot{P.Rot.q(rt), P.Wv.zero()}, r2, h)
     case True{} False{}:
-      pivota_nc(md, s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s), h)
+      pivota_nc(md, s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, P.Rot.q(rt), obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s), h)
     case True{} True{}:
       pivota_nc(md, s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, r2, P.Hold.low(P.Rot.mat(P.Rot.q(rt)), s), h)
 
@@ -4220,13 +4366,50 @@ def pivot_fl(m: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Na
   +d = P.Tick.drop(s, obs, nx, y, nz, P.Rot.q(r2), Nat.add(Nat.sub(y, P.Pick.low(ny, y)), Nat.div(s, 256n)))
   place_fl(s, g, obs, x, y, z, nx, Nat.sub(y, d), nz, vx, vy, vz, gr, hit, rt, r2, h)
 
+def cand_fl(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z,
+  +h: {Nat.is_le(P.Geo.sag(s, P.Rot.q(rt)), y) == True{} : Bool})
+  -> FL(s, P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz)):
+  pivot_fl(P.Rot.mat(P.Quat.half(P.Quat.step(w, P.Wv.mag(w)))), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt,
+    P.Rot{P.Rot.turn(P.Rot.q(rt), w), P.Rot.w(rt)}, rx, ry, rz, h)
+
+def shrink_fl(n: Nat, ok: Bool, +b: P.Body, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z,
+  +h: {Nat.is_le(P.Geo.sag(s, P.Rot.q(rt)), y) == True{} : Bool},
+  hb: FL(s, b))
+  -> FL(s, P.Tick.shrink(n, ok, b, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz)):
+  match n ok:
+    case 0n True{}:
+      hb
+    case 1n+m True{}:
+      hb
+    case 0n False{}:
+      hb
+    case 1n+m False{}:
+      shrink_fl(m, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz, h,
+        cand_fl(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz, h))
+
+def start_fl(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z,
+  +h: {Nat.is_le(P.Geo.sag(s, P.Rot.q(rt)), y) == True{} : Bool})
+  -> FL(s, P.Tick.shrink(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz)):
+  shrink_fl(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz, h,
+    cand_fl(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz, h))
+
+def keepw_fl(+tip: Bool, moved: Bool, +b: P.Body, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot,
+  +h: {Nat.is_le(P.Geo.sag(s, P.Rot.q(rt)), y) == True{} : Bool},
+  hb: FL(s, b))
+  -> FL(s, P.Body.spin(tip, moved, b, rt)):
+  match moved:
+    case True{}:
+      hb
+    case False{}:
+      hb
+
 def pivota0_fl(md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z,
   +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, a: P.Wv, h: {Nat.is_le(P.Geo.sag(s, P.Rot.q(rt)), y) == True{} : Bool})
   -> FL(s, P.Tick.pivota0(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, a)):
   P.Wv{+ax, +ay, +az} = a
   +w2 = P.Tick.boost(Nat.is_le(Nat.div(s, 32n), Nat.add(P.Z.mag(ax), P.Z.mag(az))), P.Rot.w(rt))
-  pivot_fl(P.Rot.mat(P.Quat.half(P.Quat.step(w2, P.Wv.mag(w2)))), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt,
-    P.Rot{P.Rot.turn(P.Rot.q(rt), w2), P.Rot.w(rt)}, ax, ay, az, h)
+  keepw_fl(Nat.is_lt(0n, Nat.add(P.Z.mag(ax), P.Z.mag(az))), P.Tick.moved(P.Tick.shrink(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), P.Tick.shrink(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, h,
+    start_fl(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az, h))
 
 def pivota_fl(md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z,
   +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, a: P.Wv, h: {Nat.is_le(P.Geo.sag(s, P.Rot.q(rt)), y) == True{} : Bool})
@@ -4242,9 +4425,9 @@ def turn2_fl(held: Bool, floor: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, 
   -> FL(s, P.Tick.turn2(held, floor, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, md)):
   match held floor:
     case False{} _:
-      place_fl(s, g, obs, x, y, z, x, y, z, vx, vy, vz, gr, hit, rt, r2, h)
+      place_fl(s, g, obs, x, y, z, x, y, z, vx, vy, vz, gr, hit, P.Rot{P.Rot.q(rt), P.Wv.zero()}, r2, h)
     case True{} False{}:
-      pivota_fl(md, s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s), h)
+      pivota_fl(md, s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, P.Rot.q(rt), obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s), h)
     case True{} True{}:
       pivota_fl(md, s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, r2, P.Hold.low(P.Rot.mat(P.Rot.q(rt)), s), h)
 
@@ -4394,13 +4577,50 @@ def pivot_sh(m: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Na
   +d = P.Tick.drop(s, obs, nx, y, nz, P.Rot.q(r2), Nat.add(Nat.sub(y, P.Pick.low(ny, y)), Nat.div(s, 256n)))
   place_sh(s, g, obs, x, y, z, nx, Nat.sub(y, d), nz, vx, vy, vz, gr, hit, rt, r2, h)
 
+def cand_sh(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z,
+  +h: {Bool.and(gr, P.Tick.sinks(s, obs, x, y, z, P.Rot.q(rt))) == False{} : Bool})
+  -> SH(s, obs, P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz)):
+  pivot_sh(P.Rot.mat(P.Quat.half(P.Quat.step(w, P.Wv.mag(w)))), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt,
+    P.Rot{P.Rot.turn(P.Rot.q(rt), w), P.Rot.w(rt)}, rx, ry, rz, h)
+
+def shrink_sh(n: Nat, ok: Bool, +b: P.Body, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z,
+  +h: {Bool.and(gr, P.Tick.sinks(s, obs, x, y, z, P.Rot.q(rt))) == False{} : Bool},
+  hb: SH(s, obs, b))
+  -> SH(s, obs, P.Tick.shrink(n, ok, b, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz)):
+  match n ok:
+    case 0n True{}:
+      hb
+    case 1n+m True{}:
+      hb
+    case 0n False{}:
+      hb
+    case 1n+m False{}:
+      shrink_sh(m, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz, h,
+        cand_sh(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz, h))
+
+def start_sh(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z,
+  +h: {Bool.and(gr, P.Tick.sinks(s, obs, x, y, z, P.Rot.q(rt))) == False{} : Bool})
+  -> SH(s, obs, P.Tick.shrink(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz)):
+  shrink_sh(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz, h,
+    cand_sh(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz, h))
+
+def keepw_sh(+tip: Bool, moved: Bool, +b: P.Body, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot,
+  +h: {Bool.and(gr, P.Tick.sinks(s, obs, x, y, z, P.Rot.q(rt))) == False{} : Bool},
+  hb: SH(s, obs, b))
+  -> SH(s, obs, P.Body.spin(tip, moved, b, rt)):
+  match moved:
+    case True{}:
+      hb
+    case False{}:
+      hb
+
 def pivota0_sh(md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z,
   +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, a: P.Wv, h: {Bool.and(gr, P.Tick.sinks(s, obs, x, y, z, P.Rot.q(rt))) == False{} : Bool})
   -> SH(s, obs, P.Tick.pivota0(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, a)):
   P.Wv{+ax, +ay, +az} = a
   +w2 = P.Tick.boost(Nat.is_le(Nat.div(s, 32n), Nat.add(P.Z.mag(ax), P.Z.mag(az))), P.Rot.w(rt))
-  pivot_sh(P.Rot.mat(P.Quat.half(P.Quat.step(w2, P.Wv.mag(w2)))), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt,
-    P.Rot{P.Rot.turn(P.Rot.q(rt), w2), P.Rot.w(rt)}, ax, ay, az, h)
+  keepw_sh(Nat.is_lt(0n, Nat.add(P.Z.mag(ax), P.Z.mag(az))), P.Tick.moved(P.Tick.shrink(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), P.Tick.shrink(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, h,
+    start_sh(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az, h))
 
 def pivota_sh(md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z,
   +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, a: P.Wv, h: {Bool.and(gr, P.Tick.sinks(s, obs, x, y, z, P.Rot.q(rt))) == False{} : Bool})
@@ -4416,9 +4636,9 @@ def turn2_sh(held: Bool, floor: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, 
   -> SH(s, obs, P.Tick.turn2(held, floor, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, md)):
   match held floor:
     case False{} _:
-      place_sh(s, g, obs, x, y, z, x, y, z, vx, vy, vz, gr, hit, rt, r2, h)
+      place_sh(s, g, obs, x, y, z, x, y, z, vx, vy, vz, gr, hit, P.Rot{P.Rot.q(rt), P.Wv.zero()}, r2, h)
     case True{} False{}:
-      pivota_sh(md, s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s), h)
+      pivota_sh(md, s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, r2, P.Hold.arm(P.Geo.foot(s, x, y, z, P.Rot.q(rt), obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s), h)
     case True{} True{}:
       pivota_sh(md, s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, r2, P.Hold.low(P.Rot.mat(P.Rot.q(rt)), s), h)
 
