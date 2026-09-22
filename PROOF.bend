@@ -3034,7 +3034,6 @@ def res_ez(+g: Nat, +a: P.Z, +a2: P.Z, +p: Nat, +q: Nat, +y: Nat, +obs: List<&2,
       R.Add{R.Add{R.Add{R.Add{R.V{2n}, R.V{3n}}, R.V{0n}}, R.V{4n}}, R.V{1n}}, {==}),
     h)
 
-
 def xput_me(ok: Bool, +g: Nat, +obs2: List<&2, P.Body>, +cx: Nat, +x: Nat, +y: Nat, +z: Nat, +v: P.Z, +vx: P.Z, +vy: P.Z, +vz: P.Z,
   +gr: Bool, +hit: Bool, +obs: List<&2, P.Body>,
   h: {Nat.is_le(Nat.add(P.Z.sq(v), P.Body.energies(g, obs2)), Nat.add(P.Z.sq(vx), P.Body.energies(g, obs))) == True{} : Bool}, +rt: P.Rot)
@@ -4060,7 +4059,6 @@ def Laws.no_clip(k, obs, inp, b, clear):
           P.Body.drive(P.K{g, mu, j, acc, s}, inp, P.Body{x, y, z, vx, vy, vz, gr, hit, rt}))),
         nclip(rt, g, mu, j, acc, s, obs, inp, x, y, z, vx, vy, vz, gr, hit, clear))
 
-
 # Turning
 # -------
 # Rot.free hands back the same three rates and the angle plus the rate,
@@ -4150,7 +4148,6 @@ def Laws.spin_is_across_the_push(rx, jx):
       ({==}, across_np(a, b))
     case P.Neg{+a} P.Neg{+b}:
       ({==}, across_nn(a, b))
-
 
 # Nothing goes into the floor
 # ---------------------------
@@ -5110,47 +5107,6 @@ def movey_stay0(+s: Nat, +g: Nat, +x: Nat, +y: Nat, +z: Nat, +h: Bool, +q: P.Qua
             P.Rot.pressw(P.Rot{q, P.Wv.zero()}, s, P.Hold.low(P.Rot.mat(q), s), g)} : P.Body}
   {==}
 
-def step_body(+k: P.K, +x: Nat, +y: Nat, +z: Nat, +h: Bool, +q: P.Quat,
-  +held: {P.Tick.sinks(P.K.size(k), [], x, y, z, q) == False{} : Bool},
-  +floor: {P.Geo.onfloor(P.K.size(k), y, q) == True{} : Bool})
-  -> {P.Tick.body(P.Body.step(k, [], P.In.idle(), P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, P.Rot{q, P.Wv.zero()}}))
-      == P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, False{},
-          P.Rot.pressw(P.Rot{q, P.Wv.zero()}, P.K.size(k), P.Hold.low(P.Rot.mat(q), P.K.size(k)), P.K.g(k))} : P.Body}:
-  +s = P.K.size(k)
-  +g2 = P.K.g(k)
-  +rt = {P.Rot{q, P.Wv.zero()} : P.Rot}
-  +bd = {P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, False{}, rt} : P.Body}
-  +e_drive = drive_idle0(k, x, y, z, h, rt)
-  +e_x = Equal.trans(P.Body & List<&2, P.Body>,
-    P.Move.x(s, [], P.Pos{0n}, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, rt})),
-    P.Move.x(s, [], P.Pos{0n}, bd), (bd, []),
-    Equal.cong(P.Body, P.Body & List<&2, P.Body>, (b: P.Body) => P.Move.x(s, [], P.Pos{0n}, b),
-      P.Body.drive(k, P.In.idle(), P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, rt}), bd, e_drive),
-    movex_idle0(s, x, y, z, False{}, rt))
-  +e_movez_cong = Equal.cong(P.Body & List<&2, P.Body>, P.Body & List<&2, P.Body>, (r: P.Body & List<&2, P.Body>) => P.Tick.y(s, g2, r),
-    P.Move.z(s, [], P.Pos{0n}, bd), (bd, []), movez_idle0(s, x, y, z, False{}, rt))
-  +e_movez_final = Equal.trans(P.Body & List<&2, P.Body>,
-    P.Tick.y(s, g2, P.Move.z(s, [], P.Pos{0n}, bd)), P.Tick.y(s, g2, (bd, [])), (P.Move.y(s, g2, [], bd), []),
-    e_movez_cong, {==})
-  +e_z = Equal.trans(P.Body & List<&2, P.Body>,
-    P.Tick.z(s, g2, P.Pos{0n}, P.Move.x(s, [], P.Pos{0n}, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, rt}))),
-    P.Tick.z(s, g2, P.Pos{0n}, (bd, [])), (P.Move.y(s, g2, [], bd), []),
-    Equal.cong(P.Body & List<&2, P.Body>, P.Body & List<&2, P.Body>, (r: P.Body & List<&2, P.Body>) => P.Tick.z(s, g2, P.Pos{0n}, r),
-      P.Move.x(s, [], P.Pos{0n}, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, rt})), (bd, []), e_x),
-    e_movez_final)
-  +e_final_body = Equal.trans(P.Body,
-    P.Tick.body(P.Tick.z(s, g2, P.Pos{0n}, P.Move.x(s, [], P.Pos{0n}, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, rt})))),
-    P.Tick.body((P.Move.y(s, g2, [], bd), [])), P.Move.y(s, g2, [], bd),
-    Equal.cong(P.Body & List<&2, P.Body>, P.Body, (r: P.Body & List<&2, P.Body>) => P.Tick.body(r),
-      P.Tick.z(s, g2, P.Pos{0n}, P.Move.x(s, [], P.Pos{0n}, P.Body.drive(k, P.In.idle(), P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, rt}))),
-      (P.Move.y(s, g2, [], bd), []), e_z),
-    {==})
-  Equal.trans(P.Body,
-    P.Tick.body(P.Body.step(k, [], P.In.idle(), P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, rt})),
-    P.Move.y(s, g2, [], bd),
-    P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, False{}, P.Rot.pressw(rt, s, P.Hold.low(P.Rot.mat(q), s), g2)},
-    e_final_body, movey_stay0(s, g2, x, y, z, False{}, q, held, floor))
-
 def step_pair(+k: P.K, +x: Nat, +y: Nat, +z: Nat, +h: Bool, +q: P.Quat,
   +held: {P.Tick.sinks(P.K.size(k), [], x, y, z, q) == False{} : Bool},
   +floor: {P.Geo.onfloor(P.K.size(k), y, q) == True{} : Bool})
@@ -5194,38 +5150,6 @@ def wz_after_pressw0(+q: P.Quat, +s: Nat, +a: P.Wv, +g: Nat)
           P.Rot.about(s, P.Wv.x(a), P.Wv.y(a), P.Wv.z(a)))) : P.Z}:
   wz_after_pressw(P.Rot{q, P.Wv.zero()}, s, a, g)
 
-def wz_step(+k: P.K, +x: Nat, +y: Nat, +z: Nat, +h: Bool, +q: P.Quat,
-  +held: {P.Tick.sinks(P.K.size(k), [], x, y, z, q) == False{} : Bool},
-  +floor: {P.Geo.onfloor(P.K.size(k), y, q) == True{} : Bool})
-  -> {P.Wv.z(P.Rot.w(P.Body.rot(P.Tick.body(P.Body.step(k, [], P.In.idle(), P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, P.Rot{q, P.Wv.zero()}})))))
-      == P.Z.add(P.Pos{0n}, P.Z.divc(P.Rot.crz(P.Wv.x(P.Hold.low(P.Rot.mat(q), P.K.size(k))), P.Wv.y(P.Hold.low(P.Rot.mat(q), P.K.size(k))), P.Pos{0n}, P.Pos{P.K.g(k)}),
-          P.Rot.about(P.K.size(k), P.Wv.x(P.Hold.low(P.Rot.mat(q), P.K.size(k))), P.Wv.y(P.Hold.low(P.Rot.mat(q), P.K.size(k))), P.Wv.z(P.Hold.low(P.Rot.mat(q), P.K.size(k)))))) : P.Z}:
-  Equal.trans(P.Z,
-    P.Wv.z(P.Rot.w(P.Body.rot(P.Tick.body(P.Body.step(k, [], P.In.idle(), P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, P.Rot{q, P.Wv.zero()}}))))),
-    P.Wv.z(P.Rot.w(P.Rot.pressw(P.Rot{q, P.Wv.zero()}, P.K.size(k), P.Hold.low(P.Rot.mat(q), P.K.size(k)), P.K.g(k)))),
-    P.Z.add(P.Pos{0n}, P.Z.divc(P.Rot.crz(P.Wv.x(P.Hold.low(P.Rot.mat(q), P.K.size(k))), P.Wv.y(P.Hold.low(P.Rot.mat(q), P.K.size(k))), P.Pos{0n}, P.Pos{P.K.g(k)}),
-        P.Rot.about(P.K.size(k), P.Wv.x(P.Hold.low(P.Rot.mat(q), P.K.size(k))), P.Wv.y(P.Hold.low(P.Rot.mat(q), P.K.size(k))), P.Wv.z(P.Hold.low(P.Rot.mat(q), P.K.size(k)))))),
-    Equal.cong(P.Body, P.Z, (b: P.Body) => P.Wv.z(P.Rot.w(P.Body.rot(b))),
-      P.Tick.body(P.Body.step(k, [], P.In.idle(), P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, P.Rot{q, P.Wv.zero()}})),
-      P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, False{},
-        P.Rot.pressw(P.Rot{q, P.Wv.zero()}, P.K.size(k), P.Hold.low(P.Rot.mat(q), P.K.size(k)), P.K.g(k))},
-      step_body(k, x, y, z, h, q, held, floor)),
-    wz_after_pressw0(q, P.K.size(k), P.Hold.low(P.Rot.mat(q), P.K.size(k)), P.K.g(k)))
-
-def and_false_r(a: Bool) -> {Bool.and(a, False{}) == False{} : Bool}:
-  match a:
-    case True{}:
-      {==}
-    case False{}:
-      {==}
-
-def lt_neq0(+n: Nat, +h: {Nat.is_lt(0n, n) == True{} : Bool}) -> {Nat.is_eq(n, 0n) == False{} : Bool}:
-  match n:
-    case 0n:
-      Empty.absurd({Nat.is_eq(0n, 0n) == False{} : Bool}, clash2(h))
-    case 1n+p:
-      {==}
-
 def kickzsign_mag(+ax: P.Z, +ha: {Nat.is_lt(0n, P.Z.mag(ax)) == True{} : Bool}, +ay: P.Z, +g: Nat,
   +hg: {Nat.is_lt(0n, g) == True{} : Bool}, +D: Nat)
   -> {Nat.is_lt(0n, P.Z.mag(P.Z.divc(P.Rot.crz(ax, ay, P.Pos{0n}, P.Pos{g}), D))) == True{} : Bool}:
@@ -5239,37 +5163,348 @@ def kickzsign_mag(+ax: P.Z, +ha: {Nat.is_lt(0n, P.Z.mag(ax)) == True{} : Bool}, 
         crz_eq(P.Neg{a}, ha, ay, g, hg)) : {Nat.is_lt(0n, P.Z.mag(P.Z.divc(_, D))) == True{} : Bool}
       divc_mag_pos(Nat.mul(a, g), mul_pos(a, ha, g, hg), D)
 
-def wv_null_false_z(+v: P.Wv, +hz: {Nat.is_eq(P.Z.mag(P.Wv.z(v)), 0n) == False{} : Bool}) -> {P.Wv.null(v) == False{} : Bool}:
-  match v:
-    case P.Wv{vx, vy, vz}:
-      %Equal.sym(Bool, Nat.is_eq(P.Z.mag(vz), 0n), False{}, hz)
-        : {Bool.and(Nat.is_eq(P.Z.mag(vx), 0n), Bool.and(Nat.is_eq(P.Z.mag(vy), 0n), _)) == False{} : Bool}
-      %Equal.sym(Bool, Bool.and(Nat.is_eq(P.Z.mag(vy), 0n), False{}), False{}, and_false_r(Nat.is_eq(P.Z.mag(vy), 0n)))
-        : {Bool.and(Nat.is_eq(P.Z.mag(vx), 0n), _) == False{} : Bool}
-      and_false_r(Nat.is_eq(P.Z.mag(vx), 0n))
-
-# The turn about a contact, threaded through Body.spin: never compare
-# against Tick.turn1b/Tick.turn2/Tick.pivota/Tick.pivota0/Tick.shrink via
-# {==} (or Equal.cong/Equal.trans, which is {==} underneath) -- even
-# trivial reflexivity on a term that drags one of those in hangs, since
-# {==} fully normalizes and Tick.shrink is a 7-level recursive search
-# with a 64-step Tick.drop bisection inside each level. Match on the
-# SAME parameter the return type already mentions instead (like
-# keepw_fs's own `moved`), so the checker only ever takes the single,
-# non-recursive step Body.spin's own match needs. See PROMPT-TOMBAR.md.
+# The turning through the turn about a contact
+# ============================================
+# The search the turn makes (Tick.shrink, Tick.cand, Tick.pivot, down to
+# Tick.put) never touches the turning: every candidate is built as
+# Rot{Rot.turn(q, w), Rot.w(rt)}, and Tick.put hands back either it or the
+# rt it started from. So Rot.w comes out of the whole turn as it went in
+# (ROTW), and proving that needs nothing of the quaternion.
+#
+# Two ways NOT to do this, both measured: {==} (and Equal.cong/Equal.trans,
+# which are {==} underneath) against a term that drags in Tick.turn1b,
+# Tick.turn2, Tick.pivota0 or Tick.shrink never finishes -- {==} normalizes
+# the whole 7-level search, a 64-step Tick.drop inside each level; and a
+# predicate that projects Rot.q out of the body the search returns blows up
+# the same way (the quaternion is built from Quat.step/Rot.turn at every
+# level). Match on the same parameter the return type mentions instead, as
+# the _fs family does, and only ever look at the turning.
 # ---------------------------------------------------------------------------
 
-def WZ(+q: P.Quat, +ax: P.Z, +rt: P.Rot, -b: P.Body) -> Type:
-  {Bool.or(Bool.not(P.Quat.same(P.Rot.q(P.Body.rot(b)), q)),
-    P.Z.above(P.Z.mul(ax, P.Wv.z(P.Rot.w(P.Body.rot(b)))), P.Pos{0n})) == True{} : Bool}
+def ROTW(+w0: P.Wv, -b: P.Body) -> Type:
+  {P.Rot.w(P.Body.rot(b)) == w0 : P.Wv}
 
-def spin_wz(moved: Bool, +ax: P.Z, +q: P.Quat, +rt: P.Rot, +b: P.Body,
-  hmoved: {moved == Bool.not(P.Quat.same(P.Rot.q(P.Body.rot(b)), q)) : Bool},
-  hw: {P.Z.above(P.Z.mul(ax, P.Wv.z(P.Rot.w(rt))), P.Pos{0n}) == True{} : Bool})
-  -> WZ(q, ax, rt, P.Body.spin(True{}, moved, b, rt)):
+def put_rotw(ok: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +nx: Nat, +ny: Nat,
+  +nz: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, +w0: P.Wv,
+  hrt: {P.Rot.w(rt) == w0 : P.Wv}, hr2: {P.Rot.w(r2) == w0 : P.Wv})
+  -> ROTW(w0, P.Tick.put(ok, s, g, obs, x, y, z, nx, ny, nz, vx, vy, vz, gr, hit, rt, r2)):
+  match ok:
+    case True{}:
+      hr2
+    case False{}:
+      hrt
+
+def place_rotw(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +nx: Nat, +ny: Nat, +nz: Nat,
+  +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, +w0: P.Wv,
+  hrt: {P.Rot.w(rt) == w0 : P.Wv}, hr2: {P.Rot.w(r2) == w0 : P.Wv})
+  -> ROTW(w0, P.Tick.place(s, g, obs, x, y, z, nx, ny, nz, vx, vy, vz, gr, hit, rt, r2)):
+  put_rotw(P.Tick.turnok(s, obs, y, nx, ny, nz, P.Rot.q(r2), gr), s, g, obs, x, y, z, nx, ny, nz,
+    vx, vy, vz, gr, hit, rt, r2, w0, hrt, hr2)
+
+def pivot_rotw(m: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
+  +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, +rx: P.Z, +ry: P.Z, +rz: P.Z, +w0: P.Wv,
+  hrt: {P.Rot.w(rt) == w0 : P.Wv}, hr2: {P.Rot.w(r2) == w0 : P.Wv})
+  -> ROTW(w0, P.Tick.pivot(m, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, rx, ry, rz)):
+  P.Mat{+axx, +axy, +axz, +ayx, +ayy, +ayz, +azx, +azy, +azz} = m
+  +nx = P.Pivot.c(x, rx, axx, ayx, azx, rx, ry, rz)
+  +ny = P.Pivot.c(y, ry, axy, ayy, azy, rx, ry, rz)
+  +nz = P.Pivot.c(z, rz, axz, ayz, azz, rx, ry, rz)
+  +d = P.Tick.drop(s, obs, nx, y, nz, P.Rot.q(r2), Nat.add(Nat.sub(y, P.Pick.low(ny, y)), Nat.div(s, 256n)))
+  place_rotw(s, g, obs, x, y, z, nx, Nat.sub(y, d), nz, vx, vy, vz, gr, hit, rt, r2, w0, hrt, hr2)
+
+def cand_rotw(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z,
+  +gr: Bool, +hit: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z, +w0: P.Wv,
+  +hrt: {P.Rot.w(rt) == w0 : P.Wv})
+  -> ROTW(w0, P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz)):
+  pivot_rotw(P.Rot.mat(P.Quat.half(P.Quat.step(w, P.Wv.mag(w)))), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt,
+    P.Rot{P.Rot.turn(P.Rot.q(rt), w), P.Rot.w(rt)}, rx, ry, rz, w0, hrt, hrt)
+
+def shrink_rotw(n: Nat, ok: Bool, +b: P.Body, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat,
+  +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z, +w0: P.Wv,
+  +hrt: {P.Rot.w(rt) == w0 : P.Wv}, hb: ROTW(w0, b))
+  -> ROTW(w0, P.Tick.shrink(n, ok, b, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz)):
+  match n ok:
+    case 0n True{}:
+      hb
+    case 1n+m True{}:
+      hb
+    case 0n False{}:
+      hb
+    case 1n+m False{}:
+      shrink_rotw(m, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), rt),
+        P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz),
+        s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz, w0, hrt,
+        cand_rotw(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz, w0, hrt))
+
+def start_rotw(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z,
+  +gr: Bool, +hit: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z, +w0: P.Wv,
+  +hrt: {P.Rot.w(rt) == w0 : P.Wv})
+  -> ROTW(w0, P.Tick.shrink(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt),
+      P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz),
+      s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz)):
+  shrink_rotw(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt),
+    P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz),
+    s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz, w0, hrt,
+    cand_rotw(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz, w0, hrt))
+
+def spin_rotw(tip: Bool, moved: Bool, +b: P.Body, +rt: P.Rot, +w0: P.Wv,
+  +hrt: {P.Rot.w(rt) == w0 : P.Wv}, hb: ROTW(w0, b), +htip: {tip == True{} : Bool})
+  -> ROTW(w0, P.Body.spin(tip, moved, b, rt)):
   match moved:
     case True{}:
-      or_here(Bool.not(P.Quat.same(P.Rot.q(P.Body.rot(b)), q)), P.Z.above(P.Z.mul(ax, P.Wv.z(P.Rot.w(P.Body.rot(b)))), P.Pos{0n}),
-        Equal.sym(Bool, True{}, Bool.not(P.Quat.same(P.Rot.q(P.Body.rot(b)), q)), hmoved))
+      hb
     case False{}:
-      or_there(Bool.not(P.Quat.same(P.Rot.q(P.Body.rot(b)), q)), P.Z.above(P.Z.mul(ax, P.Wv.z(P.Rot.w(rt))), P.Pos{0n}), hw)
+      %Equal.sym(Bool, tip, True{}, htip)
+        : {P.Pick.w(_, P.Rot.w(rt), P.Wv.zero()) == w0 : P.Wv}
+      hrt
+
+def pivota0_rotw(md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
+  +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, a: P.Wv, +w0: P.Wv,
+  +hrt: {P.Rot.w(rt) == w0 : P.Wv},
+  +htip: {Nat.is_lt(0n, Nat.add(P.Z.mag(P.Wv.x(a)), P.Z.mag(P.Wv.z(a)))) == True{} : Bool})
+  -> ROTW(w0, P.Tick.pivota0(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, a)):
+  P.Wv{+ax, +ay, +az} = a
+  +w2 = P.Tick.boost(Nat.is_le(Nat.div(s, 32n), Nat.add(P.Z.mag(ax), P.Z.mag(az))), P.Rot.w(rt))
+  spin_rotw(Nat.is_lt(0n, Nat.add(P.Z.mag(ax), P.Z.mag(az))),
+    P.Tick.moved(P.Tick.shrink(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt),
+    P.Tick.shrink(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az),
+    rt, w0, hrt,
+    start_rotw(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az, w0, hrt),
+    htip)
+
+def pivota_rotw(md: P.Mat, +s: Nat, +g: Nat, obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
+  +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, a: P.Wv, +w0: P.Wv,
+  +hrt: {P.Rot.w(rt) == w0 : P.Wv},
+  +htip: {Nat.is_lt(0n, Nat.add(P.Z.mag(P.Wv.x(a)), P.Z.mag(P.Wv.z(a)))) == True{} : Bool})
+  -> ROTW(w0, P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, a)):
+  match obs:
+    case []:
+      pivota0_rotw(md, s, g, [], x, y, z, vx, vy, vz, gr, hit, rt, r2, a, w0, hrt, htip)
+    case o <> rest:
+      pivota0_rotw(md, s, g, o <> rest, x, y, z, vx, vy, vz, gr, hit, rt, r2, a, w0, hrt, htip)
+
+def turn2_rotw(held: Bool, floor: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat,
+  +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, +md: P.Mat, +w0: P.Wv,
+  +hrt: {P.Rot.w(rt) == w0 : P.Wv},
+  +hheld: {held == True{} : Bool}, +hfloor: {floor == True{} : Bool},
+  +htip: {Nat.is_lt(0n, Nat.add(P.Z.mag(P.Wv.x(P.Hold.low(P.Rot.mat(P.Rot.q(rt)), s))),
+    P.Z.mag(P.Wv.z(P.Hold.low(P.Rot.mat(P.Rot.q(rt)), s))))) == True{} : Bool})
+  -> ROTW(w0, P.Tick.turn2(held, floor, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, md)):
+  match held floor:
+    case False{} _:
+      Empty.absurd(ROTW(w0, P.Tick.place(s, g, obs, x, y, z, x, y, z, vx, vy, vz, gr, hit, P.Rot{P.Rot.q(rt), P.Wv.zero()}, r2)), clash2(hheld))
+    case True{} False{}:
+      Empty.absurd(ROTW(w0, P.Tick.pivota(md, s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, r2,
+        P.Hold.arm(P.Geo.foot(s, x, y, z, P.Rot.q(rt), obs, P.Foot.none()), P.Rot.mat(P.Rot.q(rt)), s))), clash2(hfloor))
+    case True{} True{}:
+      pivota_rotw(md, s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, r2,
+        P.Hold.low(P.Rot.mat(P.Rot.q(rt)), s), w0, hrt, htip)
+
+def turn1b_rotw(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, b: P.Body, +w0: P.Wv,
+  hb: ROTW(w0, b),
+  +hgr: {P.Body.ground(b) == True{} : Bool},
+  +hfloor: {P.Geo.onfloor(s, P.Body.y(b), P.Rot.q(P.Body.rot(b))) == True{} : Bool},
+  +htip: {Nat.is_lt(0n, Nat.add(P.Z.mag(P.Wv.x(P.Hold.low(P.Rot.mat(P.Rot.q(P.Body.rot(b))), s))),
+    P.Z.mag(P.Wv.z(P.Hold.low(P.Rot.mat(P.Rot.q(P.Body.rot(b))), s))))) == True{} : Bool})
+  -> ROTW(w0, P.Tick.turn1b(s, g, obs, b)):
+  match b:
+    case P.Body{+x, +y, +z, +vx, +vy, +vz, +gr, +hit, +rt}:
+      turn2_rotw(gr, P.Geo.onfloor(s, y, P.Rot.q(rt)), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt,
+        P.Rot.free(rt), P.Rot.mat(P.Quat.half(P.Quat.step(P.Rot.w(rt), P.Wv.mag(P.Rot.w(rt))))), w0,
+        hb, hgr, hfloor, htip)
+
+def turn1_rotw(still: Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, b: P.Body, +w0: P.Wv,
+  hb: ROTW(w0, b),
+  +hgr: {P.Body.ground(b) == True{} : Bool},
+  +hfloor: {P.Geo.onfloor(s, P.Body.y(b), P.Rot.q(P.Body.rot(b))) == True{} : Bool},
+  +htip: {Nat.is_lt(0n, Nat.add(P.Z.mag(P.Wv.x(P.Hold.low(P.Rot.mat(P.Rot.q(P.Body.rot(b))), s))),
+    P.Z.mag(P.Wv.z(P.Hold.low(P.Rot.mat(P.Rot.q(P.Body.rot(b))), s))))) == True{} : Bool})
+  -> ROTW(w0, P.Tick.turn1(still, s, g, obs, b)):
+  match still:
+    case True{}:
+      hb
+    case False{}:
+      turn1b_rotw(s, g, obs, b, w0, hb, hgr, hfloor, htip)
+
+def turn0_rotw(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +b: P.Body, +w0: P.Wv,
+  hb: ROTW(w0, b),
+  +hgr: {P.Body.ground(b) == True{} : Bool},
+  +hfloor: {P.Geo.onfloor(s, P.Body.y(b), P.Rot.q(P.Body.rot(b))) == True{} : Bool},
+  +htip: {Nat.is_lt(0n, Nat.add(P.Z.mag(P.Wv.x(P.Hold.low(P.Rot.mat(P.Rot.q(P.Body.rot(b))), s))),
+    P.Z.mag(P.Wv.z(P.Hold.low(P.Rot.mat(P.Rot.q(P.Body.rot(b))), s))))) == True{} : Bool})
+  -> ROTW(w0, P.Tick.turn0(s, g, obs, b)):
+  turn1_rotw(P.Wv.null(P.Rot.w(P.Body.rot(b))), s, g, obs, b, w0, hb, hgr, hfloor, htip)
+
+def turn_rotw(+s: Nat, +g: Nat, obs: List<&2, P.Body>, +b: P.Body, +w0: P.Wv,
+  hb: ROTW(w0, b),
+  +hgr: {P.Body.ground(b) == True{} : Bool},
+  +hfloor: {P.Geo.onfloor(s, P.Body.y(b), P.Rot.q(P.Body.rot(b))) == True{} : Bool},
+  +htip: {Nat.is_lt(0n, Nat.add(P.Z.mag(P.Wv.x(P.Hold.low(P.Rot.mat(P.Rot.q(P.Body.rot(b))), s))),
+    P.Z.mag(P.Wv.z(P.Hold.low(P.Rot.mat(P.Rot.q(P.Body.rot(b))), s))))) == True{} : Bool})
+  -> ROTW(w0, P.Tick.turn(s, g, obs, b)):
+  match obs:
+    case []:
+      turn0_rotw(s, g, [], b, w0, hb, hgr, hfloor, htip)
+    case o <> rest:
+      turn0_rotw(s, g, o <> rest, b, w0, hb, hgr, hfloor, htip)
+
+# The same torque about x: the floor pressing up at +z of the middle turns
+# the cube about -x (Rot.crx carries -az*g), so the arm along z and the
+# turning about x have opposite signs.
+# ---------------------------------------------------------------------------
+
+def Z_add_l_neg0(+v: P.Z) -> {P.Z.add(P.Neg{0n}, v) == v : P.Z}:
+  match v:
+    case P.Pos{n}:
+      %Equal.sym(Bool, Nat.is_lt(n, 0n), False{}, lt_zero_r(n)) : {P.Z.diff(_, n, 0n) == P.Pos{n} : P.Z}
+      %sub_zero_r(n) : {P.Pos{Nat.sub(n, 0n)} == P.Pos{_} : P.Z}
+      {==}
+    case P.Neg{n}:
+      {==}
+
+def Z_opp_mul_pos_mag(+az: P.Z, +ha: {Nat.is_lt(0n, P.Z.mag(az)) == True{} : Bool}, +g: Nat,
+  +hg: {Nat.is_lt(0n, g) == True{} : Bool}) -> {Nat.is_lt(0n, P.Z.mag(P.Z.opp(P.Z.mul(az, P.Pos{g})))) == True{} : Bool}:
+  match az:
+    case P.Pos{a}:
+      mul_pos(a, ha, g, hg)
+    case P.Neg{a}:
+      mul_pos(a, ha, g, hg)
+
+def crx_eq(+ay: P.Z, +az: P.Z, +ha: {Nat.is_lt(0n, P.Z.mag(az)) == True{} : Bool}, +g: Nat,
+  +hg: {Nat.is_lt(0n, g) == True{} : Bool}) -> {P.Rot.crx(ay, az, P.Pos{g}, P.Pos{0n}) == P.Z.opp(P.Z.mul(az, P.Pos{g})) : P.Z}:
+  match ay:
+    case P.Pos{a}:
+      %Equal.sym(Nat, Nat.mul(a, 0n), 0n, R.mul_zero(a))
+        : {P.Z.sub(P.Pos{_}, P.Z.mul(az, P.Pos{g})) == P.Z.opp(P.Z.mul(az, P.Pos{g})) : P.Z}
+      Z_add_l_pos0(P.Z.opp(P.Z.mul(az, P.Pos{g})), Z_opp_mul_pos_mag(az, ha, g, hg))
+    case P.Neg{a}:
+      %Equal.sym(Nat, Nat.mul(a, 0n), 0n, R.mul_zero(a))
+        : {P.Z.sub(P.Neg{_}, P.Z.mul(az, P.Pos{g})) == P.Z.opp(P.Z.mul(az, P.Pos{g})) : P.Z}
+      Z_add_l_neg0(P.Z.opp(P.Z.mul(az, P.Pos{g})))
+
+def kickxsign(+az: P.Z, +ha: {Nat.is_lt(0n, P.Z.mag(az)) == True{} : Bool}, +ay: P.Z, +g: Nat,
+  +hg: {Nat.is_lt(0n, g) == True{} : Bool}, +D: Nat)
+  -> {P.Z.above(P.Pos{0n}, P.Z.mul(az, P.Z.divc(P.Rot.crx(ay, az, P.Pos{g}, P.Pos{0n}), D))) == True{} : Bool}:
+  match az:
+    case P.Pos{c}:
+      %Equal.sym(P.Z, P.Rot.crx(ay, P.Pos{c}, P.Pos{g}, P.Pos{0n}), P.Z.opp(P.Z.mul(P.Pos{c}, P.Pos{g})),
+        crx_eq(ay, P.Pos{c}, ha, g, hg)) : {P.Z.above(P.Pos{0n}, P.Z.mul(P.Pos{c}, P.Z.divc(_, D))) == True{} : Bool}
+      mul_pos(c, ha, Nat.div(Nat.add(Nat.mul(c, g), Nat.sub(P.Pick.high(D, 1n), 1n)), P.Pick.high(D, 1n)),
+        divc_mag_pos(Nat.mul(c, g), mul_pos(c, ha, g, hg), D))
+    case P.Neg{c}:
+      %Equal.sym(P.Z, P.Rot.crx(ay, P.Neg{c}, P.Pos{g}, P.Pos{0n}), P.Z.opp(P.Z.mul(P.Neg{c}, P.Pos{g})),
+        crx_eq(ay, P.Neg{c}, ha, g, hg)) : {P.Z.above(P.Pos{0n}, P.Z.mul(P.Neg{c}, P.Z.divc(_, D))) == True{} : Bool}
+      mul_pos(c, ha, Nat.div(Nat.add(Nat.mul(c, g), Nat.sub(P.Pick.high(D, 1n), 1n)), P.Pick.high(D, 1n)),
+        divc_mag_pos(Nat.mul(c, g), mul_pos(c, ha, g, hg), D))
+
+def kickxsign_mag(+az: P.Z, +ha: {Nat.is_lt(0n, P.Z.mag(az)) == True{} : Bool}, +ay: P.Z, +g: Nat,
+  +hg: {Nat.is_lt(0n, g) == True{} : Bool}, +D: Nat)
+  -> {Nat.is_lt(0n, P.Z.mag(P.Z.divc(P.Rot.crx(ay, az, P.Pos{g}, P.Pos{0n}), D))) == True{} : Bool}:
+  match az:
+    case P.Pos{c}:
+      %Equal.sym(P.Z, P.Rot.crx(ay, P.Pos{c}, P.Pos{g}, P.Pos{0n}), P.Z.opp(P.Z.mul(P.Pos{c}, P.Pos{g})),
+        crx_eq(ay, P.Pos{c}, ha, g, hg)) : {Nat.is_lt(0n, P.Z.mag(P.Z.divc(_, D))) == True{} : Bool}
+      divc_mag_pos(Nat.mul(c, g), mul_pos(c, ha, g, hg), D)
+    case P.Neg{c}:
+      %Equal.sym(P.Z, P.Rot.crx(ay, P.Neg{c}, P.Pos{g}, P.Pos{0n}), P.Z.opp(P.Z.mul(P.Neg{c}, P.Pos{g})),
+        crx_eq(ay, P.Neg{c}, ha, g, hg)) : {Nat.is_lt(0n, P.Z.mag(P.Z.divc(_, D))) == True{} : Bool}
+      divc_mag_pos(Nat.mul(c, g), mul_pos(c, ha, g, hg), D)
+
+def wx_after_pressw0(+q: P.Quat, +s: Nat, +a: P.Wv, +g: Nat)
+  -> {P.Wv.x(P.Rot.w(P.Rot.pressw(P.Rot{q, P.Wv.zero()}, s, a, g)))
+      == P.Z.add(P.Pos{0n}, P.Z.divc(P.Rot.crx(P.Wv.y(a), P.Wv.z(a), P.Pos{g}, P.Pos{0n}),
+          P.Rot.about(s, P.Wv.x(a), P.Wv.y(a), P.Wv.z(a)))) : P.Z}:
+  {==}
+
+# 0 < b gives 0 < a + b
+def lt_add_r(+a: Nat, q: Nat, h: {Nat.is_lt(0n, q) == True{} : Bool}) -> {Nat.is_lt(0n, Nat.add(a, q)) == True{} : Bool}:
+  match a:
+    case 0n:
+      h
+    case 1n+p:
+      {==}
+
+# The sign of the kick each law asks for, from the press alone -- nothing
+# of the turn about the contact.
+def corner_sign_x(+s: Nat, +g: Nat, +q: P.Quat, +a: P.Wv,
+  +off: {Nat.is_lt(0n, P.Z.mag(P.Wv.x(a))) == True{} : Bool},
+  +heavy: {Nat.is_lt(0n, g) == True{} : Bool})
+  -> {P.Z.above(P.Z.mul(P.Wv.x(a), P.Wv.z(P.Rot.w(P.Rot.pressw(P.Rot{q, P.Wv.zero()}, s, a, g)))), P.Pos{0n}) == True{} : Bool}:
+  +d = {P.Rot.about(s, P.Wv.x(a), P.Wv.y(a), P.Wv.z(a)) : Nat}
+  +divc = {P.Z.divc(P.Rot.crz(P.Wv.x(a), P.Wv.y(a), P.Pos{0n}, P.Pos{g}), d) : P.Z}
+  +wz = {P.Wv.z(P.Rot.w(P.Rot.pressw(P.Rot{q, P.Wv.zero()}, s, a, g))) : P.Z}
+  +ew = Equal.trans(P.Z, wz, P.Z.add(P.Pos{0n}, divc), divc,
+    wz_after_pressw0(q, s, a, g), Z_add_l_pos0(divc, kickzsign_mag(P.Wv.x(a), off, P.Wv.y(a), g, heavy, d)))
+  Equal.trans(Bool, P.Z.above(P.Z.mul(P.Wv.x(a), wz), P.Pos{0n}), P.Z.above(P.Z.mul(P.Wv.x(a), divc), P.Pos{0n}), True{},
+    Equal.cong(P.Z, Bool, (v: P.Z) => P.Z.above(P.Z.mul(P.Wv.x(a), v), P.Pos{0n}), wz, divc, ew),
+    kickzsign(P.Wv.x(a), off, P.Wv.y(a), g, heavy, d, about_pos(s, P.Wv.x(a), P.Wv.y(a), P.Wv.z(a))))
+
+def corner_sign_z(+s: Nat, +g: Nat, +q: P.Quat, +a: P.Wv,
+  +off: {Nat.is_lt(0n, P.Z.mag(P.Wv.z(a))) == True{} : Bool},
+  +heavy: {Nat.is_lt(0n, g) == True{} : Bool})
+  -> {P.Z.above(P.Pos{0n}, P.Z.mul(P.Wv.z(a), P.Wv.x(P.Rot.w(P.Rot.pressw(P.Rot{q, P.Wv.zero()}, s, a, g))))) == True{} : Bool}:
+  +d = {P.Rot.about(s, P.Wv.x(a), P.Wv.y(a), P.Wv.z(a)) : Nat}
+  +divc = {P.Z.divc(P.Rot.crx(P.Wv.y(a), P.Wv.z(a), P.Pos{g}, P.Pos{0n}), d) : P.Z}
+  +wx = {P.Wv.x(P.Rot.w(P.Rot.pressw(P.Rot{q, P.Wv.zero()}, s, a, g))) : P.Z}
+  +ew = Equal.trans(P.Z, wx, P.Z.add(P.Pos{0n}, divc), divc,
+    wx_after_pressw0(q, s, a, g), Z_add_l_pos0(divc, kickxsign_mag(P.Wv.z(a), off, P.Wv.y(a), g, heavy, d)))
+  Equal.trans(Bool, P.Z.above(P.Pos{0n}, P.Z.mul(P.Wv.z(a), wx)), P.Z.above(P.Pos{0n}, P.Z.mul(P.Wv.z(a), divc)), True{},
+    Equal.cong(P.Z, Bool, (v: P.Z) => P.Z.above(P.Pos{0n}, P.Z.mul(P.Wv.z(a), v)), wx, divc, ew),
+    kickxsign(P.Wv.z(a), off, P.Wv.y(a), g, heavy, d))
+
+# The turning a cube at rest on its lowest point comes out of a whole tick
+# with: exactly the press of the floor (Rot.pressw) -- Body.step sets it,
+# and the turn about the contact never changes it (ROTW).
+def corner_spin(+k: P.K, +x: Nat, +y: Nat, +z: Nat, +h: Bool, +q: P.Quat,
+  +floor: {P.Geo.onfloor(P.K.size(k), y, q) == True{} : Bool},
+  +htip: {Nat.is_lt(0n, Nat.add(P.Z.mag(P.Wv.x(P.Hold.low(P.Rot.mat(q), P.K.size(k)))),
+    P.Z.mag(P.Wv.z(P.Hold.low(P.Rot.mat(q), P.K.size(k)))))) == True{} : Bool},
+  hstep: {P.Body.step(k, [], P.In.idle(), P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, P.Rot{q, P.Wv.zero()}})
+      == (P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, False{},
+          P.Rot.pressw(P.Rot{q, P.Wv.zero()}, P.K.size(k), P.Hold.low(P.Rot.mat(q), P.K.size(k)), P.K.g(k))}, []) : P.Body & List<&2, P.Body>})
+  -> {P.Rot.w(P.Body.rot(P.Tick.body(P.Body.tick(k, [], P.In.idle(), P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, P.Rot{q, P.Wv.zero()}}))))
+      == P.Rot.w(P.Rot.pressw(P.Rot{q, P.Wv.zero()}, P.K.size(k), P.Hold.low(P.Rot.mat(q), P.K.size(k)), P.K.g(k))) : P.Wv}:
+  +s = P.K.size(k)
+  +g2 = P.K.g(k)
+  +rt2 = {P.Rot.pressw(P.Rot{q, P.Wv.zero()}, s, P.Hold.low(P.Rot.mat(q), s), g2) : P.Rot}
+  +body2 = {P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, False{}, rt2} : P.Body}
+  e_turn = turn_rotw(s, g2, [], body2, P.Rot.w(rt2), {==}, {==}, floor, htip)
+  e_tick = Equal.cong(P.Body & List<&2, P.Body>, P.Wv,
+    (r: P.Body & List<&2, P.Body>) => P.Rot.w(P.Body.rot(P.Tick.body(P.Tick.spin(s, g2, r)))),
+    P.Body.step(k, [], P.In.idle(), P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, P.Rot{q, P.Wv.zero()}}),
+    (body2, []), hstep)
+  Equal.trans(P.Wv,
+    P.Rot.w(P.Body.rot(P.Tick.body(P.Body.tick(k, [], P.In.idle(), P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, P.Rot{q, P.Wv.zero()}})))),
+    P.Rot.w(P.Body.rot(P.Tick.turn(s, g2, [], body2))), P.Rot.w(rt2), e_tick, e_turn)
+
+def Laws.on_a_corner_it_tips_x(k, heavy, x, y, z, h, q, floor, held, off):
+  +s = P.K.size(k)
+  +g2 = P.K.g(k)
+  +arm = {P.Hold.low(P.Rot.mat(q), s) : P.Wv}
+  +rt2 = {P.Rot.pressw(P.Rot{q, P.Wv.zero()}, s, arm, g2) : P.Rot}
+  +b0 = {P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, P.Rot{q, P.Wv.zero()}} : P.Body}
+  espin = corner_spin(k, x, y, z, h, q, floor,
+    lt_add(P.Z.mag(P.Wv.x(arm)), P.Z.mag(P.Wv.z(arm)), off),
+    step_pair(k, x, y, z, h, q, held, floor))
+  or_there(
+    Bool.not(P.Quat.same(P.Rot.q(P.Body.rot(P.Tick.body(P.Body.tick(k, [], P.In.idle(), b0)))), q)),
+    P.Z.above(P.Z.mul(P.Wv.x(arm), P.Wv.z(P.Rot.w(P.Body.rot(P.Tick.body(P.Body.tick(k, [], P.In.idle(), b0)))))), P.Pos{0n}),
+    (%Equal.sym(P.Wv, P.Rot.w(P.Body.rot(P.Tick.body(P.Body.tick(k, [], P.In.idle(), b0)))), P.Rot.w(rt2), espin)
+      : {P.Z.above(P.Z.mul(P.Wv.x(arm), P.Wv.z(_)), P.Pos{0n}) == True{} : Bool};
+     corner_sign_x(s, g2, q, arm, off, heavy)))
+
+def Laws.on_a_corner_it_tips_z(k, heavy, x, y, z, h, q, floor, held, off):
+  +s = P.K.size(k)
+  +g2 = P.K.g(k)
+  +arm = {P.Hold.low(P.Rot.mat(q), s) : P.Wv}
+  +rt2 = {P.Rot.pressw(P.Rot{q, P.Wv.zero()}, s, arm, g2) : P.Rot}
+  +b0 = {P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, P.Rot{q, P.Wv.zero()}} : P.Body}
+  espin = corner_spin(k, x, y, z, h, q, floor,
+    lt_add_r(P.Z.mag(P.Wv.x(arm)), P.Z.mag(P.Wv.z(arm)), off),
+    step_pair(k, x, y, z, h, q, held, floor))
+  or_there(
+    Bool.not(P.Quat.same(P.Rot.q(P.Body.rot(P.Tick.body(P.Body.tick(k, [], P.In.idle(), b0)))), q)),
+    P.Z.above(P.Pos{0n}, P.Z.mul(P.Wv.z(arm), P.Wv.x(P.Rot.w(P.Body.rot(P.Tick.body(P.Body.tick(k, [], P.In.idle(), b0))))))),
+    (%Equal.sym(P.Wv, P.Rot.w(P.Body.rot(P.Tick.body(P.Body.tick(k, [], P.In.idle(), b0)))), P.Rot.w(rt2), espin)
+      : {P.Z.above(P.Pos{0n}, P.Z.mul(P.Wv.z(arm), P.Wv.x(_))) == True{} : Bool};
+     corner_sign_z(s, g2, q, arm, off, heavy)))

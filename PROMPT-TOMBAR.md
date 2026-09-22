@@ -1,6 +1,13 @@
 # Tarefa: as 10 leis que faltam depois do conserto do tombo (21/09/2026)
 
-## Estado
+> **Estado atual (22/09/2026, fim do dia): 27 de 35 provadas.**
+> `on_a_corner_it_tips_x` e `_z` fechadas. Faltam 8:
+> `past_the_edge_it_tips_{px,nx,pz,nz}` e
+> `tipping_is_never_thrown_away_{px,nx,pz,nz}`. Leia a ÚLTIMA seção deste
+> arquivo ("Sessão de 22/09/2026 (parte 3)") antes de tudo — as seções
+> do meio registram becos sem saída já descartados.
+
+## Estado (21/09, histórico)
 
 O JOGO está corrigido e testado (`./fast`: quina e saliência 0,55/0,60/0,70
 OK; saliência 0,50 removida do teste, é o ponto de equilíbrio sem torque,
@@ -740,3 +747,88 @@ suficiente).
 4. Depois: `on_a_corner_it_tips_z` (espelha x↔z), `past_the_edge_it_tips_*4`
    (troca `Hold.low` por `Hold.arm(Geo.foot(...))`), `tipping_is_never_
    thrown_away_*4` (compõe com o argumento moved-ou-mantido).
+
+## Sessão de 22/09/2026 (parte 3): o giro atravessa a busca intacto (`ROTW`) — quina fechada
+
+**O que destravou tudo**: a busca do giro (`Tick.shrink`→`Tick.cand`→
+`Tick.pivot`→`Tick.place`→`Tick.put`) **nunca mexe em `Rot.w`** — todo
+candidato é `Rot{Rot.turn(q,w), Rot.w(rt)}` e `Tick.put` devolve ou ele ou o
+`rt` original. Então o predicado certo não é o da lei (que projeta
+`Rot.q`, o quatérnio — explode), é `ROTW(w0, b) = {Rot.w(Body.rot(b)) ==
+w0}`, provado por indução espelhando a família `_fs` (`put_rotw` …
+`shrink_rotw`/`start_rotw` … `pivota0_rotw`/`pivota_rotw`/`turn2_rotw`/
+`turn1b_rotw`/`turn1_rotw`/`turn0_rotw`/`turn_rotw`). Checa em ~2 min,
+~150MB. Bônus: como o giro final é SEMPRE `Rot.w(rt2)` (nos dois ramos de
+`moved`, e nos dois de `Wv.null` — por isso `wv_null_false_z` & cia eram
+desnecessários e foram apagados), o SEGUNDO disjuntor da lei vale
+incondicionalmente: `or_there` + o sinal do `kickzsign`, sem casar em
+`moved` nenhum.
+
+Em `PROOF.bend` (fim do arquivo): família `ROTW`, `corner_spin` (o giro
+depois de um tique inteiro = `Rot.w(rt2)`), `corner_sign_x`/`_z` (sinal do
+chute, só da prensa), `kickxsign`/`kickxsign_mag`/`crx_eq`/`Z_add_l_neg0`/
+`Z_opp_mul_pos_mag`/`wx_after_pressw0`/`lt_add_r` (o espelho do eixo x), e
+`Laws.on_a_corner_it_tips_x`/`_z`. Verificado isolado (arquivo com o kit +
+tudo isso importando `LAWS.bend`: "33 TODOs found" = 35 − 2, nada mais).
+**A rodada completa de `bend PROOF.bend` NÃO foi feita no commit** (~50 min,
+o usuário pediu pra pular) — rode uma antes de mexer mais; o esperado é
+"8 TODOs found".
+
+Armadilhas desta parte: `+x = {...}` só com anotação em chaves; nunca `+` em
+let/parâmetro cujo tipo é `ROTW(...)`/`FS(...)` (devolvem `Type`, `+` exige
+`Data`) — só na forma crua `{a==b:T}`; `match b: case Body{...}` precisa dos
+campos marcados `+` se forem usados mais de uma vez; não dá pra casar duas
+vezes o mesmo parâmetro em ramos aninhados (use `%Equal.sym(...,h) : T`
+pra reescrever); e a direção do `%e : T` continua sendo a fonte nº 1 de erro
+(o `_` marca o lado da equação que JÁ está no goal — quase sempre precisa
+`Equal.sym` por fora).
+
+**Nunca rode `bend` sem vigiar RSS** (a combinação que funcionou):
+`nohup nice -n 19 bend X.bend --check-only > out 2>&1 &` e um laço
+`ps -o rss= -p $PID`, matando acima de ~2.5GB. Uma variante sem vigia chegou
+a 8GB e quase derrubou a máquina.
+
+### As 8 que faltam — o que já está derivado
+
+**`tipping_is_never_thrown_away_*`** (4): mesma forma da quina — `Body.tick`,
+giro inicial zero, conclusão `Bool.or(quatérnio mudou, sinal)`. Reaproveita
+`corner_spin` quase inteiro, com duas diferenças: (1) `obs = [o]` em vez de
+`[]`, então `step_pair` precisa de uma versão com um obstáculo (ver abaixo);
+(2) o ramo de `Tick.turn2` é `held=True, floor=False` (`off` aqui é
+`onfloor == False`) — `turn2_rotw` hoje exige `hfloor: floor == True`;
+precisa de uma variante (ou generalizar) que, no caso `True False`, chame
+`pivota_rotw` com `Hold.arm(Geo.foot(...))` e o `htip` do braço-arm. O sinal
+vem do braço (abaixo), não do `Hold.low`.
+
+**`past_the_edge_it_tips_*`** (4): só `Body.step` (sem busca — `ROTW` nem
+entra), `obs = [o]`, `rt` ARBITRÁRIO (giro inicial qualquer). Conclusão: o
+passo diminui/aumenta `Wv.z` (ou `Wv.x`) do giro. Cadeia:
+1. `Rot.held(False, …) = Rot.pressw(rt, s, Hold.arm(Geo.foot(s,x,y,z,q,[o],
+   Foot.none()), Rot.mat(q), s), g)` — o ramo sem chão (`off`).
+2. `Geo.foot(…,[o],Foot.none()) = Geo.foot1(s,dx,dz,x,y,z,o,Foot.none())`,
+   que devolve `Foot{1, laplw, laphw, …}` se `under'` (uma versão com
+   `lapd`, a sombra) ou `Foot.none()` senão. **Não precisa decidir qual**:
+   casar no Bool e tratar os dois.
+3. Sinal do braço (px): `arm.x = Geo.leanf(h, a, LX, HX)` com `h = s/2`;
+   `p = max(min(a,HX),LX)` e `arm.x = Neg{h-p}` se `p < h`. Com `past`
+   (`ox+s < x+h`): `HX = laphw < h` (o `min(x+s+dx, ox+s) ≤ ox+s < x+h`),
+   `LX = laplw = 0` (pois `ox < x`), e no pé vazio `LX=HX=0` — em todos os
+   casos `p < h`, logo `arm.x` estritamente negativo. **Atenção**: precisa
+   `h > 0`, e isso sai de `across`+`past` juntos (`across` dá `x < ox+s`,
+   `past` dá `ox+s < x+h`, logo `h > 0`) — para `s ≤ 1` as hipóteses se
+   contradizem e a lei vale por vacuidade. `under`/`along` não entram no
+   sinal.
+4. Com `arm.x = Neg{m}`, `m>0`: `crz = Neg{m·g}` (via `crz_eq`), `divc =
+   Neg{N}`, `N>0` (`divc_mag_pos`), e `w'.z = Z.add(w.z, Neg{N})`. Falta um
+   lema `Z.above(v, Z.add(v, Neg{N})) == True` para `N>0` e `v` QUALQUER
+   (`Pos{m}` com `m<N` → `Neg{N-m}`; `m≥N` → `Pos{m-N}`; `Neg{m}` →
+   `Neg{m+N}`) — cuidado com `Pos0`/`Neg0` (ver topo).
+5. **Aberto**: os movimentos x/z com `[o]` e velocidade zero. `Move.x` com
+   `d = Pos0` cai em `Move.xok` (corpo em `x+0`) se `Geo.free(s,x,y,z,q,[o])`,
+   ou em `Move.xno`→`xreach`→`xtouch`, que pode chamar `Push.x` no `o`. Os
+   lemas atuais (`movex_idle0`/`movez_idle0`) são só para `[]`. Precisa
+   mostrar que nos dois ramos `x` fica `x` e `obs` fica `[o]` (ou pelo menos
+   que o `Rot.held` do fim vê a mesma coisa) — `Geo.free` do corpo parado
+   sobre `o` não é óbvio de provar; tratar os dois ramos é mais seguro.
+   Os pares nx/pz/nz espelham (nx: `past` do outro lado, sinal oposto; pz/nz:
+   eixo z, `crx`, sinais do right-hand rule — igual `_x`/`_z` da quina).
