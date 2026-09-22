@@ -24,6 +24,13 @@ Cubo is written in Bend 2 (github.com/bendlang/bend). When working on it:
 - no number of cells is written by hand: a neighbour sweep takes its cells
   from the cube's size and the tick's reach (`W.lo`, `W.span`), so the
   physics never depends on how big a cube is
+- when `bend PROOF.bend` gets slow, `bend tools/optimize.bend auto <copy>`
+  on a copy of the repo times every proof on its own, tries the rewrites the
+  slow ones point at, keeps only what checks and helps, and checks all of
+  PROOF.bend before and after; `profile <copy>` alone says where the time
+  goes. The checker normalizes both sides of every equation in full, so an
+  undecided value copied into many places (a let, a match that answers a
+  record) is what costs
 
     phys.bend     the proven physics: bodies, friction, pushes, gated moves, the tick
     ring.bend     the ring tactic (a proven polynomial normalizer)
@@ -34,3 +41,4 @@ Cubo is written in Bend 2 (github.com/bendlang/bend). When working on it:
     clash.bend    the collision test
     effs/         scene.comp.in (the shader), screen.c (Vulkan, window, events),
                   font.glsl (HUD font), spv.sh (shader to SPIR-V in screen.c)
+    tools/optimize.bend  the proof optimizer (tools/opt/: prof, hoist, lift, auto)
