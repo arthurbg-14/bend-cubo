@@ -89,17 +89,53 @@ void gput(int ix, int iz, uint ref) {
   }
 }
 
-// a cube at (x, z) in units relative to the origin cell's corner: into
-// the cells it reaches
-void gcube(int ux, int uz, uint ref) {
-  int ix = ux >> 18;
-  int iz = uz >> 18;
-  bool ox = (ux & 262143) != 0;
-  bool oz = (uz & 262143) != 0;
-  gput(ix, iz, ref);
-  if (ox) gput(ix + 1, iz, ref);
-  if (oz) gput(ix, iz + 1, ref);
-  if (ox && oz) gput(ix + 1, iz + 1, ref);
+// a quaternion out of four bytes, and a turn applied to a vector
+vec4 qunp(uint w) {
+  vec4 q = (vec4(float(w & 255u), float((w >> 8) & 255u), float((w >> 16) & 255u),
+                 float((w >> 24) & 255u)) - 128.0) / 127.0;
+  float n = length(q);
+  return n > 0.001 ? q / n : vec4(1.0, 0.0, 0.0, 0.0);
+}
+
+vec3 qap(vec4 q, vec3 v) {
+  vec3 u = vec3(q.y, q.z, q.w);
+  return v + 2.0 * cross(u, cross(u, v) + q.x * v);
+}
+
+// how far a unit cube turned by q reaches from its middle along each axis
+// of the world: half the sum of its turned edges, 0.5 each when square
+vec3 cube_ext(vec4 q) {
+  return 0.5 * (abs(qap(q, vec3(1.0, 0.0, 0.0))) + abs(qap(q, vec3(0.0, 1.0, 0.0))) + abs(qap(q, vec3(0.0, 0.0, 1.0))));
+}
+
+// in units (S a metre): how far that reaches, rounded out, and the middle
+int ext_u(float e) {
+  return e <= 0.5 ? 131072 : int(ceil(e * S)) + 1;
+}
+
+// a cube at (x, z) in units relative to the origin cell's corner, turned
+// by q: into every cell its box reaches. A turned cube pokes into the
+// cells around its own, and a ray (the sun's too) that crosses only those
+// has to meet it there; square with the world it is the cells it covers,
+// as it always was.
+void gcube(int ux, int uz, vec4 q, uint ref) {
+  vec3 e = cube_ext(q);
+  int rx = ext_u(e.x);
+  int rz = ext_u(e.z);
+  int x0 = (ux + 131072 - rx) >> 18;
+  int x1 = (ux + 131072 + rx - 1) >> 18;
+  int z0 = (uz + 131072 - rz) >> 18;
+  int z1 = (uz + 131072 + rz - 1) >> 18;
+  for (int iz = z0; iz <= z1; iz++) {
+    for (int ix = x0; ix <= x1; ix++) {
+      gput(ix, iz, ref);
+    }
+  }
+}
+
+// the top of a cube whose corner is at y (units), turned by q, in 1/256 m
+uint gtop(uint y, vec4 q) {
+  return (y + 131072u + uint(ext_u(cube_ext(q).y))) >> 10;
 }
 
 struct Hit {
@@ -125,19 +161,6 @@ void boxhit(vec3 ro, vec3 inv, vec3 bmin, vec3 bmax, uint kind, inout Hit h) {
     h.n    = a == tn.x ? vec3(-sign(inv.x), 0.0, 0.0) : a == tn.y ? vec3(0.0, -sign(inv.y), 0.0)
                        : vec3(0.0, 0.0, -sign(inv.z));
   }
-}
-
-// a quaternion out of four bytes, and a turn applied to a vector
-vec4 qunp(uint w) {
-  vec4 q = (vec4(float(w & 255u), float((w >> 8) & 255u), float((w >> 16) & 255u),
-                 float((w >> 24) & 255u)) - 128.0) / 127.0;
-  float n = length(q);
-  return n > 0.001 ? q / n : vec4(1.0, 0.0, 0.0, 0.0);
-}
-
-vec3 qap(vec4 q, vec3 v) {
-  vec3 u = vec3(q.y, q.z, q.w);
-  return v + 2.0 * cross(u, cross(u, v) + q.x * v);
 }
 
 // the same slab test, taken in the box's own frame: the ray is turned
@@ -300,10 +323,21 @@ float groundshade(vec3 p) {
         uint n = min((w0 >> 1) & 31u, 7u);
         for (uint j = 0u; j < n; j++) {
           uint r = G[b + 1u + j];
-          vec3 m = (r & 0x80000000u) != 0u ? dyn_at(r & 0xffffu) : cube_at(r >> 3, r & 7u);
-          if (m.y < 0.2) {
-            vec2 e = max(max(m.xz - p.xz, p.xz - m.xz - 1.0), 0.0);
-            d = min(d, length(e) + m.y);
+          bool dyn = (r & 0x80000000u) != 0u;
+          vec3 m = dyn ? dyn_at(r & 0xffffu) : cube_at(r >> 3, r & 7u);
+          vec4 q = qunp(dyn ? dyn_q(r & 0xffffu) : cube_q(r >> 3, r & 7u));
+          vec3 ex = cube_ext(q);
+          if (all(lessThanEqual(ex, vec3(0.5001)))) {
+            // square with the world: its foot is the square under it
+            if (m.y < 0.2) {
+              vec2 e = max(max(m.xz - p.xz, p.xz - m.xz - 1.0), 0.0);
+              d = min(d, length(e) + m.y);
+            }
+          } else if (m.y + 0.5 - ex.y < 0.2) {
+            // turned: how far the point is from the turned box itself, so
+            // the shade under a cube lying on an edge follows the cube
+            vec3 l = qap(vec4(q.x, -q.y, -q.z, -q.w), p - (m + 0.5));
+            d = min(d, length(max(abs(l) - 0.5, 0.0)));
           }
         }
       }
@@ -486,16 +520,18 @@ void main() {
     uint n = min(T[b + 2u], 7u);
     for (uint i = 0u; i < n; i++) {
       uint o = b + 4u + i * 4u;
-      gcube((ix << 18) + int(T[o]), (iz << 18) + int(T[o + 2u]), (lin << 3) | i);
-      atomicMax(G[HMW], (T[o + 1u] >> 10) + 256u);
+      vec4 q = qunp(T[o + 3u]);
+      gcube((ix << 18) + int(T[o]), (iz << 18) + int(T[o + 2u]), q, (lin << 3) | i);
+      atomicMax(G[HMW], gtop(T[o + 1u], q));
     }
     return;
   }
   if (pc.pass == 2u) {
     if (lin < F[H_NDYN]) {
       uint o = H_DYN + lin * 5u;
-      gcube(int(F[o]), int(F[o + 2u]), 0x80000000u | lin);
-      atomicMax(G[HMW], (F[o + 1u] >> 10) + 256u);
+      vec4 q = qunp(F[o + 4u]);
+      gcube(int(F[o]), int(F[o + 2u]), q, 0x80000000u | lin);
+      atomicMax(G[HMW], gtop(F[o + 1u], q));
     }
     return;
   }

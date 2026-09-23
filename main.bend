@@ -862,18 +862,49 @@ def Loop.go(fuel: Nat, window: Window, hdr: Array<U32>, +s: Play, +demo: Bool) -
         Loop.frame(Play.view(s, now, hdr), window, demo, w => h => s2 => Loop.go(f, w, h, s2, demo))
 
 type Flags is Data:
-  Flags{still: Bool, demo: Bool}
+  Flags{still: Bool, demo: Bool, crowd: Bool}
 
 def Args.flag(+a: String, f: Flags) -> Flags:
-  Flags{still, demo} = f
-  Flags{Bool.or(still, String.eq(a, "still")), Bool.or(demo, String.eq(a, "demo"))}
+  Flags{still, demo, crowd} = f
+  Flags{Bool.or(still, String.eq(a, "still")), Bool.or(demo, String.eq(a, "demo")), Bool.or(crowd, String.eq(a, "crowd"))}
 
 def Args.flags(args: List<String>) -> Flags:
   match args:
     case []:
-      Flags{False{}, False{}}
+      Flags{False{}, False{}, False{}}
     case +a <> rest:
       Args.flag(a, Args.flags(rest))
+
+# ./cubo crowd: 32 x 32 cubes dropped at once 3 m east of the start, as
+# ./bench's crowd: they fall, tip and lie turned every way, which is what
+# a long game leaves around (to measure the GPU with)
+def Crowd.drop(+i: Nat, +j: Nat) -> P.Body:
+  +o = W.W.base(W.W.origin())
+  P.Body{Nat.add(o, Nat.mul(Nat.add(i, 5n), 300000n)), Nat.mul(Nat.add(Nat.add(i, j), 8n), 70000n),
+    Nat.add(o, Nat.mul(j, 300000n)), P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, False{}, False{}, P.Rot.rest()}
+
+def Crowd.row(+i: Nat, +j: Nat) -> List<&2, P.Body>:
+  match j:
+    case 0n:
+      []
+    case 1n+m:
+      Crowd.drop(i, m) <> Crowd.row(i, m)
+
+def Crowd.all(+i: Nat) -> List<&2, P.Body>:
+  match i:
+    case 0n:
+      []
+    case 1n+m:
+      List.append(&2, P.Body, Crowd.row(m, 32n), Crowd.all(m))
+
+def Crowd.put(crowd: Bool, s: Play) -> Play:
+  match crowd:
+    case True{}:
+      Play{w, k, inp, t0, ticks, rep, prev, yaw, pitch, dist, sel, help, gpu, fus, hv} = s
+      W.World{seed, t, awake, dirty, p} = w
+      Play{W.World{seed, t, Crowd.all(32n), dirty, p}, k, inp, t0, ticks, rep, prev, yaw, pitch, dist, sel, help, gpu, fus, hv}
+    case False{}:
+      s
 
 # ./cubo still: the world of seed 12345, nothing moving (to measure)
 def Play.first(still: Bool, +now: Nat) -> Play:
@@ -884,8 +915,8 @@ def Play.first(still: Bool, +now: Nat) -> Play:
       Play.start(now)
 
 def Main.go(+now: Nat, window: Window, f: Flags) -> IO(Unit):
-  Flags{still, +demo} = f
-  Loop.go(U32.to_nat(4294967295), window, Array.new(U32, 13n, 0), Play.first(still, now), demo)
+  Flags{still, +demo, crowd} = f
+  Loop.go(U32.to_nat(4294967295), window, Array.new(U32, 13n, 0), Crowd.put(crowd, Play.first(still, now)), demo)
 
 def main() -> IO(Unit):
   do IO<Unit>:
