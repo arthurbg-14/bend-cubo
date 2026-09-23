@@ -5456,39 +5456,43 @@ def W.fixed(bs: List<&2, P.Body>, +k: P.K, +t: Cells, +seed: U32, acc: List<&2, 
 # that woke them moves them in the same tick. After n ticks again, what
 # the last one woke joins the island as it is, to move from the next.
 type Ti is Data:
-  Ti{start: List<&2, P.Body>, end: List<&2, P.Body>, t: Cells, dirty: List<&2, Cell>, done: Bool}
+  Ti{start: List<&2, P.Body>, end: List<&2, P.Body>, t: Cells, dirty: List<&2, Cell>, done: Bool, used: List<&2, P.Body>}
 
 def W.lifted(+woke: List<&2, P.Body>, +seed: U32, t: Cells, dirty: List<&2, Cell>) -> St:
   +n = List.length(&2, P.Body, woke)
   W.wake(Nat.add(1024n, Nat.mul(16n, n)), seed, St{t, dirty, [], woke})
 
-def W.again(+bs: List<&2, P.Body>, +end: List<&2, P.Body>, st: St) -> Ti:
+def W.again(+bs: List<&2, P.Body>, +end: List<&2, P.Body>, +used: List<&2, P.Body>, st: St) -> Ti:
   St{t, dirty, +fresh, work} = st
-  Ti{List.append(&2, P.Body, bs, fresh), List.append(&2, P.Body, end, fresh), t, dirty, False{}}
+  Ti{List.append(&2, P.Body, bs, fresh), List.append(&2, P.Body, end, fresh), t, dirty, False{}, used}
 
-def W.woke2(calm: Bool, +seed: U32, +bs: List<&2, P.Body>, r: R.Rs, t: Cells, dirty: List<&2, Cell>) -> Ti:
+def W.woke2(calm: Bool, +seed: U32, +bs: List<&2, P.Body>, r: R.Rs, t: Cells, dirty: List<&2, Cell>, +used: List<&2, P.Body>) -> Ti:
   match calm:
     case True{}:
       R.Rs{end, woke} = r
-      Ti{bs, end, t, dirty, True{}}
+      Ti{bs, end, t, dirty, True{}, used}
     case False{}:
       R.Rs{end, woke} = r
-      W.again(bs, end, W.lifted(woke, seed, t, dirty))
+      W.again(bs, end, used, W.lifted(woke, seed, t, dirty))
 
-def W.tick1(+k: P.K, +dv: P.Wv, +seed: U32, +bs: List<&2, P.Body>, +t: Cells, dirty: List<&2, Cell>) -> Ti:
-  +r = R.Rb.tick(k, dv, bs, W.fixed(bs, k, t, seed, []))
-  W.woke2(List.is_empty(&2, P.Body, R.Rs.woke(r)), seed, bs, r, t, dirty)
+# (used: every fixed body a round of the island's tick was handed, for
+# the islands ticked at once to tell whether they met)
+def W.tick1(+k: P.K, +dv: P.Wv, +seed: U32, +bs: List<&2, P.Body>, +t: Cells, dirty: List<&2, Cell>, used: List<&2, P.Body>) -> Ti:
+  +ss = W.fixed(bs, k, t, seed, [])
+  +r = R.Rb.tick(k, dv, bs, ss)
+  W.woke2(List.is_empty(&2, P.Body, R.Rs.woke(r)), seed, bs, r, t, dirty, List.append(&2, P.Body, ss, used))
 
-def W.step1(done: Bool, +k: P.K, +dv: P.Wv, +seed: U32, +bs: List<&2, P.Body>, end: List<&2, P.Body>, t: Cells, dirty: List<&2, Cell>) -> Ti:
+def W.step1(done: Bool, +k: P.K, +dv: P.Wv, +seed: U32, +bs: List<&2, P.Body>, end: List<&2, P.Body>, t: Cells, dirty: List<&2, Cell>,
+  used: List<&2, P.Body>) -> Ti:
   match done:
     case True{}:
-      Ti{bs, end, t, dirty, True{}}
+      Ti{bs, end, t, dirty, True{}, used}
     case False{}:
-      W.tick1(k, dv, seed, bs, t, dirty)
+      W.tick1(k, dv, seed, bs, t, dirty, used)
 
 def W.step(+k: P.K, +dv: P.Wv, +seed: U32, st: Ti) -> Ti:
-  Ti{+bs, end, t, dirty, done} = st
-  W.step1(done, k, dv, seed, bs, end, t, dirty)
+  Ti{+bs, end, t, dirty, done, used} = st
+  W.step1(done, k, dv, seed, bs, end, t, dirty, used)
 
 def W.isl(n: Nat, +k: P.K, +dv: P.Wv, +seed: U32, st: Ti) -> Ti:
   match n:
@@ -5499,7 +5503,7 @@ def W.isl(n: Nat, +k: P.K, +dv: P.Wv, +seed: U32, st: Ti) -> Ti:
 
 # an island ticked, and again up to twice more with what it woke
 def W.isl3(+k: P.K, +dv: P.Wv, +seed: U32, +bs: List<&2, P.Body>, t: Cells, dirty: List<&2, Cell>) -> Ti:
-  W.isl(3n, k, dv, seed, Ti{bs, bs, t, dirty, False{}})
+  W.isl(3n, k, dv, seed, Ti{bs, bs, t, dirty, False{}, []})
 
 # an island's bodies before its tick and after
 type Se is Data:
@@ -5509,7 +5513,7 @@ type Tis is Data:
   Tis{ses: List<&2, Se>, t: Cells, dirty: List<&2, Cell>}
 
 def W.into2(r: Ti, ses: List<&2, Se>) -> Tis:
-  Ti{start, end, t, dirty, done} = r
+  Ti{start, end, t, dirty, done, used} = r
   Tis{Se{start, end} <> ses, t, dirty}
 
 def W.into(+i: List<&2, P.Body>, +k: P.K, +dv: P.Wv, +seed: U32, acc: Tis) -> Tis:
@@ -5529,6 +5533,117 @@ def W.isls(isl: List<&2, List<&2, P.Body>>, +k: P.K, +dv: P.Wv, +seed: U32, acc:
     case +i <> rest:
       W.isls(rest, k, R.V.zero(), seed, W.into(i, k, dv, seed, acc))
 
+# The islands at once. Each island's fixed cubes are read from the cells
+# first, in turn; then every island ticks, all at once, on nothing but
+# its own bodies and fixed cubes -- the constants rebuilt from their
+# numbers in every task, since a value the tasks share costs an atomic at
+# every read. Then, in turn, an island that woke nothing, none of whose
+# fixed cubes an island before it took out of the cells, keeps what it
+# got; any other ticks again here, as the islands in turn would have
+# ticked it (waking cubes, taking them out of the cells). The result is
+# the islands in turn, to the number.
+type Ip is Data:
+  Ip{bs: List<&2, P.Body>, ss: List<&2, P.Body>}
+
+type Iq is Data:
+  Iq{bs: List<&2, P.Body>, ss: List<&2, P.Body>, rs: R.Rs}
+
+def W.pre(isl: List<&2, List<&2, P.Body>>, +k: P.K, +t: Cells, +seed: U32) -> List<&2, Ip>:
+  match isl:
+    case []:
+      []
+    case +i <> rest:
+      Ip{i, W.fixed(i, k, t, seed, [])} <> W.pre(rest, k, t, seed)
+
+def W.k(+g: Nat, +mu: Nat, +jump: Nat, +acc: Nat, +size: Nat) -> P.K:
+  P.K{g, mu, jump, acc, size}
+
+def W.pone(ip: Ip, +k: P.K, +dv: P.Wv) -> Iq:
+  Ip{+bs, +ss} = ip
+  Iq{bs, ss, R.Rb.tick(k, dv, bs, ss)}
+
+def W.pseq(ips: List<&2, Ip>, first: Bool, +g: Nat, +mu: Nat, +jump: Nat, +acc: Nat, +size: Nat, +dx: P.Z, +dy: P.Z, +dz: P.Z)
+  -> List<&2, Iq>:
+  match ips:
+    case []:
+      []
+    case ip <> rest:
+      W.pone(ip, W.k(g, mu, jump, acc, size), R.R.pv(first, P.Wv{dx, dy, dz}, R.V.zero()))
+        <> W.pseq(rest, False{}, g, mu, jump, acc, size, dx, dy, dz)
+
+# the islands in a tree of depth l, both halves at once above T.fork
+def W.pmap(l: Nat, par: Bool, +ips: List<&2, Ip>, first: Bool, +g: Nat, +mu: Nat, +jump: Nat, +acc: Nat, +size: Nat,
+  +dx: P.Z, +dy: P.Z, +dz: P.Z) -> List<&2, Iq>:
+  match l par:
+    case 0n _:
+      W.pseq(ips, first, g, mu, jump, acc, size, dx, dy, dz)
+    case 1n++j True{}:
+      +h = Nat.div(Nat.add(List.length(&2, Ip, ips), 1n), 2n)
+      a b = W.pmap(j, Nat.is_le(T.fork(), j), List.take(&2, Ip, ips, h), first, g, mu, jump, acc, size, dx, dy, dz)
+            W.pmap(j, Nat.is_le(T.fork(), j), List.drop(&2, Ip, ips, h), False{}, g, mu, jump, acc, size, P.Pos{0n}, P.Pos{0n}, P.Pos{0n})
+      List.append(&2, Iq, a, b)
+    case 1n++j False{}:
+      +h = Nat.div(Nat.add(List.length(&2, Ip, ips), 1n), 2n)
+      List.append(&2, Iq, W.pmap(j, False{}, List.take(&2, Ip, ips, h), first, g, mu, jump, acc, size, dx, dy, dz),
+        W.pmap(j, False{}, List.drop(&2, Ip, ips, h), False{}, g, mu, jump, acc, size, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}))
+
+# was one of these cubes taken out of the cells? (gone: the ones taken out
+# so far; few, since few islands wake cubes)
+def W.gone1(+c: P.Body, gone: List<&2, P.Body>) -> Bool:
+  W.has(c, gone)
+
+def W.goneany(ss: List<&2, P.Body>, +gone: List<&2, P.Body>) -> Bool:
+  match ss:
+    case []:
+      False{}
+    case +c <> rest:
+      Bool.or(W.gone1(c, gone), W.goneany(rest, gone))
+
+def W.fresh(+n0: Nat, r: Ti) -> List<&2, P.Body>:
+  Ti{start, end, t, dirty, done, used} = r
+  List.drop(&2, P.Body, start, n0)
+
+# the islands so far, and the cubes taken out of the cells so far
+type Kst is Data:
+  Kst{acc: Tis, gone: List<&2, P.Body>}
+
+def W.keep1(ok: Bool, +bs: List<&2, P.Body>, r: R.Rs, +k: P.K, +dv: P.Wv, +seed: U32, +gone: List<&2, P.Body>, acc: Tis) -> Kst:
+  match ok:
+    case True{}:
+      Tis{ses, t, dirty} = acc
+      Kst{Tis{Se{bs, R.Rs.bs(r)} <> ses, t, dirty}, gone}
+    case False{}:
+      Tis{ses, +t, +dirty} = acc
+      +ti = W.isl3(k, dv, seed, bs, t, dirty)
+      Kst{W.into2(ti, ses), List.append(&2, P.Body, W.fresh(List.length(&2, P.Body, bs), ti), gone)}
+
+def W.keepq2(+q: Iq, +k: P.K, +dv: P.Wv, +seed: U32, +gone: List<&2, P.Body>, acc: Tis) -> Kst:
+  Iq{+bs, +ss, +rr} = q
+  W.keep1(Bool.and(List.is_empty(&2, P.Body, R.Rs.woke(rr)), Bool.not(W.goneany(ss, gone))), bs, rr, k, dv, seed, gone, acc)
+
+def W.keepq(+q: Iq, +k: P.K, +dv: P.Wv, +seed: U32, st: Kst) -> Kst:
+  Kst{acc, +gone} = st
+  W.keepq2(q, k, dv, seed, gone, acc)
+
+def W.keepfin(st: Kst) -> Tis:
+  Kst{acc, gone} = st
+  W.rev(acc)
+
+def W.keep(qs: List<&2, Iq>, +k: P.K, +dv: P.Wv, +seed: U32, st: Kst) -> Tis:
+  match qs:
+    case []:
+      W.keepfin(st)
+    case +q <> rest:
+      W.keep(rest, k, R.V.zero(), seed, W.keepq(q, k, dv, seed, st))
+
+def W.isls_par(+isl: List<&2, List<&2, P.Body>>, +k: P.K, +dv: P.Wv, +seed: U32, +t: Cells, +dirty: List<&2, Cell>) -> Tis:
+  P.K{+g, +mu, +jump, +acc, +size} = k
+  P.Wv{+dx, +dy, +dz} = dv
+  +ips = W.pre(isl, k, t, seed)
+  +n = List.length(&2, Ip, ips)
+  W.keep(W.pmap(Nat.add(R.Bt.dep(48n, Nat.is_le(n, 1n), 0n, 1n, n), 1n), True{}, ips, True{}, g, mu, jump, acc, size, dx, dy, dz),
+    k, dv, seed, Kst{Tis{[], t, dirty}, []})
+
 def W.starts(ses: List<&2, Se>) -> List<&2, P.Body>:
   match ses:
     case []:
@@ -5547,7 +5662,7 @@ def W.ends(ses: List<&2, Se>) -> List<&2, List<&2, P.Body>>:
 # islands overlap after them, the islands' bodies tick again from the
 # start as one island, which keeps every pair apart.
 def W.whole2(r: Ti) -> Tis:
-  Ti{start, end, t, dirty, done} = r
+  Ti{start, end, t, dirty, done, used} = r
   Tis{[Se{start, end}], t, dirty}
 
 def W.whole(clash: Bool, +k: P.K, +dv: P.Wv, +seed: U32, r: Tis) -> Tis:
@@ -5556,7 +5671,7 @@ def W.whole(clash: Bool, +k: P.K, +dv: P.Wv, +seed: U32, r: Tis) -> Tis:
       r
     case True{}:
       Tis{+ses, t, dirty} = r
-      W.whole2(W.isl(1n, k, dv, seed, Ti{W.starts(ses), W.starts(ses), t, dirty, False{}}))
+      W.whole2(W.isl(1n, k, dv, seed, Ti{W.starts(ses), W.starts(ses), t, dirty, False{}, []}))
 
 def W.checked(+k: P.K, +dv: P.Wv, +seed: U32, +r: Tis) -> Tis:
   Tis{+ses, t, dirty} = r
@@ -5650,7 +5765,7 @@ def W.rest(+seed: U32, r: Tis) -> World:
 # a tick of the whole world: the player's own push, the islands, each
 # with the sleepers around it, and the islands at rest to sleep
 def W.tick3(+k: P.K, +dv: P.Wv, +seed: U32, +bs: List<&2, P.Body>, t: Cells, dirty: List<&2, Cell>) -> World:
-  W.rest(seed, W.checked(k, dv, seed, W.isls(R.Rb.islands(k, bs), k, dv, seed, Tis{[], t, dirty})))
+  W.rest(seed, W.checked(k, dv, seed, W.isls_par(R.Rb.islands(k, bs), k, dv, seed, t, dirty)))
 
 # how the motor drives the player this tick: what it added to its velocity
 # along the ground (the jump is not the feet sliding)
