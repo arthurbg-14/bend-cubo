@@ -34,6 +34,13 @@ def Pick.n(c: Bool, +a: Nat, +b: Nat) -> Nat:
     case False{}:
       b
 
+def Pick.q(c: Bool, +a: P.Quat, +b: P.Quat) -> P.Quat:
+  match c:
+    case True{}:
+      a
+    case False{}:
+      b
+
 def Pick.s(c: Bool, a: String, b: String) -> String:
   match c:
     case True{}:
@@ -516,9 +523,32 @@ def Play.lerp(+a: Nat, +b: Nat, +k: Nat) -> Nat:
   Pick.n(Nat.is_le(a, b), Nat.add(a, Nat.div(Nat.mul(Nat.sub(b, a), k), 1000n)),
     Nat.sub(a, Nat.div(Nat.mul(Nat.sub(a, b), k), 1000n)))
 
+def Play.zlerp(+a: P.Z, +b: P.Z, +k: Nat) -> P.Z:
+  P.Z.add(a, P.Z.divn(P.Z.mul(P.Z.sub(b, a), P.Pos{k}), 1000n))
+
+def Play.qdot(+a: P.Quat, +b: P.Quat) -> P.Z:
+  P.Z.add(P.Z.add(P.Z.mul(P.Quat.a(a), P.Quat.a(b)), P.Z.mul(P.Quat.b(a), P.Quat.b(b))),
+    P.Z.add(P.Z.mul(P.Quat.c(a), P.Quat.c(b)), P.Z.mul(P.Quat.d(a), P.Quat.d(b))))
+
+def Play.qopp(+q: P.Quat) -> P.Quat:
+  P.Quat{P.Z.opp(P.Quat.a(q)), P.Z.opp(P.Quat.b(q)), P.Z.opp(P.Quat.c(q)), P.Z.opp(P.Quat.d(q))}
+
+def Play.qlerp2(+a: P.Quat, +b: P.Quat, +k: Nat) -> P.Quat:
+  P.Quat.unit(P.Quat{Play.zlerp(P.Quat.a(a), P.Quat.a(b), k), Play.zlerp(P.Quat.b(a), P.Quat.b(b), k),
+    Play.zlerp(P.Quat.c(a), P.Quat.c(b), k), Play.zlerp(P.Quat.d(a), P.Quat.d(b), k)})
+
+# the turn k/1000 of the way from a's to b's: part by part, the short way
+# round (q and -q are the same turn), set back to unit length
+def Play.qlerp(+a: P.Quat, +b: P.Quat, +k: Nat) -> P.Quat:
+  Play.qlerp2(a, Pick.q(P.Z.above(P.Pos{0n}, Play.qdot(a, b)), Play.qopp(b), b), k)
+
+# the player as drawn between two ticks: where it is and how it is
+# turned. Only the place was carried over, on a cube at rest, and the
+# blue cube was drawn square with the world however it lay.
 def Play.between(+a: P.Body, +b: P.Body, +k: Nat) -> P.Body:
-  W.W.cube(Play.lerp(P.Body.x(a), P.Body.x(b), k), Play.lerp(P.Body.y(a), P.Body.y(b), k),
-    Play.lerp(P.Body.z(a), P.Body.z(b), k))
+  P.Body{Play.lerp(P.Body.x(a), P.Body.x(b), k), Play.lerp(P.Body.y(a), P.Body.y(b), k),
+    Play.lerp(P.Body.z(a), P.Body.z(b), k), P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, False{},
+    P.Rot{Play.qlerp(P.Rot.q(P.Body.rot(a)), P.Rot.q(P.Body.rot(b)), k), P.Wv{P.Pos{0n}, P.Pos{0n}, P.Pos{0n}}}}
 
 # a body's speed in 1024ths of m/s
 def Play.speed(+b: P.Body) -> Nat:
