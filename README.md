@@ -6,7 +6,7 @@ verdes nascem ao acaso (uma semente nova a cada partida), em pilhas de 1 a 3,
 num mundo **sem fim**: meio milhão de quilômetros para cada lado.
 
 A física segue as leis da cinemática, da conservação da energia e do atrito
-de Coulomb, e isso é **provado**. São dezenove leis em [`LAWS.bend`](LAWS.bend),
+de Coulomb, e isso é **provado**. São 36 leis em [`LAWS.bend`](LAWS.bend),
 e `bend PROOF.bend` só passa se todas valem. Elas valem para **qualquer valor
 das constantes**, e isso importa porque gravidade, atrito, pulo e motor mudam
 durante o jogo.
@@ -75,7 +75,10 @@ de 2. Tire um cubo de baixo de uma pilha e os de cima caem.
 
 `./cubo demo` joga sozinho (W segurado, um pulo a cada 1,5 s, a câmera
 girando). `./cubo still` usa a semente fixa 12345, sem nada se mover, para
-medir.
+medir. `./cubo crowd` solta 32 x 32 cubos de uma vez a leste do início, que
+caem, tombam e ficam virados de todo jeito (para medir a GPU com muito cubo
+girado). Com `CUBO_GPULOG=1` o tempo de GPU e o do quadro saem também no
+stderr, a cada meio segundo.
 
 Precisa de Linux com X11 (XWayland serve), clang e um driver Vulkan (Mesa
 RADV/ANV ou o do fabricante; a `libvulkan` é carregada na execução). O
@@ -128,6 +131,7 @@ movimento. O tick marca isso no próprio corpo (`hit`).
 | `a_hit_adds_the_whole_turning` | uma batida põe no corpo **todo** o giro que ela pede — as três partes do braço cruzado com o impulso, não só a que cai num eixo que o corpo já usava |
 | `no_spin_from_the_middle` | uma batida no meio não gira nada: o que gira é o braço, e braço zero não cruza com nada |
 | `spin_is_across_the_push` | uma batida só gira em torno dos eixos atravessados a ela |
+| `a_stopped_turn_does_not_wind_up` | um corpo apoiado cujo giro o tick recusa (termina virado como estava) sai girando no máximo metade do que o passo deixou, arredondado para cima: um cubo encostado no vizinho não acumula giro sem fim (que o mundo teria de olhar cada vez mais longe e que o arremessaria assim que o vizinho saísse) |
 
 Não há `@unsafe`, `?TODO` nem axiomas. A verificação leva alguns minutos e
 precisa de mais pilha do que um shell costuma dar: `./build.sh` pede

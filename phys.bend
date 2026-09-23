@@ -759,10 +759,7 @@ def Geo.sat2(+ha: Nat, +hb: Nat, +tx: Z, +ty: Z, +tz: Z, ma: Mat, mb: Mat) -> Bo
 
 # do the cube at (ax, ay, az) turned by qa and the one at (bx, by, bz)
 # turned by qb touch?
-# the same, with the room each cube's own turn takes this tick added to
-# its side: a body that is turning claims where its turn is going, so a
-# neighbour that moves at the same time -- and sees only the world as it
-# was -- cannot walk into it.
+# the same, with ea and eb of skin added to the side of each (Geo.skin)
 def Geo.satw(+s: Nat, +ax: Nat, +ay: Nat, +az: Nat, +qa: Quat, +ea: Nat, +bx: Nat, +by: Nat, +bz: Nat,
   +qb: Quat, +eb: Nat) -> Bool:
   Geo.sat2(Nat.add(Nat.div(s, 2n), ea), Nat.add(Nat.div(s, 2n), eb),
@@ -808,47 +805,59 @@ def Body.energies(+g: Nat, bs: List<&2, Body>) -> Nat:
 
 # do the box at (x, y, z), turned by qa, and o's box overlap? While
 # neither has turned this is the plain box test, to the unit; the moment
-# one of them has, the fifteen directions decide.
+# one of them has, the fifteen directions decide -- asked from the frame
+# of each box, and they meet if either frame says so. The two answers are
+# not the same: the directions are worked out in the frame of the first
+# box, rounded to 2^-16, and a tilted cube asked first missed a square one
+# it was two units inside, with the hair of skin around it (measured: the
+# tilted frame is off by more than 16 units, the square one by none).
+# Asked one way only, a cube falling past a tilted one could end inside it
+# as the other sees it, and stay stuck there.
 def Geo.pair(flat: Bool, +s: Nat, +x: Nat, +y: Nat, +z: Nat, +qa: Quat, +ox: Nat, +oy: Nat, +oz: Nat,
   +qb: Quat, +eb: Nat) -> Bool:
   match flat:
     case True{}:
       Bool.and(Geo.ovl(s, x, ox), Bool.and(Geo.ovl(s, z, oz), Geo.ovl(s, y, oy)))
     case False{}:
-      Geo.satw(s, x, y, z, qa, 0n, ox, oy, oz, qb, eb)
+      Bool.or(Geo.satw(s, x, y, z, qa, 0n, ox, oy, oz, qb, eb), Geo.satw(s, ox, oy, oz, qb, eb, x, y, z, qa, 0n))
 
 # The gate a move has to pass also asks for a hair of room -- a quarter
 # of a millimetre on a cube of a metre. The fifteen axes work out the
 # shadows from a matrix in 2^-16, which is right to a few units, and the
 # hair is what keeps those few units from ever becoming a real overlap.
 
-# do two cubes really share space, with no room claimed for turns? This
-# is what a check asks after the fact; the gate a move has to pass asks
-# for more (Geo.meets), because a body that is turning claims where its
-# turn is going.
+# do two cubes really share space, with no hair of skin? This is what a
+# check asks after the fact; the gate a move has to pass asks for the
+# hair too (Geo.meets).
 def Geo.hits(+s: Nat, +x: Nat, +y: Nat, +z: Nat, +qa: Quat, o: Body) -> Bool:
   Body{+ox, +oy, +oz, vx, vy, vz, ground, hit, +rt} = o
   Geo.pair(Bool.and(Quat.flat(qa), Quat.flat(Rot.q(rt))), s, x, y, z, qa, ox, oy, oz, Rot.q(rt), 0n)
 
-# How much room an obstacle is handed beyond its own box: the arc it
-# sweeps if it is turning, and a hair of skin on top of that, so that two
-# cubes ticking against the same picture of the world cannot both walk
-# into the same place, and so that the rounding of the fifteen directions
-# (a matrix in 2^-16 over a cube of 2^18) is covered.
+# How much room an obstacle is handed beyond its own box: a hair of skin
+# where either box is turned, so that the rounding of the fifteen
+# directions (a matrix in 2^-16 over a cube of 2^18) is covered. Two
+# square boxes are tested as they are, to the unit, turning or not.
+#
+# It used to hand a turning obstacle the arc its turn sweeps as well, a
+# claim on where the turn was going. Every tick sees its neighbours where
+# they are, and a turn is gated against them when it is taken, so the
+# claim bought nothing; and it put whatever touched a turning cube inside
+# it. A cube resting on the player with a little turning (its hold off
+# its middle) froze him: a jump was refused by the cube above, then the
+# fall by the cube below, then the landing where he was -- inside the
+# claim -- and he hung in the air for good.
 #
 # The hair is a thirty-second of a millimetre, not half of one: a cube
 # that rests on another has to be able to turn about their touching
 # faces, and a turn is never allowed to lift a cube, so the skin it has
 # to climb out of each tick must be smaller than the drop the turn
-# itself buys. Eight units of skin cover the rounding (three units at
-# the worst corner) and still leave the turn room to happen.
-def Geo.skin(+s: Nat, +w: Wv) -> Nat:
-  Nat.add(Geo.sweep(s, w), Nat.div(s, 16384n))
+# itself buys.
+def Geo.skin(+s: Nat) -> Nat:
+  Nat.div(s, 16384n)
 
 def Geo.meets(+s: Nat, +x: Nat, +y: Nat, +z: Nat, +qa: Quat, o: Body) -> Bool:
   Body{+ox, +oy, +oz, vx, vy, vz, ground, hit, +rt} = o
-  Geo.pair(Bool.and(Quat.flat(qa), Bool.and(Quat.flat(Rot.q(rt)), Wv.null(Rot.w(rt)))), s, x, y, z, qa, ox, oy,
-    oz, Rot.q(rt), Geo.skin(s, Rot.w(rt)))
+  Geo.pair(Bool.and(Quat.flat(qa), Quat.flat(Rot.q(rt))), s, x, y, z, qa, ox, oy, oz, Rot.q(rt), Geo.skin(s))
 
 # is the box at (x, y, z) clear of every obstacle?
 def Geo.free(+s: Nat, +x: Nat, +y: Nat, +z: Nat, +qa: Quat, obs: List<&2, Body>) -> Bool:
@@ -1864,11 +1873,10 @@ def Tick.z(+s: Nat, +g: Nat, +vz0: Z, r: Body & List<&2, Body>) -> Body & List<&
 # A refused turn is a knock: the body stays where it was, and what stopped
 # the turn stops the turning -- all of it, as a contact that gives nothing
 # back does. Keeping it instead left cubes lying still with a turning
-# they could never take, and a body that is turning claims the room its
-# turn sweeps: its neighbours hung in the air beside it or were shoved
-# from across the room. The one turn that is never spent is a hold that
-# leans (Wv.keep): it hands the turning back every tick anyway, and
-# spending it is what kept a perched cube from ever tipping.
+# they could never take. The one turn that is not spent is a hold that
+# leans (Body.spin): it hands the turning back every tick anyway, and
+# spending it is what kept a perched cube from ever tipping -- that one
+# keeps half of it.
 #
 # A body that stood, and that the turn carried off what held it, stands
 # no more: standing is asked again wherever the body ends up.
@@ -1981,6 +1989,20 @@ def Wv.half(w: Wv) -> Wv:
   Wv{+a, +b, +c} = w
   Wv{Z.half(a), Z.half(b), Z.half(c)}
 
+# half of v, rounded away from 0: a turning that is there never rounds
+# away to nothing, and keeps its sign
+def Z.halfc(v: Z) -> Z:
+  match v:
+    case Pos{n}:
+      Pos{Nat.div(Nat.add(1n, n), 2n)}
+    case Neg{n}:
+      Neg{Nat.div(Nat.add(1n, n), 2n)}
+
+# asked part by part, so that a part of it is the half of that part of w
+# whatever w is, not only once w is known
+def Wv.halfc(+w: Wv) -> Wv:
+  Wv{Z.halfc(Wv.x(w)), Z.halfc(Wv.y(w)), Z.halfc(Wv.z(w))}
+
 def Tick.boost2(small: Bool, +w: Wv, +m: Nat) -> Wv:
   match small:
     case True{}:
@@ -2048,14 +2070,22 @@ def Pick.w(c: Bool, a: Wv, b: Wv) -> Wv:
     case False{}:
       b
 
-# The turning a refused turn leaves the body with, given whole: unlike
-# Tick.put (which only ever zeroes it, one candidate at a time), this asks
-# once, after the search over candidates is done, whether the ORIENTATION
-# moved at all. A search that moved keeps exactly what Tick.put already
-# gave it (the candidate's own turning, r2's, carried through untouched);
-# one that never moved -- every candidate refused -- gets its turning
-# back only where the hold leans (tip); square, it is spent, as it always
-# was. Asking this once outside the search, instead of inside every
+# The turning a refused turn leaves the body with: unlike Tick.put (which
+# only ever zeroes it, one candidate at a time), this asks once, after the
+# search over candidates is done, whether the ORIENTATION moved at all. A
+# search that moved keeps exactly what Tick.put already gave it (the
+# candidate's own turning, r2's, carried through untouched); one that
+# never moved -- every candidate refused -- keeps half of its turning
+# (rounded away from 0, so the sign survives) only where the hold leans
+# (tip); square, it is spent, as it always was. Half and not all: the hold
+# presses again every tick it leans, and a cube leaning on a neighbour
+# that stops the turn gathered every press into a turning it could never
+# take. It grew without end, and the world hands a body a reach that
+# grows with its turning (world.bend, W.swing): a cube lying still looked
+# ever further around every tick. Halved each tick, it settles near one
+# press (LAWS.a_stopped_turn_does_not_wind_up).
+#
+# Asking this once outside the search, instead of inside every
 # candidate Tick.pivot tries, is what a proof about the search can afford:
 # Body.setrot never opens what it does not touch, so this costs nothing to
 # carry through a fact about hit, energy or the floor -- only a fact about
@@ -2065,7 +2095,7 @@ def Body.spin.rot(+tip: Bool, +moved: Bool, +b: Body, +rt: Rot) -> Rot:
     case True{}:
       Body.rot(b)
     case False{}:
-      Body.rot(Body.setrot(b, Rot{Rot.q(Body.rot(b)), Pick.w(tip, Rot.w(rt), Wv.zero())}))
+      Body.rot(Body.setrot(b, Rot{Rot.q(Body.rot(b)), Pick.w(tip, Wv.halfc(Rot.w(rt)), Wv.zero())}))
 
 def Body.spin(+tip: Bool, +moved: Bool, b: Body, +rt: Rot) -> Body:
   match b:

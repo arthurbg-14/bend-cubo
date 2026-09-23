@@ -495,6 +495,31 @@ law tipping_is_never_thrown_away_nz:
     P.Body{x, y, z, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, h, P.Rot{q, P.Wv.zero()}}))
   {Bool.or(Bool.not(P.Quat.same(P.Rot.q(P.Body.rot(a)), q)), P.Z.above(P.Pos{0n}, P.Wv.x(P.Rot.w(P.Body.rot(a))))) == True{} : Bool}
 
+# LAW: a turn that is stopped does not wind up. A body held up after its
+# step (standing) whose turn the tick refuses -- it ends the tick turned
+# exactly as the step left it -- ends it turning, about every axis, no
+# more than half as fast as the step left it, the half rounded up:
+# 2 w' <= 1 + w. The hold presses a leaning cube again every tick. Were
+# every press kept while something stops the turn -- a cube leaning on
+# its neighbour -- the turning would grow without end: a cube lying still
+# would carry a turning that nothing lets it take, the world would look
+# ever further around it every tick, and the moment the neighbour went it
+# would be flung round by all it had gathered. Halved every tick, what it
+# keeps settles near a single press.
+law a_stopped_turn_does_not_wind_up:
+  for +k: P.K
+  for +obs: List<&2, P.Body>
+  for +inp: P.In
+  for +b: P.Body
+  for +held: {P.Body.ground(P.Tick.body(P.Body.step(k, obs, inp, b))) == True{} : Bool}
+  for stopped: {P.Quat.same(P.Rot.q(P.Body.rot(P.Tick.body(P.Body.tick(k, obs, inp, b)))),
+    P.Rot.q(P.Body.rot(P.Tick.body(P.Body.step(k, obs, inp, b))))) == True{} : Bool}
+  w = P.Rot.w(P.Body.rot(P.Tick.body(P.Body.step(k, obs, inp, b))))
+  w2 = P.Rot.w(P.Body.rot(P.Tick.body(P.Body.tick(k, obs, inp, b))))
+  {Nat.is_le(Nat.add(P.Z.mag(P.Wv.x(w2)), P.Z.mag(P.Wv.x(w2))), Nat.add(1n, P.Z.mag(P.Wv.x(w)))) == True{} : Bool}
+  & {Nat.is_le(Nat.add(P.Z.mag(P.Wv.y(w2)), P.Z.mag(P.Wv.y(w2))), Nat.add(1n, P.Z.mag(P.Wv.y(w)))) == True{} : Bool}
+  & {Nat.is_le(Nat.add(P.Z.mag(P.Wv.z(w2)), P.Z.mag(P.Wv.z(w2))), Nat.add(1n, P.Z.mag(P.Wv.z(w)))) == True{} : Bool}
+
 # LAW: on a corner, it tips. A cube at rest on the floor, with nothing
 # else around it, stands on its lowest point: a corner, the middle of an
 # edge, or the middle of a face (P.Hold.low). When that point is off to

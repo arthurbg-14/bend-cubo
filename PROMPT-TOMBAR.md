@@ -1,6 +1,8 @@
 # Tarefa: as 10 leis que faltam depois do conserto do tombo (21/09/2026)
 
-> **Estado atual (23/09/2026): 35 de 35 provadas — `bend PROOF.bend`
+> **Estado atual (23/09/2026): 36 de 36 provadas (a 36ª,
+> `a_stopped_turn_does_not_wind_up`, veio com o giro recusado pela metade)
+> — `bend PROOF.bend`
 > imprime "All terms check." (84 s; `tools/check.bend`, o que o build.sh
 > usa, ~26 s).** As 8 do fim (`past_the_edge_it_tips_*`,
 > `tipping_is_never_thrown_away_*`) fecharam com quatro peças no fim do

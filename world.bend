@@ -214,21 +214,40 @@ def W.turnroom(flat: Bool) -> Nat:
       Nat.div(Nat.mul(3n, W.size()), 8n)
 
 
-# A body that turns about a contact also swings its middle a little: that
-# step is real movement, and the reach has to count it or the neighbours
-# it swings towards are never looked at. Two sweeps and the push back out
-# would be the bound on paper; measured, the crowd needs more than the
-# paper says -- cutting this to the bound puts holes back in the living
-# grid -- so it is handed eight sweeps and a hair.
-def W.swing(+rt: P.Rot) -> Nat:
-  Nat.add(Nat.mul(8n, P.Geo.sweep(W.size(), P.Rot.w(rt))), Nat.div(W.size(), 256n))
+# The turning a tick may turn a body by -- not the turning it starts the
+# tick with. A body that stands is pressed by its hold (Rot.held): a press
+# of g at an arm r, over 1 + 6 r^2 / s^2, is at most s g / 39 on each of
+# its two parts, so s g / 16 bounds it; and a turn about a hold is taken
+# at least at Tick.least (Tick.boost). So a cube standing square and still
+# can end its tick tipping. Counting only the turning it started with --
+# none -- handed it none of the room that turn swings through: a cube
+# sliding off an edge tipped into a neighbour it had never been handed,
+# and the two ended the tick inside each other (clash.bend: overlaps in
+# five of its nine ways, the plain list of few cubes among them).
+def W.turnmax(+g: Nat, gr: Bool, +w: P.Wv) -> Nat:
+  Nat.add(P.Wv.mag(w), Pick.n(Bool.or(gr, Bool.not(P.Wv.null(w))),
+    Nat.add(Nat.add(P.Tick.least(), Nat.div(Nat.mul(W.size(), g), 16n)), 1024n), 0n))
+
+# the arc a turning of size m sweeps in a tick (Geo.sweep, for a size)
+def W.arc(+m: Nat) -> Nat:
+  Nat.div(Nat.mul(Nat.div(m, 256n), Nat.div(W.size(), 2n)), 667544n)
+
+# A body that turns about a contact swings its middle: by the angle times
+# the arm, at most sqrt 3 / 2 of a side, while a sweep (Geo.sweep) is
+# twice the angle times a whole side; and a cube that was square sticks
+# out of its box, turned by that angle, by less than another sweep. Two
+# sweeps of the turn it may take, and a hair, cover both. (Eight sweeps of
+# the turning it started with stood in for this, and still missed every
+# cube that began to tip.)
+def W.swing(+g: Nat, gr: Bool, +rt: P.Rot) -> Nat:
+  Nat.add(Nat.mul(2n, W.arc(W.turnmax(g, gr, P.Rot.w(rt)))), Nat.div(W.size(), 256n))
 
 def W.reach(+k: P.K, b: P.Body) -> Nat:
   P.K{+g, mu, jump, +acc, size} = k
   P.Body{x, y, z, vx, vy, vz, gr, h, +rt} = b
   Nat.add(Nat.add(Nat.mul(2n, Nat.add(Nat.add(P.Z.mag(vx), P.Z.mag(vy)), P.Z.mag(vz))),
     Nat.add(Nat.mul(2n, Nat.add(acc, g)), 65536n)),
-    Nat.add(W.turnroom(P.Rot.still(rt)), W.swing(rt)))
+    Nat.add(W.turnroom(P.Rot.still(rt)), W.swing(g, gr, rt)))
 
 # the sleeping cubes of the cells in (x0 .. x0 + nx - 1, z0 .. z0 + nz - 1),
 # i counting them down
@@ -257,7 +276,7 @@ def W.creachz(+k: P.K, +vx: P.Z, +vy: P.Z, +vz: P.Z) -> Nat:
 
 def W.creach(+k: P.K, b: P.Body) -> Nat:
   P.Body{x, y, z, +vx, +vy, +vz, gr, h, +rt} = b
-  Nat.add(W.creachz(k, vx, vy, vz), Nat.add(W.turnroom(P.Rot.still(rt)), W.swing(rt)))
+  Nat.add(W.creachz(k, vx, vy, vz), Nat.add(W.turnroom(P.Rot.still(rt)), W.swing(P.K.g(k), gr, rt)))
 
 # the same reach again, for the rectangle of cells a cube looks at inside
 # its chunk. It used to leave the turn's room out, because the rectangle
