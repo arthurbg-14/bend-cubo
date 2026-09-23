@@ -6,7 +6,11 @@ Cubo is written in Bend 2 (github.com/bendlang/bend). When working on it:
 - the rules of the game are laws in `LAWS.bend`: the human states them, do not
   weaken them to make a change pass
 - `bend PROOF.bend` must print "All terms check." before any commit; a change
-  that breaks a law is fixed in the code (or its proof), never in the law
+  that breaks a law is fixed in the code (or its proof), never in the law.
+  `bend tools/check.bend` (what build.sh runs) gives the same verdict about
+  3x faster: PROOF.bend in parts, each proof's body real in one part and
+  ?TODO in the others, checked in parallel; every part must show exactly
+  its stubs and the open laws as TODOs, or it fails
 - no `@unsafe`, no `?TODO`, no axioms
 - polynomial identities in proofs go through `ring.bend`'s `R.eq`; every
   decision in the physics is a Bool handed to a helper, so a lemma can take
@@ -31,8 +35,9 @@ Cubo is written in Bend 2 (github.com/bendlang/bend). When working on it:
   goes. The checker normalizes both sides of every equation in full, so an
   undecided value copied into many places (a let, a match that answers a
   record, a record passed next to a decision about it, a claim that reads
-  a stuck record field by field) is what costs. lift, pair and once change
-  a phys def only after the checker takes a proof that it equals the old one
+  a stuck record field by field, one call repeating the same stuck value) is
+  what costs. lift, pair and once change a phys def only after the checker
+  takes a proof that it equals the old one
 
     phys.bend     the proven physics: bodies, friction, pushes, gated moves, the tick
     ring.bend     the ring tactic (a proven polynomial normalizer)
@@ -44,4 +49,5 @@ Cubo is written in Bend 2 (github.com/bendlang/bend). When working on it:
     effs/         scene.comp.in (the shader), screen.c (Vulkan, window, events),
                   font.glsl (HUD font), spv.sh (shader to SPIR-V in screen.c)
     tools/optimize.bend  the proof optimizer (tools/opt/: prof, hoist, lift, pair,
-                         once, auto)
+                         once, abst, auto)
+    tools/check.bend     PROOF.bend checked in parallel parts (build.sh)

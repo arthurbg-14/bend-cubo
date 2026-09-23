@@ -35,7 +35,13 @@ case "$("$BEND" version 2>/dev/null || "$BEND" --version 2>/dev/null)" in
   *) echo "build.sh: $BEND is not Bend 2 (install it: curl -fsSL https://bend-lang.com/install.sh | sh)" >&2
      exit 1 ;;
 esac
-"$BEND" PROOF.bend
+# The proofs: tools/check.bend checks PROOF.bend in parallel parts, with the
+# verdict of `"$BEND" PROOF.bend` in about a third of the time. It is built
+# for this machine once, and again when a tool changes.
+if [ ! -x tools/check ] || [ -n "$(find tools -name '*.bend' -newer tools/check)" ]; then
+  out=$("$BEND" tools/check.bend -o tools/check 2>&1) || { printf '%s\n' "$out"; exit 1; }
+fi
+BEND="$BEND" ./tools/check .
 if command -v glslc > /dev/null; then
   ./effs/spv.sh
 fi

@@ -251,7 +251,10 @@ Três bugs plausíveis, cada um numa cópia do projeto. Cada um compila
                   a tabela de células mudadas da GPU, os eventos da janela;
                   font.glsl: a fonte do HUD (tools/font.py); spv.sh: shader → SPIR-V
     tools/        font.py (fonte 8×16 Latin-1); order.py (ordena os defs de um
-                  arquivo .bend: cada um depois dos que usa)
+                  arquivo .bend: cada um depois dos que usa); check.bend (checa
+                  o PROOF.bend em partes paralelas, com o mesmo veredito, ~3x
+                  mais rápido: é o que o build.sh usa); optimize.bend (o
+                  otimizador das provas)
 
 - **O mundo infinito.** Cada célula de 1 m tem, por um hash da semente, 0 a 3
   cubos empilhados. A densidade varia por região (2 % a 17 %), e em volta do

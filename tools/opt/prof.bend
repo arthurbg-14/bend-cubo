@@ -168,15 +168,26 @@ def write_isos(ks: List<&2, Nat>, +bs: List<&2, Blk>, +dir: String) -> IO(Unit):
 
 # ---- running them, many at once ----
 
-def run_cmd(+dir: String, +glob: String, +par: Nat, +cap: Nat) -> String:
-  String.concat(["cd '", dir, "' && ls ", glob, " | xargs -P ", Nat.show(par), " -I{} sh -c '",
-    "ulimit -s 1000000 2>/dev/null; s=$(date +%s%N); ",
+# checks the file $f, prints "$f <ms> <ok|todo|fail|timeout> <TODOs>" and removes it;
+# what a failed check printed stays in $f.err
+def check_script(+cap: Nat) -> String:
+  String.concat(["ulimit -s 1000000 2>/dev/null; s=$(date +%s%N); ",
     "o=$(BEND_NO_TELEMETRY=1 BUN_JSC_maxPerThreadStackUsage=805306368 timeout ", Nat.show(cap),
-    " ${BEND:-$HOME/.bend/bin/bend} --check-only {} 2>&1); c=$?; e=$(date +%s%N); ",
+    " ${BEND:-$HOME/.bend/bin/bend} --check-only \"$f\" 2>&1); c=$?; e=$(date +%s%N); ",
     "if [ $c = 124 ]; then st=timeout; elif printf \"%s\" \"$o\" 2>/dev/null | grep -q \"^- \\(expected\\|observed\\|message\\)\"; ",
     "then st=fail; elif printf \"%s\" \"$o\" 2>/dev/null | grep -q \"All terms check\"; then st=ok; ",
     "elif printf \"%s\" \"$o\" 2>/dev/null | grep -q \"TODOs\\? found\"; then st=todo; else st=fail; fi; ",
-    "echo \"{} $(( (e - s) / 1000000 )) $st\"; rm -f {}'"])
+    "[ $st = fail ] || [ $st = timeout ] && printf \"%s\\n\" \"$o\" > \"$f.err\"; ",
+    "n=$(printf \"%s\" \"$o\" 2>/dev/null | sed -n \"s/.*Error: \\([0-9]*\\) TODOs\\{0,1\\} found.*/\\1/p\" | head -1); ",
+    "echo \"$f $(( (e - s) / 1000000 )) $st ${n:-0}\"; rm -f \"$f\""])
+
+def run_cmd(+dir: String, +glob: String, +par: Nat, +cap: Nat) -> String:
+  String.concat(["cd '", dir, "' && ls ", glob, " | xargs -P ", Nat.show(par), " -I{} sh -c 'f={}; ", check_script(cap), "'"])
+
+# the same over files given by path, each checked in its own directory
+def run_paths(+paths: List<&2, String>, +par: Nat, +cap: Nat) -> String:
+  String.concat(["printf '%s\\n' '", String.join(paths, "' '"), "' | xargs -P ", Nat.show(par),
+    " -I{} sh -c 'cd \"$(dirname {})\" && f=$(basename {}) && ", check_script(cap), "'"])
 
 # ISO_12.bend, LIFT_3.bend: the number after the last _
 def iso_idx(+f: String) -> Nat:
@@ -321,3 +332,73 @@ def bad_count(ts: List<&2, Tm>) -> Nat:
       0n
     case +t <> r:
       Nat.add(Bool.pick(Nat, Bool.or(String.eq(Tm.st(t), "ok"), String.eq(Tm.st(t), "todo")), 0n, 1n), bad_count(r))
+
+# ---- the old and the new version, measured side by side ----
+
+def tagged_path(+dir: String, +tag: String, +k: Nat) -> String:
+  String.concat([dir, "/", tag, "_", Nat.show(k), ".bend"])
+
+def write_tagged(ks: List<&2, Nat>, +bs: List<&2, Blk>, +dir: String, +tag: String) -> IO(Unit):
+  match ks:
+    case Nil{}:
+      IO.pure(Unit, Unit{})
+    case +k <> r:
+      do IO<Unit>:
+        u : Unit <- C.write_all(tagged_path(dir, tag, k), render(bs, k))
+        write_tagged(r, bs, dir, tag)
+
+def tagged_paths(ks: List<&2, Nat>, +dir: String, +tag: String) -> List<&2, String>:
+  match ks:
+    case Nil{}:
+      Nil{}
+    case +k <> r:
+      tagged_path(dir, tag, k) <> tagged_paths(r, dir, tag)
+
+def interleave(xs: List<&2, String>, ys: List<&2, String>) -> List<&2, String>:
+  match xs ys:
+    case Nil{} _:
+      ys
+    case Con{x, r} Nil{}:
+      x <> r
+    case Con{x, r} Con{y, t}:
+      x <> (y <> interleave(r, t))
+
+def with_prefix.pick(hit: Bool, +l: String, rest: List<&2, String>) -> List<&2, String>:
+  match hit:
+    case True{}:
+      l <> rest
+    case False{}:
+      rest
+
+def with_prefix(ls: List<&2, String>, +pre: String) -> List<&2, String>:
+  match ls:
+    case Nil{}:
+      Nil{}
+    case +l <> r:
+      with_prefix.pick(String.starts_with(l, pre), l, with_prefix(r, pre))
+
+def pick_ks(all: Bool, +bs: List<&2, Blk>, +names: List<&2, String>) -> List<&2, Nat>:
+  match all:
+    case True{}:
+      proof_idx(bs, 0n)
+    case False{}:
+      proof_idx_in(bs, names, 0n)
+
+def profile.pair.go(+da: String, +db: String, +par: Nat, +cap: Nat, +ba: List<&2, Blk>, +bb: List<&2, Blk>, +ka: List<&2, Nat>,
+  +kb: List<&2, Nat>) -> IO(List<&2, Tm> & List<&2, Tm>):
+  do IO<List<&2, Tm> & List<&2, Tm>>:
+    u1 : Unit <- write_tagged(ka, ba, da, "ISA")
+    u2 : Unit <- write_tagged(kb, bb, db, "ISB")
+    +out : String <- IO.try(String, C.Sys.run(run_paths(interleave(tagged_paths(ka, da, "ISA"), tagged_paths(kb, db, "ISB")), par, cap)))
+    return (sort_tm(named(tms(with_prefix(String.lines(out), "ISA_")), ba)), sort_tm(named(tms(with_prefix(String.lines(out), "ISB_")), bb)))
+
+# the named proofs (all of them, with all) of <da> and of <db>, checked
+# interleaved in one run, so both see the same load: (old times, new times)
+def profile.pair(+da: String, +db: String, +names: List<&2, String>, +all: Bool, +par: Nat, +cap: Nat)
+  -> IO(List<&2, Tm> & List<&2, Tm>):
+  do IO<List<&2, Tm> & List<&2, Tm>>:
+    +ba : List<&2, Blk> <- IO.bind(String, List<&2, Blk>, C.read_all(String.append(da, "/PROOF.bend")),
+      (p: String) => IO.pure(List<&2, Blk>, proof_blks(p)))
+    +bb : List<&2, Blk> <- IO.bind(String, List<&2, Blk>, C.read_all(String.append(db, "/PROOF.bend")),
+      (p: String) => IO.pure(List<&2, Blk>, proof_blks(p)))
+    profile.pair.go(da, db, par, cap, ba, bb, pick_ks(all, ba, names), pick_ks(all, bb, names))

@@ -15,6 +15,9 @@
 #   bend tools/optimize.bend pair <dir> <Def> [cap]
 #     <Def> takes its decision and the record it is about as one pair,
 #     once the checker proves it equal to the old one (see opt/pair.bend)
+#   bend tools/optimize.bend abst <dir> <Lemma>[,<Lemma>...]
+#     moves each call of these lemmas that repeats a stuck record into a
+#     lemma of its own, the record a parameter (see opt/abst.bend)
 #   bend tools/optimize.bend once <dir> <Lemma> [hot,...] [cap]
 #     <Lemma> and the lemmas its proof ends in state their claim about a
 #     record through Once, which opens it once (see opt/once.bend)
@@ -30,6 +33,7 @@ import ./opt/lift.bend as L
 import ./opt/auto.bend as A
 import ./opt/pair.bend as P
 import ./opt/once.bend as O
+import ./opt/abst.bend as B
 
 def arg_nat(+a: List<&2, String>, i: Nat, d: Nat) -> Nat:
   Maybe.default(&2, Nat, Nat.read(C.nth(a, i)), d)
@@ -49,7 +53,8 @@ def usage() -> IO(Unit):
     "  bend tools/optimize.bend hoist <dir> <Def> <let> <Type>\n",
     "  bend tools/optimize.bend lift <dir> <Def> [par=12] [cap=300]\n",
     "  bend tools/optimize.bend pair <dir> <Def> [cap=900]\n",
-    "  bend tools/optimize.bend once <dir> <Lemma> [hot,...] [cap=900]"]))
+    "  bend tools/optimize.bend once <dir> <Lemma> [hot,...] [cap=900]\n",
+    "  bend tools/optimize.bend abst <dir> <Lemma>[,<Lemma>...]"]))
 
 def do_lift(+dir: String, +d: String, +par: Nat, +cap: Nat) -> IO(Unit):
   do IO<Unit>:
@@ -75,12 +80,24 @@ def do_once(+dir: String, +l: String, +hot: List<&2, String>, +cap: Nat) -> IO(U
     msg : String <- O.once(dir, l, hot, cap)
     IO.print(msg)
 
+def do_abst(+dir: String, +ls: List<&2, String>) -> IO(Unit):
+  do IO<Unit>:
+    msg : String <- B.abst(dir, ls)
+    IO.print(msg)
+
+def run.abst(abst: Bool, +a: List<&2, String>) -> IO(Unit):
+  match abst:
+    case True{}:
+      do_abst(C.nth(a, 1n), String.split(C.nth(a, 2n), ','))
+    case False{}:
+      usage()
+
 def run.once(once: Bool, +a: List<&2, String>) -> IO(Unit):
   match once:
     case True{}:
       do_once(C.nth(a, 1n), C.nth(a, 2n), String.split(C.nth(a, 3n), ','), arg_nat(a, 4n, 900n))
     case False{}:
-      usage()
+      run.abst(Bool.and(String.eq(C.nth(a, 0n), "abst"), Nat.is_le(3n, List.length(&2, String, a))), a)
 
 def run.pair(pair: Bool, +a: List<&2, String>) -> IO(Unit):
   match pair:
