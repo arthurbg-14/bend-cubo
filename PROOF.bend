@@ -11,6 +11,31 @@ import ./LAWS.bend as Laws
 # Kit
 # ---
 
+def Once.Body(k: P.Body -> Type, b: P.Body) -> Type:
+  match b:
+    case P.Body{+u1, +u2, +u3, +u4, +u5, +u6, +u7, +u8, +u9}:
+      k(P.Body{u1, u2, u3, u4, u5, u6, u7, u8, u9})
+
+def Once.Body.down(-k: P.Body -> Type, b: P.Body, h: Once.Body(k, b)) -> k(b):
+  match b:
+    case P.Body{+u1, +u2, +u3, +u4, +u5, +u6, +u7, +u8, +u9}:
+      h
+
+def Once.Body.up(-k: P.Body -> Type, b: P.Body, h: k(b)) -> Once.Body(k, b):
+  match b:
+    case P.Body{+u1, +u2, +u3, +u4, +u5, +u6, +u7, +u8, +u9}:
+      h
+
+def Body.of_pair(p: P.Body & Bool) -> P.Body:
+  match p:
+    case (b, o):
+      b
+
+def Tick.shrink.pair_up(-k: P.Body -> Type, c: P.Body, +rt: P.Rot, h: k(c)) -> k(Body.of_pair(P.Tick.shrink.pair(c, rt))):
+  match c:
+    case P.Body{+u1, +u2, +u3, +u4, +u5, +u6, +u7, +u8, +u9}:
+      h
+
 # True is not False
 def D(b: Bool) -> Type:
   match b:
@@ -858,39 +883,45 @@ def cand_hit(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat
   pivot_hit(P.Rot.mat(P.Quat.half(P.Quat.step(w, P.Wv.mag(w)))), s, g, obs, x, y, z, vx, vy, vz, gr, rt,
     P.Rot{P.Rot.turn(P.Rot.q(rt), w), P.Rot.w(rt)}, rx, ry, rz)
 
-def shrink_hit(n: Nat, ok: Bool, +b: P.Body, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z,
-  hb: {P.Body.hit(b) == True{} : Bool})
-  -> {P.Body.hit(P.Tick.shrink(n, ok, b, s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, w, rx, ry, rz)) == True{} : Bool}:
-  match n ok:
-    case 0n True{}:
-      hb
-    case 1n+m True{}:
-      hb
-    case 0n False{}:
-      hb
-    case 1n+m False{}:
-      shrink_hit(m, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, P.Wv.half(w), rx, ry, rz), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, P.Wv.half(w), rx, ry, rz), s, g, obs, x, y, z, vx, vy, vz, gr, rt, P.Wv.half(w), rx, ry, rz,
-        cand_hit(s, g, obs, x, y, z, vx, vy, vz, gr, rt, P.Wv.half(w), rx, ry, rz))
+def shrink_hit(n: Nat, p: P.Body & Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z,
+  hb: {P.Body.hit(Body.of_pair(p)) == True{} : Bool})
+  -> {P.Body.hit(P.Tick.shrink(n, p, s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, w, rx, ry, rz)) == True{} : Bool}:
+  match n:
+    case 0n:
+      match p:
+        case (b, ok):
+          hb
+    case 1n+m:
+      match p:
+        case (b, ok):
+          match ok:
+            case True{}:
+              hb
+            case False{}:
+              shrink_hit(m, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, P.Wv.half(w), rx, ry, rz), rt), s, g, obs, x, y, z, vx, vy, vz, gr, rt, P.Wv.half(w), rx, ry, rz, Tick.shrink.pair_up((kb: P.Body) => {P.Body.hit(kb) == True{} : Bool}, P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, P.Wv.half(w), rx, ry, rz), rt, cand_hit(s, g, obs, x, y, z, vx, vy, vz, gr, rt, P.Wv.half(w), rx, ry, rz)))
 
 def start_hit(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z)
-  -> {P.Body.hit(P.Tick.shrink(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, w, rx, ry, rz), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, w, rx, ry, rz), s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, w, rx, ry, rz)) == True{} : Bool}:
-  shrink_hit(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, w, rx, ry, rz), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, w, rx, ry, rz), s, g, obs, x, y, z, vx, vy, vz, gr, rt, w, rx, ry, rz,
-    cand_hit(s, g, obs, x, y, z, vx, vy, vz, gr, rt, w, rx, ry, rz))
+  -> {P.Body.hit(P.Tick.shrink(7n, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, w, rx, ry, rz), rt), s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, w, rx, ry, rz)) == True{} : Bool}:
+  shrink_hit(7n, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, w, rx, ry, rz), rt), s, g, obs, x, y, z, vx, vy, vz, gr, rt, w, rx, ry, rz, Tick.shrink.pair_up((kb: P.Body) => {P.Body.hit(kb) == True{} : Bool}, P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, w, rx, ry, rz), rt, cand_hit(s, g, obs, x, y, z, vx, vy, vz, gr, rt, w, rx, ry, rz)))
 
 def keepw_hit(+tip: Bool, moved: Bool, +b: P.Body, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +rt: P.Rot,
   hb: {P.Body.hit(b) == True{} : Bool})
   -> {P.Body.hit(P.Body.spin(tip, moved, b, rt)) == True{} : Bool}:
   match moved:
     case True{}:
-      hb
+      match b:
+        case P.Body{+u1, +u2, +u3, +u4, +u5, +u6, +u7, +u8, +u9}:
+          hb
     case False{}:
-      hb
+      match b:
+        case P.Body{+u1, +u2, +u3, +u4, +u5, +u6, +u7, +u8, +u9}:
+          hb
 
 def pivota0_hit(md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
   +vz: P.Z, +gr: Bool, +rt: P.Rot, +r2: P.Rot, +w2: P.Wv, a: P.Wv)
   -> {P.Body.hit(P.Tick.pivota0(md, s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, r2, w2, a)) == True{} : Bool}:
   P.Wv{+ax, +ay, +az} = a
-  keepw_hit(Nat.is_lt(0n, Nat.add(P.Z.mag(ax), P.Z.mag(az))), P.Tick.moved(P.Tick.shrink(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, w2, ax, ay, az), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, w2, ax, ay, az), rt), P.Tick.shrink(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, w2, ax, ay, az), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, rt,
+  keepw_hit(Nat.is_lt(0n, Nat.add(P.Z.mag(ax), P.Z.mag(az))), P.Tick.moved(P.Tick.shrink(7n, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, w2, ax, ay, az), rt), s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, w2, ax, ay, az), rt), P.Tick.shrink(7n, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, w2, ax, ay, az), rt), s, g, obs, x, y, z, vx, vy, vz, gr, True{}, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, rt,
     start_hit(s, g, obs, x, y, z, vx, vy, vz, gr, rt, w2, ax, ay, az))
 
 def pivota_hit(md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
@@ -1436,45 +1467,58 @@ def cand_fs(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat,
   pivot_fs(P.Rot.mat(P.Quat.half(P.Quat.step(w, P.Wv.mag(w)))), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt,
     P.Rot{P.Rot.turn(P.Rot.q(rt), w), P.Rot.w(rt)}, rx, ry, rz, heavy, f)
 
-def shrink_fs(n: Nat, ok: Bool, +b: P.Body, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z,
+def shrink_fs(n: Nat, p: P.Body & Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z,
   +heavy: {Nat.is_lt(0n, g) == True{} : Bool}, +f: {Bool.or(Nat.is_lt(0n, P.Z.neg(vy)), gr) == True{} : Bool},
-  hb: FS(b))
-  -> FS(P.Tick.shrink(n, ok, b, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz)):
-  match n ok:
-    case 0n True{}:
-      hb
-    case 1n+m True{}:
-      hb
-    case 0n False{}:
-      hb
-    case 1n+m False{}:
-      shrink_fs(m, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz, heavy, f,
-        cand_fs(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz, heavy, f))
+  hb: FS(Body.of_pair(p)))
+  -> FS(P.Tick.shrink(n, p, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz)):
+  match n:
+    case 0n:
+      match p:
+        case (b, ok):
+          hb
+    case 1n+m:
+      match p:
+        case (b, ok):
+          match ok:
+            case True{}:
+              hb
+            case False{}:
+              shrink_fs(m, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz, heavy, f, Tick.shrink.pair_up((kb: P.Body) => FS(kb), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), rt, cand_fs(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz, heavy, f)))
 
 def start_fs(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z,
   +heavy: {Nat.is_lt(0n, g) == True{} : Bool}, +f: {Bool.or(Nat.is_lt(0n, P.Z.neg(vy)), gr) == True{} : Bool})
-  -> FS(P.Tick.shrink(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz)):
-  shrink_fs(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz, heavy, f,
-    cand_fs(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz, heavy, f))
+  -> FS(P.Tick.shrink(7n, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz)):
+  shrink_fs(7n, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz, heavy, f, Tick.shrink.pair_up((kb: P.Body) => FS(kb), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt, cand_fs(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz, heavy, f)))
 
 def keepw_fs(+tip: Bool, moved: Bool, +b: P.Body, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot,
   +heavy: {Nat.is_lt(0n, g) == True{} : Bool}, +f: {Bool.or(Nat.is_lt(0n, P.Z.neg(vy)), gr) == True{} : Bool},
-  hb: FS(b))
-  -> FS(P.Body.spin(tip, moved, b, rt)):
+  hb: Once.Body((kb: P.Body) => FS(kb), b))
+  -> Once.Body((kb: P.Body) => FS(kb), P.Body.spin(tip, moved, b, rt)):
   match moved:
     case True{}:
-      hb
+      match b:
+        case P.Body{+u1, +u2, +u3, +u4, +u5, +u6, +u7, +u8, +u9}:
+          hb
     case False{}:
-      hb
+      match b:
+        case P.Body{+u1, +u2, +u3, +u4, +u5, +u6, +u7, +u8, +u9}:
+          hb
 
-def pivota0_fs(md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
+def pivota0_fs.k1(md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
   +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, +w2: P.Wv, a: P.Wv,
   +heavy: {Nat.is_lt(0n, g) == True{} : Bool},
   +f: {Bool.or(Nat.is_lt(0n, P.Z.neg(vy)), gr) == True{} : Bool})
-  -> FS(P.Tick.pivota0(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, w2, a)):
+  -> Once.Body((kb: P.Body) => FS(kb), P.Tick.pivota0(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, w2, a)):
   P.Wv{+ax, +ay, +az} = a
-  keepw_fs(Nat.is_lt(0n, Nat.add(P.Z.mag(ax), P.Z.mag(az))), P.Tick.moved(P.Tick.shrink(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), P.Tick.shrink(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, heavy, f,
-    start_fs(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az, heavy, f))
+  keepw_fs(Nat.is_lt(0n, Nat.add(P.Z.mag(ax), P.Z.mag(az))), P.Tick.moved(P.Tick.shrink(7n, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), P.Tick.shrink(7n, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, heavy, f, Once.Body.up((kb: P.Body) => FS(kb), (P.Tick.shrink(7n, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az)), start_fs(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az, heavy, f)))
+
+def pivota0_fs(+md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
+  +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, +w2: P.Wv, +a: P.Wv,
+  +heavy: {Nat.is_lt(0n, g) == True{} : Bool},
+  +f: {Bool.or(Nat.is_lt(0n, P.Z.neg(vy)), gr) == True{} : Bool})
+  -> FS(P.Tick.pivota0(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, w2, a)):
+  Once.Body.down((kb: P.Body) => FS(kb), P.Tick.pivota0(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, w2, a),
+    pivota0_fs.k1(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, w2, a, heavy, f))
 
 def pivota_fs(md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
   +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, +a: P.Wv,
@@ -3349,46 +3393,64 @@ def cand_e2(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat,
   pivot_e2(P.Rot.mat(P.Quat.half(P.Quat.step(w, P.Wv.mag(w)))), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt,
     P.Rot{P.Rot.turn(P.Rot.q(rt), w), P.Rot.w(rt)}, rx, ry, rz)
 
-def shrink_e2(n: Nat, ok: Bool, +b: P.Body, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z,
-  hb: {Nat.is_le(P.Body.energy(g, b),
-       P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == True{} : Bool})
-  -> {Nat.is_le(P.Body.energy(g, P.Tick.shrink(n, ok, b, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz)),
-       P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == True{} : Bool}:
-  match n ok:
-    case 0n True{}:
-      hb
-    case 1n+m True{}:
-      hb
-    case 0n False{}:
-      hb
-    case 1n+m False{}:
-      shrink_e2(m, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz,
-        cand_e2(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz))
+def shrink_e2(n: Nat, p: P.Body & Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z,
+  hb: Once.Body((kb: P.Body) => {Nat.is_le(P.Body.energy(g, kb),
+       P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == True{} : Bool}, Body.of_pair(p)))
+  -> Once.Body((kb: P.Body) => {Nat.is_le(P.Body.energy(g, kb),
+       P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == True{} : Bool}, P.Tick.shrink(n, p, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz)):
+  match n:
+    case 0n:
+      match p:
+        case (b, ok):
+          hb
+    case 1n+m:
+      match p:
+        case (b, ok):
+          match ok:
+            case True{}:
+              hb
+            case False{}:
+              shrink_e2(m, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz, Once.Body.up((kb: P.Body) => {Nat.is_le(P.Body.energy((g), kb),
+       P.Body.energy((g), P.Body{(x), (y), (z), (vx), (vy), (vz), (gr), (hit), (rt)})) == True{} : Bool}, Body.of_pair((P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), rt))), Tick.shrink.pair_up((kb: P.Body) => {Nat.is_le(P.Body.energy(g, kb),
+                     P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == True{} : Bool}, P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), rt, cand_e2(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz))))
 
 def start_e2(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z)
-  -> {Nat.is_le(P.Body.energy(g, P.Tick.shrink(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz)),
-       P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == True{} : Bool}:
-  shrink_e2(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz,
-    cand_e2(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz))
+  -> Once.Body((kb: P.Body) => {Nat.is_le(P.Body.energy(g, kb),
+       P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == True{} : Bool}, P.Tick.shrink(7n, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz)):
+  shrink_e2(7n, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz, Once.Body.up((kb: P.Body) => {Nat.is_le(P.Body.energy((g), kb),
+       P.Body.energy((g), P.Body{(x), (y), (z), (vx), (vy), (vz), (gr), (hit), (rt)})) == True{} : Bool}, Body.of_pair((P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt))), Tick.shrink.pair_up((kb: P.Body) => {Nat.is_le(P.Body.energy(g, kb),
+       P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == True{} : Bool}, P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt, cand_e2(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz))))
 
 def keepw_e2(+tip: Bool, moved: Bool, +b: P.Body, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot,
-  hb: {Nat.is_le(P.Body.energy(g, b),
-       P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == True{} : Bool})
-  -> {Nat.is_le(P.Body.energy(g, P.Body.spin(tip, moved, b, rt)),
-       P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == True{} : Bool}:
+  hb: Once.Body((kb: P.Body) => {Nat.is_le(P.Body.energy(g, kb),
+       P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == True{} : Bool}, b))
+  -> Once.Body((kb: P.Body) => {Nat.is_le(P.Body.energy(g, kb),
+       P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == True{} : Bool}, P.Body.spin(tip, moved, b, rt)):
   match moved:
     case True{}:
-      hb
+      match b:
+        case P.Body{+u1, +u2, +u3, +u4, +u5, +u6, +u7, +u8, +u9}:
+          hb
     case False{}:
-      hb
+      match b:
+        case P.Body{+u1, +u2, +u3, +u4, +u5, +u6, +u7, +u8, +u9}:
+          hb
 
-def pivota0_e2(md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
+def pivota0_e2.k1(md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
   +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, +w2: P.Wv, a: P.Wv)
+  -> Once.Body((kb: P.Body) => {Nat.is_le(P.Body.energy(g, kb),
+       P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == True{} : Bool}, P.Tick.pivota0(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, w2, a)):
+  P.Wv{+ax, +ay, +az} = a
+  keepw_e2(Nat.is_lt(0n, Nat.add(P.Z.mag(ax), P.Z.mag(az))), P.Tick.moved(P.Tick.shrink(7n, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), P.Tick.shrink(7n, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt,
+    start_e2(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az))
+
+def pivota0_e2(+md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
+  +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, +w2: P.Wv, +a: P.Wv)
   -> {Nat.is_le(P.Body.energy(g, P.Tick.pivota0(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, w2, a)),
        P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == True{} : Bool}:
-  P.Wv{+ax, +ay, +az} = a
-  keepw_e2(Nat.is_lt(0n, Nat.add(P.Z.mag(ax), P.Z.mag(az))), P.Tick.moved(P.Tick.shrink(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), P.Tick.shrink(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt,
-    start_e2(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az))
+  Once.Body.down((kb: P.Body) => {Nat.is_le(P.Body.energy(g, kb),
+       P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == True{} : Bool}, P.Tick.pivota0(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, w2, a),
+    pivota0_e2.k1(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, w2, a))
 
 def pivota_e2(md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
   +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, +a: P.Wv)
@@ -3915,44 +3977,57 @@ def cand_nc(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat,
   pivot_nc(P.Rot.mat(P.Quat.half(P.Quat.step(w, P.Wv.mag(w)))), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt,
     P.Rot{P.Rot.turn(P.Rot.q(rt), w), P.Rot.w(rt)}, rx, ry, rz, h)
 
-def shrink_nc(n: Nat, ok: Bool, +b: P.Body, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z,
+def shrink_nc(n: Nat, p: P.Body & Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z,
   +h: {P.Geo.free(s, x, y, z, P.Rot.q(rt), obs) == True{} : Bool},
-  hb: FREE(s, obs, b))
-  -> FREE(s, obs, P.Tick.shrink(n, ok, b, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz)):
-  match n ok:
-    case 0n True{}:
-      hb
-    case 1n+m True{}:
-      hb
-    case 0n False{}:
-      hb
-    case 1n+m False{}:
-      shrink_nc(m, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz, h,
-        cand_nc(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz, h))
+  hb: Once.Body((kb: P.Body) => FREE(s, obs, kb), Body.of_pair(p)))
+  -> Once.Body((kb: P.Body) => FREE(s, obs, kb), P.Tick.shrink(n, p, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz)):
+  match n:
+    case 0n:
+      match p:
+        case (b, ok):
+          hb
+    case 1n+m:
+      match p:
+        case (b, ok):
+          match ok:
+            case True{}:
+              hb
+            case False{}:
+              shrink_nc(m, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz, h, Once.Body.up((kb: P.Body) => FREE((s), (obs), kb), Body.of_pair((P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), rt))), Tick.shrink.pair_up((kb: P.Body) => FREE(s, obs, kb), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), rt, cand_nc(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz, h))))
 
 def start_nc(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z,
   +h: {P.Geo.free(s, x, y, z, P.Rot.q(rt), obs) == True{} : Bool})
-  -> FREE(s, obs, P.Tick.shrink(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz)):
-  shrink_nc(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz, h,
-    cand_nc(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz, h))
+  -> Once.Body((kb: P.Body) => FREE(s, obs, kb), P.Tick.shrink(7n, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz)):
+  shrink_nc(7n, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz, h, Once.Body.up((kb: P.Body) => FREE((s), (obs), kb), Body.of_pair((P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt))), Tick.shrink.pair_up((kb: P.Body) => FREE(s, obs, kb), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt, cand_nc(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz, h))))
 
 def keepw_nc(+tip: Bool, moved: Bool, +b: P.Body, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot,
   +h: {P.Geo.free(s, x, y, z, P.Rot.q(rt), obs) == True{} : Bool},
-  hb: FREE(s, obs, b))
-  -> FREE(s, obs, P.Body.spin(tip, moved, b, rt)):
+  hb: Once.Body((kb: P.Body) => FREE(s, obs, kb), b))
+  -> Once.Body((kb: P.Body) => FREE(s, obs, kb), P.Body.spin(tip, moved, b, rt)):
   match moved:
     case True{}:
-      hb
+      match b:
+        case P.Body{+u1, +u2, +u3, +u4, +u5, +u6, +u7, +u8, +u9}:
+          hb
     case False{}:
-      hb
+      match b:
+        case P.Body{+u1, +u2, +u3, +u4, +u5, +u6, +u7, +u8, +u9}:
+          hb
 
-def pivota0_nc(md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z,
+def pivota0_nc.k1(md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z,
   +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, +w2: P.Wv, a: P.Wv,
   +h: {P.Geo.free(s, x, y, z, P.Rot.q(rt), obs) == True{} : Bool})
-  -> FREE(s, obs, P.Tick.pivota0(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, w2, a)):
+  -> Once.Body((kb: P.Body) => FREE(s, obs, kb), P.Tick.pivota0(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, w2, a)):
   P.Wv{+ax, +ay, +az} = a
-  keepw_nc(Nat.is_lt(0n, Nat.add(P.Z.mag(ax), P.Z.mag(az))), P.Tick.moved(P.Tick.shrink(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), P.Tick.shrink(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, h,
+  keepw_nc(Nat.is_lt(0n, Nat.add(P.Z.mag(ax), P.Z.mag(az))), P.Tick.moved(P.Tick.shrink(7n, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), P.Tick.shrink(7n, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, h,
     start_nc(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az, h))
+
+def pivota0_nc(+md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z,
+  +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, +w2: P.Wv, +a: P.Wv,
+  +h: {P.Geo.free(s, x, y, z, P.Rot.q(rt), obs) == True{} : Bool})
+  -> FREE(s, obs, P.Tick.pivota0(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, w2, a)):
+  Once.Body.down((kb: P.Body) => FREE(s, obs, kb), P.Tick.pivota0(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, w2, a),
+    pivota0_nc.k1(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, w2, a, h))
 
 def pivota_nc(md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z,
   +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, +a: P.Wv,
@@ -4366,43 +4441,54 @@ def cand_fl(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat,
   pivot_fl(P.Rot.mat(P.Quat.half(P.Quat.step(w, P.Wv.mag(w)))), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt,
     P.Rot{P.Rot.turn(P.Rot.q(rt), w), P.Rot.w(rt)}, rx, ry, rz, h)
 
-def shrink_fl(n: Nat, ok: Bool, +b: P.Body, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z,
+def shrink_fl(n: Nat, p: P.Body & Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z,
   +h: {Nat.is_le(P.Geo.sag(s, P.Rot.q(rt)), y) == True{} : Bool},
-  hb: FL(s, b))
-  -> FL(s, P.Tick.shrink(n, ok, b, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz)):
-  match n ok:
-    case 0n True{}:
-      hb
-    case 1n+m True{}:
-      hb
-    case 0n False{}:
-      hb
-    case 1n+m False{}:
-      shrink_fl(m, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz, h,
-        cand_fl(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz, h))
+  hb: FL(s, Body.of_pair(p)))
+  -> FL(s, P.Tick.shrink(n, p, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz)):
+  match n:
+    case 0n:
+      match p:
+        case (b, ok):
+          hb
+    case 1n+m:
+      match p:
+        case (b, ok):
+          match ok:
+            case True{}:
+              hb
+            case False{}:
+              shrink_fl(m, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz, h, Tick.shrink.pair_up((kb: P.Body) => FL(s, kb), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), rt, cand_fl(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz, h)))
 
 def start_fl(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z,
   +h: {Nat.is_le(P.Geo.sag(s, P.Rot.q(rt)), y) == True{} : Bool})
-  -> FL(s, P.Tick.shrink(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz)):
-  shrink_fl(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz, h,
-    cand_fl(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz, h))
+  -> FL(s, P.Tick.shrink(7n, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz)):
+  shrink_fl(7n, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz, h, Tick.shrink.pair_up((kb: P.Body) => FL(s, kb), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt, cand_fl(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz, h)))
 
 def keepw_fl(+tip: Bool, moved: Bool, +b: P.Body, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot,
   +h: {Nat.is_le(P.Geo.sag(s, P.Rot.q(rt)), y) == True{} : Bool},
-  hb: FL(s, b))
-  -> FL(s, P.Body.spin(tip, moved, b, rt)):
+  hb: Once.Body((kb: P.Body) => FL(s, kb), b))
+  -> Once.Body((kb: P.Body) => FL(s, kb), P.Body.spin(tip, moved, b, rt)):
   match moved:
     case True{}:
-      hb
+      match b:
+        case P.Body{+u1, +u2, +u3, +u4, +u5, +u6, +u7, +u8, +u9}:
+          hb
     case False{}:
-      hb
+      match b:
+        case P.Body{+u1, +u2, +u3, +u4, +u5, +u6, +u7, +u8, +u9}:
+          hb
 
-def pivota0_fl(md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z,
+def pivota0_fl.k1(md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z,
   +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, +w2: P.Wv, a: P.Wv, +h: {Nat.is_le(P.Geo.sag(s, P.Rot.q(rt)), y) == True{} : Bool})
-  -> FL(s, P.Tick.pivota0(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, w2, a)):
+  -> Once.Body((kb: P.Body) => FL(s, kb), P.Tick.pivota0(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, w2, a)):
   P.Wv{+ax, +ay, +az} = a
-  keepw_fl(Nat.is_lt(0n, Nat.add(P.Z.mag(ax), P.Z.mag(az))), P.Tick.moved(P.Tick.shrink(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), P.Tick.shrink(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, h,
-    start_fl(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az, h))
+  keepw_fl(Nat.is_lt(0n, Nat.add(P.Z.mag(ax), P.Z.mag(az))), P.Tick.moved(P.Tick.shrink(7n, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), P.Tick.shrink(7n, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, h, Once.Body.up((kb: P.Body) => FL((s), kb), (P.Tick.shrink(7n, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az)), start_fl(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az, h)))
+
+def pivota0_fl(+md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z,
+  +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, +w2: P.Wv, +a: P.Wv, +h: {Nat.is_le(P.Geo.sag(s, P.Rot.q(rt)), y) == True{} : Bool})
+  -> FL(s, P.Tick.pivota0(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, w2, a)):
+  Once.Body.down((kb: P.Body) => FL(s, kb), P.Tick.pivota0(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, w2, a),
+    pivota0_fl.k1(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, w2, a, h))
 
 def pivota_fl(md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z,
   +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, +a: P.Wv, h: {Nat.is_le(P.Geo.sag(s, P.Rot.q(rt)), y) == True{} : Bool})
@@ -4576,43 +4662,55 @@ def cand_sh(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat,
   pivot_sh(P.Rot.mat(P.Quat.half(P.Quat.step(w, P.Wv.mag(w)))), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt,
     P.Rot{P.Rot.turn(P.Rot.q(rt), w), P.Rot.w(rt)}, rx, ry, rz, h)
 
-def shrink_sh(n: Nat, ok: Bool, +b: P.Body, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z,
+def shrink_sh(n: Nat, p: P.Body & Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z,
   +h: {Bool.and(gr, P.Tick.sinks(s, obs, x, y, z, P.Rot.q(rt))) == False{} : Bool},
-  hb: SH(s, obs, b))
-  -> SH(s, obs, P.Tick.shrink(n, ok, b, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz)):
-  match n ok:
-    case 0n True{}:
-      hb
-    case 1n+m True{}:
-      hb
-    case 0n False{}:
-      hb
-    case 1n+m False{}:
-      shrink_sh(m, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz, h,
-        cand_sh(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz, h))
+  hb: Once.Body((kb: P.Body) => SH(s, obs, kb), Body.of_pair(p)))
+  -> Once.Body((kb: P.Body) => SH(s, obs, kb), P.Tick.shrink(n, p, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz)):
+  match n:
+    case 0n:
+      match p:
+        case (b, ok):
+          hb
+    case 1n+m:
+      match p:
+        case (b, ok):
+          match ok:
+            case True{}:
+              hb
+            case False{}:
+              shrink_sh(m, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz, h, Once.Body.up((kb: P.Body) => SH((s), (obs), kb), Body.of_pair((P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), rt))), Tick.shrink.pair_up((kb: P.Body) => SH(s, obs, kb), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), rt, cand_sh(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz, h))))
 
 def start_sh(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z,
   +h: {Bool.and(gr, P.Tick.sinks(s, obs, x, y, z, P.Rot.q(rt))) == False{} : Bool})
-  -> SH(s, obs, P.Tick.shrink(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz)):
-  shrink_sh(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz, h,
-    cand_sh(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz, h))
+  -> Once.Body((kb: P.Body) => SH(s, obs, kb), P.Tick.shrink(7n, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz)):
+  shrink_sh(7n, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz, h, Once.Body.up((kb: P.Body) => SH((s), (obs), kb), Body.of_pair((P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt))), Tick.shrink.pair_up((kb: P.Body) => SH(s, obs, kb), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt, cand_sh(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz, h))))
 
 def keepw_sh(+tip: Bool, moved: Bool, +b: P.Body, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot,
   +h: {Bool.and(gr, P.Tick.sinks(s, obs, x, y, z, P.Rot.q(rt))) == False{} : Bool},
-  hb: SH(s, obs, b))
-  -> SH(s, obs, P.Body.spin(tip, moved, b, rt)):
+  hb: Once.Body((kb: P.Body) => SH(s, obs, kb), b))
+  -> Once.Body((kb: P.Body) => SH(s, obs, kb), P.Body.spin(tip, moved, b, rt)):
   match moved:
     case True{}:
-      hb
+      match b:
+        case P.Body{+u1, +u2, +u3, +u4, +u5, +u6, +u7, +u8, +u9}:
+          hb
     case False{}:
-      hb
+      match b:
+        case P.Body{+u1, +u2, +u3, +u4, +u5, +u6, +u7, +u8, +u9}:
+          hb
 
-def pivota0_sh(md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z,
+def pivota0_sh.k1(md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z,
   +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, +w2: P.Wv, a: P.Wv, +h: {Bool.and(gr, P.Tick.sinks(s, obs, x, y, z, P.Rot.q(rt))) == False{} : Bool})
-  -> SH(s, obs, P.Tick.pivota0(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, w2, a)):
+  -> Once.Body((kb: P.Body) => SH(s, obs, kb), P.Tick.pivota0(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, w2, a)):
   P.Wv{+ax, +ay, +az} = a
-  keepw_sh(Nat.is_lt(0n, Nat.add(P.Z.mag(ax), P.Z.mag(az))), P.Tick.moved(P.Tick.shrink(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), P.Tick.shrink(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, h,
+  keepw_sh(Nat.is_lt(0n, Nat.add(P.Z.mag(ax), P.Z.mag(az))), P.Tick.moved(P.Tick.shrink(7n, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), P.Tick.shrink(7n, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, h,
     start_sh(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az, h))
+
+def pivota0_sh(+md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z,
+  +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, +w2: P.Wv, +a: P.Wv, +h: {Bool.and(gr, P.Tick.sinks(s, obs, x, y, z, P.Rot.q(rt))) == False{} : Bool})
+  -> SH(s, obs, P.Tick.pivota0(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, w2, a)):
+  Once.Body.down((kb: P.Body) => SH(s, obs, kb), P.Tick.pivota0(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, w2, a),
+    pivota0_sh.k1(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, w2, a, h))
 
 def pivota_sh(md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z,
   +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, +a: P.Wv, h: {Bool.and(gr, P.Tick.sinks(s, obs, x, y, z, P.Rot.q(rt))) == False{} : Bool})
@@ -5213,57 +5311,67 @@ def cand_rotw(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Na
   pivot_rotw(P.Rot.mat(P.Quat.half(P.Quat.step(w, P.Wv.mag(w)))), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt,
     P.Rot{P.Rot.turn(P.Rot.q(rt), w), P.Rot.w(rt)}, rx, ry, rz, w0, hrt, hrt)
 
-def shrink_rotw(n: Nat, ok: Bool, +b: P.Body, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat,
+def shrink_rotw(n: Nat, p: P.Body & Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat,
   +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z, +w0: P.Wv,
-  +hrt: {P.Rot.w(rt) == w0 : P.Wv}, hb: ROTW(w0, b))
-  -> ROTW(w0, P.Tick.shrink(n, ok, b, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz)):
-  match n ok:
-    case 0n True{}:
-      hb
-    case 1n+m True{}:
-      hb
-    case 0n False{}:
-      hb
-    case 1n+m False{}:
-      shrink_rotw(m, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), rt),
-        P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz),
-        s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz, w0, hrt,
-        cand_rotw(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz, w0, hrt))
+  +hrt: {P.Rot.w(rt) == w0 : P.Wv}, hb: ROTW(w0, Body.of_pair(p)))
+  -> ROTW(w0, P.Tick.shrink(n, p, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz)):
+  match n:
+    case 0n:
+      match p:
+        case (b, ok):
+          hb
+    case 1n+m:
+      match p:
+        case (b, ok):
+          match ok:
+            case True{}:
+              hb
+            case False{}:
+              shrink_rotw(m, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), rt),
+                s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz, w0, hrt, Tick.shrink.pair_up((kb: P.Body) => ROTW(w0, kb), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), rt, cand_rotw(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz, w0, hrt)))
 
 def start_rotw(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z,
   +gr: Bool, +hit: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z, +w0: P.Wv,
   +hrt: {P.Rot.w(rt) == w0 : P.Wv})
-  -> ROTW(w0, P.Tick.shrink(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt),
-      P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz),
+  -> ROTW(w0, P.Tick.shrink(7n, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt),
       s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz)):
-  shrink_rotw(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt),
-    P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz),
-    s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz, w0, hrt,
-    cand_rotw(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz, w0, hrt))
+  shrink_rotw(7n, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt),
+    s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz, w0, hrt, Tick.shrink.pair_up((kb: P.Body) => ROTW(w0, kb), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt, cand_rotw(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz, w0, hrt)))
 
 def spin_rotw(tip: Bool, moved: Bool, +b: P.Body, +rt: P.Rot, +w0: P.Wv,
-  +hrt: {P.Rot.w(rt) == w0 : P.Wv}, hb: ROTW(w0, b), +htip: {tip == True{} : Bool})
-  -> ROTW(w0, P.Body.spin(tip, moved, b, rt)):
+  +hrt: {P.Rot.w(rt) == w0 : P.Wv}, hb: Once.Body((kb: P.Body) => ROTW(w0, kb), b), +htip: {tip == True{} : Bool})
+  -> Once.Body((kb: P.Body) => ROTW(w0, kb), P.Body.spin(tip, moved, b, rt)):
   match moved:
     case True{}:
-      hb
+      match b:
+        case P.Body{+u1, +u2, +u3, +u4, +u5, +u6, +u7, +u8, +u9}:
+          hb
     case False{}:
-      %Equal.sym(Bool, tip, True{}, htip)
-        : {P.Pick.w(_, P.Rot.w(rt), P.Wv.zero()) == w0 : P.Wv}
-      hrt
+      match b:
+        case P.Body{+u1, +u2, +u3, +u4, +u5, +u6, +u7, +u8, +u9}:
+          %Equal.sym(Bool, tip, True{}, htip)
+            : {P.Pick.w(_, P.Rot.w(rt), P.Wv.zero()) == w0 : P.Wv}
+          hrt
 
-def pivota0_rotw(md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
+def pivota0_rotw.k1(md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
   +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, +w2: P.Wv, a: P.Wv, +w0: P.Wv,
   +hrt: {P.Rot.w(rt) == w0 : P.Wv},
   +htip: {Nat.is_lt(0n, Nat.add(P.Z.mag(P.Wv.x(a)), P.Z.mag(P.Wv.z(a)))) == True{} : Bool})
-  -> ROTW(w0, P.Tick.pivota0(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, w2, a)):
+  -> Once.Body((kb: P.Body) => ROTW(w0, kb), P.Tick.pivota0(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, w2, a)):
   P.Wv{+ax, +ay, +az} = a
   spin_rotw(Nat.is_lt(0n, Nat.add(P.Z.mag(ax), P.Z.mag(az))),
-    P.Tick.moved(P.Tick.shrink(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt),
-    P.Tick.shrink(7n, P.Tick.moved(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az),
-    rt, w0, hrt,
-    start_rotw(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az, w0, hrt),
+    P.Tick.moved(P.Tick.shrink(7n, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt),
+    P.Tick.shrink(7n, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az),
+    rt, w0, hrt, Once.Body.up((kb: P.Body) => ROTW((w0), kb), (P.Tick.shrink(7n, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az), rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az)), start_rotw(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az, w0, hrt)),
     htip)
+
+def pivota0_rotw(+md: P.Mat, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
+  +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, +w2: P.Wv, +a: P.Wv, +w0: P.Wv,
+  +hrt: {P.Rot.w(rt) == w0 : P.Wv},
+  +htip: {Nat.is_lt(0n, Nat.add(P.Z.mag(P.Wv.x(a)), P.Z.mag(P.Wv.z(a)))) == True{} : Bool})
+  -> ROTW(w0, P.Tick.pivota0(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, w2, a)):
+  Once.Body.down((kb: P.Body) => ROTW(w0, kb), P.Tick.pivota0(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, w2, a),
+    pivota0_rotw.k1(md, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, r2, w2, a, w0, hrt, htip))
 
 def pivota_rotw(md: P.Mat, +s: Nat, +g: Nat, obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z,
   +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +r2: P.Rot, +a: P.Wv, +w0: P.Wv,

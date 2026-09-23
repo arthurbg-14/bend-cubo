@@ -2014,16 +2014,27 @@ def Tick.moved(b: Body, rt: Rot) -> Bool:
 # for good. Every candidate goes through the same gate (Tick.place), so
 # nothing a candidate does is trusted: b is the body the last one left,
 # ok whether it went through.
-def Tick.shrink(n: Nat, ok: Bool, +b: Body, +s: Nat, +g: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat,
+def Tick.shrink.pair(b: Body, +rt: Rot) -> Body & Bool:
+  match b:
+    case Body{+u1, +u2, +u3, +u4, +u5, +u6, +u7, +u8, +u9}:
+      (Body{u1, u2, u3, u4, u5, u6, u7, u8, u9}, Tick.moved(Body{u1, u2, u3, u4, u5, u6, u7, u8, u9}, rt))
+
+def Tick.shrink(n: Nat, p: Body & Bool, +s: Nat, +g: Nat, +obs: List<&2, Body>, +x: Nat, +y: Nat, +z: Nat,
   +vx: Z, +vy: Z, +vz: Z, +gr: Bool, +hit: Bool, +rt: Rot, +w: Wv, +rx: Z, +ry: Z, +rz: Z) -> Body:
-  match n ok:
-    case _ True{}:
-      b
-    case 0n False{}:
-      b
-    case 1n+m False{}:
-      +nb = Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, Wv.half(w), rx, ry, rz)
-      Tick.shrink(m, Tick.moved(nb, rt), nb, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, Wv.half(w), rx, ry, rz)
+  match n:
+    case 0n:
+      match p:
+        case (b, ok):
+          b
+    case 1n+m:
+      match p:
+        case (b, ok):
+          match ok:
+            case True{}:
+              b
+            case False{}:
+              +nb = Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, Wv.half(w), rx, ry, rz)
+              Tick.shrink(m, Tick.shrink.pair(nb, rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, Wv.half(w), rx, ry, rz)
 
 # the turn about the point a: the turning the body carries, taken at
 # least at the size above when a is far off its middle
@@ -2056,8 +2067,10 @@ def Body.spin.rot(+tip: Bool, +moved: Bool, +b: Body, +rt: Rot) -> Rot:
     case False{}:
       Body.rot(Body.setrot(b, Rot{Rot.q(Body.rot(b)), Pick.w(tip, Rot.w(rt), Wv.zero())}))
 
-def Body.spin(+tip: Bool, +moved: Bool, +b: Body, +rt: Rot) -> Body:
-  Body{Body.x(b), Body.y(b), Body.z(b), Body.vx(b), Body.vy(b), Body.vz(b), Body.ground(b), Body.hit(b), Body.spin.rot(tip, moved, b, rt)}
+def Body.spin(+tip: Bool, +moved: Bool, b: Body, +rt: Rot) -> Body:
+  match b:
+    case Body{+u1, +u2, +u3, +u4, +u5, +u6, +u7, +u8, +u9}:
+      Body{u1, u2, u3, u4, u5, u6, u7, u8, Body.spin.rot(tip, moved, Body{u1, u2, u3, u4, u5, u6, u7, u8, u9}, rt)}
 
 def Tick.pivota0.w2(+s: Nat, +rt: Rot, a: Wv) -> Wv:
   Wv{+ax, +ay, +az} = a
@@ -2067,7 +2080,7 @@ def Tick.pivota0(md: Mat, +s: Nat, +g: Nat, +obs: List<&2, Body>, +x: Nat, +y: N
   +gr: Bool, +hit: Bool, +rt: Rot, +r2: Rot, +w2: Wv, a: Wv) -> Body:
   Wv{+ax, +ay, +az} = a
   +b0 = Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az)
-  +bf = Tick.shrink(7n, Tick.moved(b0, rt), b0, s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az)
+  +bf = Tick.shrink(7n, Tick.shrink.pair(b0, rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w2, ax, ay, az)
   Body.spin(Nat.is_lt(0n, Nat.add(Z.mag(ax), Z.mag(az))), Tick.moved(bf, rt), bf, rt)
 
 # The same turn, written out once for each shape the obstacles can have,
