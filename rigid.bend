@@ -2100,19 +2100,25 @@ def Rb.woke1(+j: Nat, +g: Nat, c: Ct) -> Bool:
   Bool.and(Bool.and(fl, Nat.is_eq(b, Nat.add(j, 1n))),
     Bool.or(Nat.is_lt(Nat.div(g, 2n), Nat.add(P.Z.mag(P.Wv.x(jh)), P.Z.mag(P.Wv.z(jh)))), Nat.is_lt(Nat.mul(8n, g), jn)))
 
-def Rb.woke(+j: Nat, +g: Nat, cs: List<&2, Ct>) -> Bool:
+# The fixed bodies the island woke, marked in one pass: every contact
+# that wakes a fixed body marks its place (b - 1, the floor being 0) in a
+# tree of lists, and the fixed bodies are kept by their mark, in order.
+# Before, every fixed body looked through every contact of the island for one
+# that woke it.
+def Rb.mark(cs: List<&2, Ct>, +g: Nat, +d: Nat, +h: Nat, t: Ib) -> Ib:
   match cs:
     case []:
-      False{}
+      t
     case +c <> rest:
-      Bool.or(Rb.woke1(j, g, c), Rb.woke(j, g, rest))
+      Rb.mark(rest, g, d, h, Ib.add_if(Bool.and(Nat.is_lt(0n, Ct.b(c)), Rb.woke1(Nat.sub(Ct.b(c), 1n), g, c)), d, h,
+        Nat.sub(Ct.b(c), 1n), 0n, t))
 
-def Rb.wakes(ss: List<&2, P.Body>, +j: Nat, +g: Nat, +cs: List<&2, Ct>) -> List<&2, P.Body>:
+def Rb.marked(ss: List<&2, P.Body>, +j: Nat, +d: Nat, +h: Nat, +t: Ib) -> List<&2, P.Body>:
   match ss:
     case []:
       []
     case +b <> rest:
-      R.keep(Rb.woke(j, g, cs), b, Rb.wakes(rest, Nat.add(j, 1n), g, cs))
+      R.keep(Bool.not(List.is_empty(&2, Nat, Ib.get(d, t, j, h, Nat.is_le(h, j)))), b, Rb.marked(rest, Nat.add(j, 1n), d, h, t))
 
 # what a tick of an island hands back: the bodies that move, where they
 # went, and the fixed ones it woke
@@ -2279,17 +2285,22 @@ def Rb.out(+k: P.K, +bs: List<&2, P.Body>, +ss: List<&2, P.Body>, +st: St) -> Li
 
 def Rb.wokeof(+k: P.K, +ss: List<&2, P.Body>, st: St) -> List<&2, P.Body>:
   St{done, bs1} = st
-  Rb.wakes(ss, 0n, P.K.g(k), done)
+  +n = List.length(&2, P.Body, ss)
+  +d = Bt.dep(48n, Nat.is_le(n, 1n), 0n, 1n, n)
+  +h = Bt.half(d)
+  Rb.marked(ss, 0n, d, h, Rb.mark(done, P.K.g(k), d, h, Ib.new(d)))
 
 # Apart: no two of bs overlap, none overlaps one of the fixed ss, none is
 # under the floor -- by the gate's own tests (the fifteen directions, the
 # floor's corners)
+# (the ones after it and the fixed ones asked apart: joining the two
+# lists for every body copied the island over and over)
 def Rb.apart(+s: Nat, bs: List<&2, P.Body>, +ss: List<&2, P.Body>) -> Bool:
   match bs:
     case []:
       True{}
     case +b <> +rest:
-      Bool.and(Mv.fits(s, b, List.append(&2, P.Body, rest, ss)), Rb.apart(s, rest, ss))
+      Bool.and(Bool.and(Mv.fits(s, b, rest), Mv.clear(s, b, ss)), Rb.apart(s, rest, ss))
 
 # The island's end, checked. Every pose went through the gate, so bodies
 # that began apart end apart; were they not, the tick would leave them

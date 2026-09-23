@@ -8,6 +8,8 @@
 #        until they rest: every one ticks among the others and the
 #        sleepers around
 # frame: the frame's header written 1000 times (the HUD, the bodies)
+# crowd: 1024 cubes falling at once, each its own island
+# piles: 960 cubes dropped in columns on the start's lane, settling
 
 import Base
 import ./phys.bend as P
@@ -100,9 +102,54 @@ def sum(a: Array<U32>) -> U32:
 def ms(+a: Nat, +b: Nat) -> String:
   Nat.show(Nat.sub(b, a)) ++ " ms"
 
-def bench.crowd3(+t7: Nat, +t8: Nat, w: W.World) -> IO(Unit):
-  IO.print("crowd: 1024 awake, 64 ticks in " ++ ms(t7, t8) ++ " (" ++ M.Fmt.dec2(Nat.sub(t8, t7), 64n) ++ " ms a tick), awake after "
+# piles: 6 x 40 columns of 4 cubes (960) dropped on the start's lane,
+# where the world has no cubes of its own, 1,05 m apart: they fall, land
+# on each other and settle, and all sleep before the 64 ticks are out
+def pile1(+i: Nat, +j: Nat, +l: Nat) -> P.Body:
+  +o = W.W.base(W.W.origin())
+  P.Body{Nat.add(Nat.sub(o, 760000n), Nat.mul(i, 275251n)), Nat.add(131072n, Nat.mul(l, 288358n)),
+    Nat.add(o, Nat.mul(Nat.add(j, 4n), 275251n)), P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, False{}, False{}, P.Rot.rest()}
+
+def piles.col(+i: Nat, +j: Nat, +l: Nat) -> List<&2, P.Body>:
+  match l:
+    case 0n:
+      []
+    case 1n+m:
+      pile1(i, j, m) <> piles.col(i, j, m)
+
+def piles.row(+i: Nat, +j: Nat) -> List<&2, P.Body>:
+  match j:
+    case 0n:
+      []
+    case 1n+m:
+      List.append(&2, P.Body, piles.col(i, m, 4n), piles.row(i, m))
+
+def piles.all(+i: Nat) -> List<&2, P.Body>:
+  match i:
+    case 0n:
+      []
+    case 1n+m:
+      List.append(&2, P.Body, piles.row(m, 40n), piles.all(m))
+
+def piles(w: W.World) -> W.World:
+  W.World{seed, t, awake, dirty, p} = w
+  W.World{seed, t, piles.all(6n), dirty, p}
+
+def bench.piles2(+t9: Nat, +t10: Nat, w: W.World) -> IO(Unit):
+  IO.print("piles: 960 cubes, 64 ticks in " ++ ms(t9, t10) ++ " (" ++ M.Fmt.dec2(Nat.sub(t10, t9), 64n) ++ " ms a tick), awake after "
     ++ Nat.show(awake(w)))
+
+def bench.piles(+t9: Nat, w: W.World) -> IO(Unit):
+  do IO<Unit>:
+    t10 : Nat <- IO.now()
+    bench.piles2(t9, t10, w)
+
+def bench.crowd3(+t7: Nat, +t8: Nat, w: W.World) -> IO(Unit):
+  do IO<Unit>:
+    u : Unit <- IO.print("crowd: 1024 awake, 64 ticks in " ++ ms(t7, t8) ++ " (" ++ M.Fmt.dec2(Nat.sub(t8, t7), 64n) ++ " ms a tick), awake after "
+      ++ Nat.show(awake(w)))
+    t9 : Nat <- IO.now()
+    bench.piles(t9, ticks(64n, P.In.idle(), piles(W.W.new(12345))))
 
 def bench.crowd2(+t7: Nat, w: W.World) -> IO(Unit):
   do IO<Unit>:

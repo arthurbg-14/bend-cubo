@@ -7753,6 +7753,18 @@ def rg_clear_still(+s: Nat, +p: P.Body, rest: List<&2, P.Body>, +ss: List<&2, P.
         rg_not(G.R.hits(s, p, G.B.set(o, G.V.zero(), G.V.zero())), G.R.hits(s, p, o), rg_hits_o(s, p, o)),
         rg_clear_still(s, p, r, ss))
 
+# the same, the others stopped and nothing after them
+def rg_clear_still0(+s: Nat, +p: P.Body, rest: List<&2, P.Body>)
+  -> {G.Mv.clear(s, p, G.En.still(rest)) == G.Mv.clear(s, p, rest) : Bool}:
+  match rest:
+    case []:
+      {==}
+    case +o <> +r:
+      rg_and2(Bool.not(G.R.hits(s, p, G.B.set(o, G.V.zero(), G.V.zero()))), Bool.not(G.R.hits(s, p, o)),
+        G.Mv.clear(s, p, G.En.still(r)), G.Mv.clear(s, p, r),
+        rg_not(G.R.hits(s, p, G.B.set(o, G.V.zero(), G.V.zero())), G.R.hits(s, p, o), rg_hits_o(s, p, o)),
+        rg_clear_still0(s, p, r))
+
 # the bodies stopped where they are are apart exactly when they were
 def rg_apart_still(+s: Nat, bs: List<&2, P.Body>, +ss: List<&2, P.Body>)
   -> {G.Rb.apart(s, G.En.still(bs), ss) == G.Rb.apart(s, bs, ss) : Bool}:
@@ -7761,13 +7773,15 @@ def rg_apart_still(+s: Nat, bs: List<&2, P.Body>, +ss: List<&2, P.Body>)
       {==}
     case +b <> +rest:
       +b0 = G.B.set(b, G.V.zero(), G.V.zero())
-      +obs0 = List.append(&2, P.Body, G.En.still(rest), ss)
-      +obs = List.append(&2, P.Body, rest, ss)
-      rg_and2(G.Mv.fits(s, b0, obs0), G.Mv.fits(s, b, obs), G.Rb.apart(s, G.En.still(rest), ss), G.Rb.apart(s, rest, ss),
-        rg_and2(G.Mv.floor(s, b0), G.Mv.floor(s, b), G.Mv.clear(s, b0, obs0), G.Mv.clear(s, b, obs),
-          rg_floor(s, b),
-          rg_trans(G.Mv.clear(s, b0, obs0), G.Mv.clear(s, b, obs0), G.Mv.clear(s, b, obs),
-            rg_clear_p(s, b, obs0), rg_clear_still(s, b, rest, ss))),
+      +st = G.En.still(rest)
+      rg_and2(Bool.and(G.Mv.fits(s, b0, st), G.Mv.clear(s, b0, ss)), Bool.and(G.Mv.fits(s, b, rest), G.Mv.clear(s, b, ss)),
+        G.Rb.apart(s, st, ss), G.Rb.apart(s, rest, ss),
+        rg_and2(G.Mv.fits(s, b0, st), G.Mv.fits(s, b, rest), G.Mv.clear(s, b0, ss), G.Mv.clear(s, b, ss),
+          rg_and2(G.Mv.floor(s, b0), G.Mv.floor(s, b), G.Mv.clear(s, b0, st), G.Mv.clear(s, b, rest),
+            rg_floor(s, b),
+            rg_trans(G.Mv.clear(s, b0, st), G.Mv.clear(s, b, st), G.Mv.clear(s, b, rest),
+              rg_clear_p(s, b, st), rg_clear_still0(s, b, rest))),
+          rg_clear_p(s, b, ss)),
         rg_apart_still(s, rest, ss))
 
 def rg_kept3(was: Bool, +bs: List<&2, P.Body>, +out: List<&2, P.Body>, +s: Nat, +ss: List<&2, P.Body>,

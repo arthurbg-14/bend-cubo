@@ -436,9 +436,40 @@ AMD Ryzen 7 5700U com a Radeon integrada (Vega 8, RADV), 1280×720:
 | tick do mundo andando e empurrando (corpo rígido) | 0,36 ms |
 | tick do mundo com 64 cubos caindo e se empilhando (corpo rígido) | 3–4 ms |
 | tick do mundo com 1024 cubos caindo ao mesmo tempo (corpo rígido, 1024 ilhas) | 4,9 ms |
+| tick do mundo com 960 cubos caindo em colunas, se empilhando e dormindo (corpo rígido) | ~47 ms |
 | cabeçalho de um frame (câmera, corpos, HUD) | 12 µs |
 
 O tempo real pede 7,8 ms por tick. A tabela de baixo é do motor anterior.
+
+**O motor de corpo rígido, otimizado (23/09/2026).** Com a física idêntica
+bit a bit — as mesmas saídas em todos os cenários de teste e as mesmas leis
+provadas —, o tick ficou:
+
+| cenário (na pista do início) | antes | depois |
+|---|---|---|
+| 264 cubos caindo | 26 ms | 6,2 ms |
+| 960 cubos caindo | 210 ms | 21 ms |
+| 264 cubos se empilhando e dormindo | 39 ms | ~5,5 ms |
+| 960 cubos se empilhando e dormindo | 1012 ms | ~45 ms |
+
+O que mudou:
+- os corpos de uma ilha ficam numa árvore por índice (`Bt`), e não numa
+  lista percorrida a cada leitura;
+- os contatos são indexados por corpo (`Cb`), e os vizinhos da checagem de
+  movimento vêm por célula (`Gn`);
+- o SAT tenta primeiro os eixos das faces, e o recuo do segundo passe só é
+  calculado quando é preciso;
+- o solver roda os passes aos pares e para quando um par não muda nada;
+- as ilhas ticam ao mesmo tempo, com o resultado aplicado uma por vez, na
+  mesma ordem de antes;
+- os cubos dormindo que acordam são marcados numa passada só.
+
+O limite honesto: um cubo **se mexendo em contato** custa ~500 mil
+instruções por tick, então não cabem 100 mil deles em tempo real com este
+solver. Um cubo dormindo continua não custando nada. O custo que sobra está
+espalhado: gerência de memória do runtime (~20 %), o solver (~25 %), a
+montagem dos contatos (~12 %) e as fases sequenciais do mundo. O cenário
+`piles` do `./bench` mede o caso das pilhas.
 
 `./build.sh bench && ./bench` roda esses cenários sem janela.
 
