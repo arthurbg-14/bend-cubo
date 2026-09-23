@@ -1,7 +1,8 @@
 # Cubo -- proof optimizer, the search: every proof of PROOF.bend is timed,
 # the slow ones point at the phys defs their statements unfold, and every
 # rewrite those defs admit (a let turned into a parameter, record fields
-# lifted out of a match) is tried on a copy. A rewrite stays only if the
+# lifted out of a match, a decision paired with its record) and the slow
+# lemmas admit (claims about a record stated once) is tried on a copy. A rewrite stays only if the
 # proofs it touches still check and the slow ones get at least 10% faster;
 # then the search starts over from the new times. Last, the whole of
 # PROOF.bend is checked before and after.
@@ -11,10 +12,15 @@ import ./core.bend as C
 import ./hoist.bend as H
 import ./prof.bend as F
 import ./lift.bend as L
+import ./calls.bend as K
+import ./pair.bend as P
+import ./once.bend as O
 
 type Cand is Data:
   Hoist{d: String, l: String, t: String}
   LiftC{d: String}
+  PairC{d: String}
+  OnceC{roots: List<&2, String>, hot: List<&2, String>}
 
 type St is Data:
   St{times: List<&2, F.Tm>, tried: List<&2, String>, kept: List<&2, String>, gained: Bool}
@@ -27,6 +33,10 @@ def cand_key(c: Cand) -> String:
       String.concat(["hoist ", d, " ", l])
     case LiftC{d}:
       String.append("lift ", d)
+    case PairC{d}:
+      String.append("pair ", d)
+    case OnceC{rs, hs}:
+      String.append("once ", String.join(rs, ","))
 
 def uniq.pick(dup: Bool, +h: String, rest: List<&2, String>) -> List<&2, String>:
   match dup:
@@ -211,6 +221,31 @@ def lifts(ds: List<&2, String>, +bs: List<&2, String>) -> List<&2, Cand>:
     case +d <> r:
       lifts.pick(L.Lift.ok(L.read_lift(d, bs)), d, lifts(r, bs))
 
+def pairs.pick(ok: Bool, +d: String, rest: List<&2, Cand>) -> List<&2, Cand>:
+  match ok:
+    case True{}:
+      PairC{d} <> rest
+    case False{}:
+      rest
+
+def pairs(ds: List<&2, String>, +bs: List<&2, String>, +recs: List<&2, K.Rec>) -> List<&2, Cand>:
+  match ds:
+    case Nil{}:
+      Nil{}
+    case +d <> r:
+      pairs.pick(P.pair.fits(def_block(bs, d), d, recs), d, pairs(r, bs, recs))
+
+def onces.of(empty: Bool, +rs: List<&2, String>, +hot: List<&2, String>) -> List<&2, Cand>:
+  match empty:
+    case True{}:
+      Nil{}
+    case False{}:
+      [OnceC{rs, hot}]
+
+# the chains of the slow lemmas, stated once, as one rewrite
+def onces(+hot: List<&2, String>, +phys: String, +proof: String) -> List<&2, Cand>:
+  onces.of(List.is_empty(&2, String, O.roots(hot, phys, proof)), O.roots(hot, phys, proof), hot)
+
 def untried.pick(hit: Bool, +c: Cand, rest: List<&2, Cand>) -> List<&2, Cand>:
   match hit:
     case True{}:
@@ -229,7 +264,9 @@ def untried(cs: List<&2, Cand>, +tried: List<&2, String>) -> List<&2, Cand>:
 def candidates(+hot: List<&2, String>, +phys: String, +proof: String, +base: String, +tried: List<&2, String>) -> List<&2, Cand>:
   +bs = C.blocks(phys)
   +ds = uniq(keep_defs(stmt_defs(hot, C.blocks(proof), C.alias_of(proof)), bs))
-  untried(List.append(&2, Cand, hoists(ds, bs, C.blocks(base)), lifts(uniq(List.append(&2, String, ds, callees(ds, bs))), bs)), tried)
+  +reach = uniq(List.append(&2, String, ds, callees(ds, bs)))
+  untried(List.concat(&2, Cand, [hoists(ds, bs, C.blocks(base)), lifts(reach, bs), pairs(reach, bs, K.records(phys)), onces(hot, phys, proof)]),
+    tried)
 
 # ---- trying one ----
 
@@ -240,15 +277,13 @@ def changed.pick(diff: Bool, +b: String, rest: List<&2, String>) -> List<&2, Str
     case False{}:
       rest
 
-# the def blocks of the new PROOF.bend that differ from the old one's
-def changed(old: List<&2, String>, new: List<&2, String>) -> List<&2, String>:
-  match old new:
-    case Nil{} _:
+# the def blocks of the new PROOF.bend that the old one lacks or has otherwise
+def changed(+old: List<&2, String>, new: List<&2, String>) -> List<&2, String>:
+  match new:
+    case Nil{}:
       Nil{}
-    case Con{o, r} Nil{}:
-      Nil{}
-    case Con{+o, r} Con{+n, s}:
-      changed.pick(Bool.and(F.is_def(n), Bool.not(String.eq(o, n))), n, changed(r, s))
+    case +n <> s:
+      changed.pick(Bool.and(F.is_def(n), Bool.not(String.eq(def_block(old, F.block_name(n)), n))), n, changed(old, s))
 
 def sh(+cmd: String) -> IO(Unit):
   do IO<Unit>:
@@ -273,6 +308,15 @@ def apply.hoist(ok: Bool, +tdir: String, +h: H.HP) -> IO(String & Bool):
     case False{}:
       IO.pure(String & Bool, (H.HP.msg(h), False{}))
 
+def onces.run(rs: List<&2, String>, +tdir: String, +hot: List<&2, String>, +msgs: String, did: Bool) -> IO(String & Bool):
+  match rs:
+    case Nil{}:
+      IO.pure(String & Bool, (msgs, did))
+    case +r <> t:
+      do IO<String & Bool>:
+        +msg : String <- O.once(tdir, r, hot, 900n)
+        onces.run(t, tdir, hot, String.concat([msgs, msg, "\n    "]), Bool.or(did, String.starts_with(msg, "once ")))
+
 # the rewrite on the copy: what it says, and whether it changed anything
 def apply(+tdir: String, c: Cand, +par: Nat) -> IO(String & Bool):
   match c:
@@ -285,6 +329,12 @@ def apply(+tdir: String, c: Cand, +par: Nat) -> IO(String & Bool):
       do IO<String & Bool>:
         +msg : String <- L.lift(tdir, d, par, 300n)
         return (msg, String.starts_with(msg, "lifted"))
+    case PairC{d}:
+      do IO<String & Bool>:
+        +msg : String <- P.pair(tdir, d, 900n)
+        return (msg, String.starts_with(msg, "paired"))
+    case OnceC{rs, hs}:
+      onces.run(rs, tdir, hs, SNil{}, False{})
 
 def verdict(+hot: List<&2, String>, +cur: List<&2, F.Tm>, +ts: List<&2, F.Tm>) -> Bool:
   Bool.and(Nat.is_eq(fails(ts), 0n), Nat.is_le(Nat.mul(10n, sum_of(ts, hot)), Nat.mul(9n, sum_of(cur, hot))))
@@ -329,13 +379,24 @@ def measured(+dir: String, +tdir: String, +key: String, +hot: List<&2, String>, 
     v : Unit <- IO.print(report(key, verdict(hot, St.times(st), ts), hot, St.times(st), ts))
     measured.keep(verdict(hot, St.times(st), ts), dir, tdir, key, st, ts)
 
+# a new phys.bend can reach any proof, so then every proof is checked again
+def remeasure(same_phys: Bool, +tdir: String, +names: List<&2, String>, +par: Nat, +cap: Nat) -> IO(List<&2, F.Tm>):
+  match same_phys:
+    case True{}:
+      F.profile.only(tdir, names, par, cap)
+    case False{}:
+      F.profile(tdir, par, cap)
+
 def applied(did: Bool, +dir: String, +tdir: String, +key: String, +hot: List<&2, String>, +st: St, +old: String,
   +msg: String, +par: Nat, +cap: Nat) -> IO(St):
   match did:
     case True{}:
       do IO<St>:
         +new : String <- C.read_all(String.append(tdir, "/PROOF.bend"))
-        +ts : List<&2, F.Tm> <- F.profile.only(tdir, uniq(List.append(&2, String, hot, changed(C.blocks(old), C.blocks(new)))), par, cap)
+        +phys0 : String <- C.read_all(String.append(dir, "/phys.bend"))
+        +phys1 : String <- C.read_all(String.append(tdir, "/phys.bend"))
+        +ts : List<&2, F.Tm> <- remeasure(String.eq(phys0, phys1), tdir, uniq(List.append(&2, String, hot, changed(C.blocks(old), C.blocks(new)))),
+          par, cap)
         measured(dir, tdir, key, hot, st, ts, msg)
     case False{}:
       do IO<St>:
@@ -406,7 +467,8 @@ def rounds(n: Nat, +dir: String, +base: String, +st: St, +par: Nat, +cap: Nat) -
 
 def full_cmd(+d: String) -> String:
   String.concat(["(cd ", q(d), " && ulimit -s 1000000 2>/dev/null; s=$(date +%s); ",
-    "o=$(BEND_NO_TELEMETRY=1 BUN_JSC_maxPerThreadStackUsage=805306368 ${BEND:-$HOME/.bend/bin/bend} PROOF.bend 2>&1 | head -1); ",
+    "o=$(BEND_NO_TELEMETRY=1 BUN_JSC_maxPerThreadStackUsage=805306368 ${BEND:-$HOME/.bend/bin/bend} PROOF.bend 2>&1 | ",
+    "grep -e \"All terms\" -e \"^Error\" -e \"^Location\" | head -2 | tr \"\\n\" \" \"); ",
     "echo \"", d, ": $(( $(date +%s) - s ))s: $o\") "])
 
 def tail_of(xs: List<&2, String>) -> List<&2, String>:

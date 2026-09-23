@@ -173,8 +173,10 @@ def run_cmd(+dir: String, +glob: String, +par: Nat, +cap: Nat) -> String:
     "ulimit -s 1000000 2>/dev/null; s=$(date +%s%N); ",
     "o=$(BEND_NO_TELEMETRY=1 BUN_JSC_maxPerThreadStackUsage=805306368 timeout ", Nat.show(cap),
     " ${BEND:-$HOME/.bend/bin/bend} --check-only {} 2>&1); c=$?; e=$(date +%s%N); ",
-    "if [ $c = 124 ]; then st=timeout; elif printf \"%s\" \"$o\" | grep -q \"^- \\(expected\\|observed\\|message\\)\"; ",
-    "then st=fail; else st=ok; fi; echo \"{} $(( (e - s) / 1000000 )) $st\"; rm -f {}'"])
+    "if [ $c = 124 ]; then st=timeout; elif printf \"%s\" \"$o\" 2>/dev/null | grep -q \"^- \\(expected\\|observed\\|message\\)\"; ",
+    "then st=fail; elif printf \"%s\" \"$o\" 2>/dev/null | grep -q \"All terms check\"; then st=ok; ",
+    "elif printf \"%s\" \"$o\" 2>/dev/null | grep -q \"TODOs\\? found\"; then st=todo; else st=fail; fi; ",
+    "echo \"{} $(( (e - s) / 1000000 )) $st\"; rm -f {}'"])
 
 # ISO_12.bend, LIFT_3.bend: the number after the last _
 def iso_idx(+f: String) -> Nat:
@@ -318,4 +320,4 @@ def bad_count(ts: List<&2, Tm>) -> Nat:
     case Nil{}:
       0n
     case +t <> r:
-      Nat.add(Bool.pick(Nat, String.eq(Tm.st(t), "ok"), 0n, 1n), bad_count(r))
+      Nat.add(Bool.pick(Nat, Bool.or(String.eq(Tm.st(t), "ok"), String.eq(Tm.st(t), "todo")), 0n, 1n), bad_count(r))

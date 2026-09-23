@@ -30,7 +30,9 @@ Cubo is written in Bend 2 (github.com/bendlang/bend). When working on it:
   PROOF.bend before and after; `profile <copy>` alone says where the time
   goes. The checker normalizes both sides of every equation in full, so an
   undecided value copied into many places (a let, a match that answers a
-  record) is what costs
+  record, a record passed next to a decision about it, a claim that reads
+  a stuck record field by field) is what costs. lift, pair and once change
+  a phys def only after the checker takes a proof that it equals the old one
 
     phys.bend     the proven physics: bodies, friction, pushes, gated moves, the tick
     ring.bend     the ring tactic (a proven polynomial normalizer)
@@ -41,4 +43,5 @@ Cubo is written in Bend 2 (github.com/bendlang/bend). When working on it:
     clash.bend    the collision test
     effs/         scene.comp.in (the shader), screen.c (Vulkan, window, events),
                   font.glsl (HUD font), spv.sh (shader to SPIR-V in screen.c)
-    tools/optimize.bend  the proof optimizer (tools/opt/: prof, hoist, lift, auto)
+    tools/optimize.bend  the proof optimizer (tools/opt/: prof, hoist, lift, pair,
+                         once, auto)
