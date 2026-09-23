@@ -11,13 +11,14 @@ import Base
 import ./phys.bend as P
 import ./world.bend as W
 import ./main.bend as M
+import ./rigid.bend as R
 
 def meets(+a: P.Body, xs: List<&2, P.Body>) -> Nat:
   match xs:
     case []:
       0n
     case +b <> rest:
-      Nat.add(M.Pick.n(P.Geo.meets(W.W.size(), P.Body.x(a), P.Body.y(a), P.Body.z(a), b), 1n, 0n), meets(a, rest))
+      Nat.add(M.Pick.n(P.Geo.hits(W.W.size(), P.Body.x(a), P.Body.y(a), P.Body.z(a), P.Rot.q(P.Body.rot(a)), b), 1n, 0n), meets(a, rest))
 
 def clash(xs: List<&2, P.Body>) -> Nat:
   match xs:
@@ -25,6 +26,26 @@ def clash(xs: List<&2, P.Body>) -> Nat:
       0n
     case +a <> +rest:
       Nat.add(meets(a, rest), clash(rest))
+
+# the game's rigid bodies rest a hair inside each other (the engine's
+# slop, 1/4096 of a side): two overlap when the fifteen directions find
+# them deeper than that (R.hits), counted as the ticks that have one
+def ones(xs: List<&2, P.Body>) -> List<&2, List<&2, P.Body>>:
+  match xs:
+    case []:
+      []
+    case +b <> rest:
+      [b] <> ones(rest)
+
+def bad2(rigid: Bool, +xs: List<&2, P.Body>) -> Nat:
+  match rigid:
+    case True{}:
+      M.Pick.n(R.Rb.clash(W.W.size(), ones(xs)), 1n, 0n)
+    case False{}:
+      clash(xs)
+
+def bad_of(+v: Nat, +xs: List<&2, P.Body>) -> Nat:
+  bad2(Nat.is_eq(v, 7n), xs)
 
 # every body in the region: awake, player, sleepers of its cells
 def region(w: W.World) -> List<&2, P.Body>:
@@ -53,7 +74,7 @@ def body(+i: Nat, +j: Nat, +l: Nat) -> P.Body:
   +z = Nat.add(Nat.sub(o, 1572864n), Nat.mul(j, 275251n))
   +y = Nat.add(Nat.mul(Nat.add(l, 1n), 340000n), Nat.mul(Nat.mod(Nat.add(i, j), 3n), 26000n))
   +v = M.Pick.n(Nat.is_eq(l, 2n), Nat.mul(Nat.mod(i, 3n), 2048n), 0n)
-  P.Body{x, y, z, sgn(Nat.is_eq(Nat.mod(j, 2n), 0n), v), P.Pos{0n}, P.Pos{0n}, False{}, False{}}
+  P.Body{x, y, z, sgn(Nat.is_eq(Nat.mod(j, 2n), 0n), v), P.Pos{0n}, P.Pos{0n}, False{}, False{}, P.Rot.rest()}
 
 def col(+i: Nat, +j: Nat, l: Nat) -> List<&2, P.Body>:
   match l:
@@ -82,7 +103,7 @@ def clean(xs: List<&2, P.Body>, +w: W.World) -> List<&2, P.Body>:
     case []:
       []
     case +b <> rest:
-      W.W.take_if(P.Geo.free(W.W.size(), P.Body.x(b), P.Body.y(b), P.Body.z(b), W.W.around(M.Knob.defaults(), cells(w), 12345, b)), b,
+      W.W.take_if(P.Geo.free(W.W.size(), P.Body.x(b), P.Body.y(b), P.Body.z(b), P.Rot.q(P.Body.rot(b)), W.W.around(M.Knob.defaults(), cells(w), 12345, b)), b,
         clean(rest, w))
 
 def start2(+w: W.World) -> W.World:
@@ -122,7 +143,7 @@ def run(n: Nat, +v: Nat, +bad: Nat, +w: W.World, +i: Nat, +n0: Nat) -> String:
         ++ Nat.show(List.length(&2, P.Body, awk(w))) ++ " awake"
     case 1n+m:
       +w2 = tick(v, w)
-      run(m, v, Nat.add(bad, clash(region(w2))), w2, Nat.add(i, 1n), n0)
+      run(m, v, Nat.add(bad, bad_of(v, region(w2))), w2, Nat.add(i, 1n), n0)
 
 # the same run, but with the grid kept alive: the crowd only comes back as
 # a list every few ticks, so that is when the overlaps are counted (an

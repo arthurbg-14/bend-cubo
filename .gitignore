@@ -2,6 +2,8 @@
 /cubo
 /bench
 /clash
+/tools/check
+CHK_*.bend*
 *.ppm
 *.png
 !docs/*.png

@@ -5,11 +5,18 @@ azul**. Anda, pula, **empurra os cubos verdes** e **sobe neles**. Os cubos
 verdes nascem ao acaso (uma semente nova a cada partida), em pilhas de 1 a 3,
 num mundo **sem fim**: meio milhão de quilômetros para cada lado.
 
-A física segue as leis da cinemática, da conservação da energia e do atrito
-de Coulomb, e isso é **provado**. São treze leis em [`LAWS.bend`](LAWS.bend),
-e `bend PROOF.bend` só passa se todas valem. Elas valem para **qualquer valor
-das constantes**, e isso importa porque gravidade, atrito, pulo e motor mudam
-durante o jogo.
+A física é de **corpo rígido de verdade** ([`rigid.bend`](rigid.bend)):
+cada cubo tem massa, momento angular e inércia de cubo, os contatos são
+pontos com normal e folga, e impulsos sequenciais com atrito de Coulomb
+resolvem tudo de uma vez. Tombar da borda, sair girando de uma batida fora
+do meio, escorregar, cair de uma parede: nada disso é regra à parte, é o
+que os impulsos nos pontos de contato fazem.
+
+As leis estão em [`LAWS.bend`](LAWS.bend) e são **provadas** (`bend
+PROOF.bend` só passa se todas valem), para qualquer valor das constantes e
+quaisquer corpos. As do motor novo (a tabela em "O motor de corpo rígido")
+são sobre o tick que o jogo roda; as 36 anteriores são do motor antigo,
+[`phys.bend`](phys.bend), que continua no repositório.
 
 A GPU desenha (Vulkan); o Bend simula.
 
@@ -36,16 +43,19 @@ A GPU desenha (Vulkan); o Bend simula.
 | Enter | voltar ao início |
 | N | mundo novo (outra semente) |
 | H | mostrar / esconder as teclas |
+| F11 | tela cheia / janela (o jogo abre em tela cheia) |
 | Esc | sair |
 
 Andar acelera 20 m/s² enquanto a tecla estiver segurada, e o atrito tira
 7,8 m/s²: sobram 12,2 m/s² que não param de somar — **não há velocidade
 máxima**, e a aceleração é a mesma em qualquer velocidade (`motor_is_steady`).
-O motor solta a 15000 m/s, e isso não é física: é onde o número acaba. Um
-`Nat` em Bend vai até 2^48−1, e o quadrado da velocidade (a energia, e a raiz
-que o atrito tira) tem que caber nele, o que termina em 16384 m/s. Passar
-disso derrubava o jogo; agora o jogo só para de empurrar, como se a tecla
-tivesse sido solta, e o HUD escreve `(teto)`. Nenhuma lei mudou.
+O que acaba é o número: um `Nat` em Bend vai até 2^48−1, e cada produto do
+tick de corpo rígido (as energias, a velocidade nos contatos, o tamanho do
+atrito e do giro) tem que caber nele. Por isso um corpo anda no máximo 2^20
+por eixo (1024 m/s) e gira no máximo um quarto de volta por tick; passar disso
+derrubava o jogo (`a Nat past the largest immediate`). O motor em si só solta
+a 15000 m/s (o HUD escreve `(teto)`), aonde o corpo rígido não chega. Nenhuma
+lei mudou.
 Num trecho limpo dá 12 m/s em 1 s e 122 m/s em 10 s; no mundo de verdade os
 cubos que você encontra pelo caminho seguram você por volta de 6 m/s. Por isso
 o ponto de partida fica numa **pista reta**: 8 m de largura pelo eixo z (para
@@ -75,7 +85,10 @@ de 2. Tire um cubo de baixo de uma pilha e os de cima caem.
 
 `./cubo demo` joga sozinho (W segurado, um pulo a cada 1,5 s, a câmera
 girando). `./cubo still` usa a semente fixa 12345, sem nada se mover, para
-medir.
+medir. `./cubo crowd` solta 32 x 32 cubos de uma vez a leste do início, que
+caem, tombam e ficam virados de todo jeito (para medir a GPU com muito cubo
+girado). Com `CUBO_GPULOG=1` o tempo de GPU e o do quadro saem também no
+stderr, a cada meio segundo.
 
 Precisa de Linux com X11 (XWayland serve), clang e um driver Vulkan (Mesa
 RADV/ANV ou o do fabricante; a `libvulkan` é carregada na execução). O
@@ -98,10 +111,81 @@ valor que elas alcancem.
 O painel mostra também, a cada frame, a altura, a velocidade e a **energia
 mecânica** do cubo azul em J/kg. Num pulo ela fica parada enquanto ele voa.
 
-## As leis
+## O motor de corpo rígido
+
+[`rigid.bend`](rigid.bend), ticado ilha por ilha por [`world.bend`](world.bend):
+
+- **Corpo**: cubo de massa 1 e lado s; posição, orientação (quatérnio em
+  2⁻¹⁵), velocidade e **momento angular** L (inércia s²/6, ω = 6L/s²).
+- **Contatos**: face contra face pelos 15 eixos (SAT) com recorte da face
+  incidente, aresta contra aresta onde as arestas separam o par melhor que
+  qualquer face, e os cantos contra o chão. Folga especulativa: um contato
+  ainda longe só impede que o par se feche rápido demais.
+- **Impulsos**: 16 passadas; impulso normal acumulado nunca negativo (contato
+  só empurra), atrito limitado a µ vezes ele (Coulomb), igual e oposto nos
+  dois corpos, cada um na própria superfície (num par ainda separado, o canto
+  do outro trazido para a sua face). O atrito usa a massa efetiva na direção
+  em que o contato desliza, não a da normal: num canto sob o meio ela é até
+  cinco vezes menor, e o atrito pedia cinco vezes o que para o deslize,
+  ia e voltava crescendo, e um cubo caindo rápido girando sobre outro
+  estourava o número num tick.
+- **Movimento**: livre, a parábola exata; com contato, duas vezes a
+  velocidade final. Cada pose passa pelo portão (nenhum par mais fundo que
+  1/4096 do lado, girado ou não); recusada, tenta a pose sem o que vai
+  para dentro dos contatos (primeiro dos de lado, depois dos que apoiam:
+  somados, chão e parede viravam uma rampa a 45°), depois sem o giro,
+  depois frações; um corpo em que só cabe um
+  oitavo do movimento parou no que o segura.
+- **Empurrar**: o motor é o pé do jogador empurrando o chão, então o atrito
+  do jogador não briga com ele na direção em que ele anda (só no
+  derrapar de lado). O portão passa os corpos duas vezes: quem não coube
+  inteiro tenta de novo depois que os outros andaram, e o que empurra
+  acompanha o empurrado. Com as constantes padrão (força 20 m/s², µ 0,8)
+  o jogador empurra um cubo e uma pilha de dois; três pedem mais força no
+  chão.
+- **Repouso**: um corpo equilibrado (o meio sobre os contatos que o tocam) e
+  quase parado fica exatamente parado -- não se ele desliza no chão ou num
+  corpo fixo (atrito no limite de Coulomb), nem se o que o toca está se
+  mexendo de verdade (um cubo em cima de outro que o jogador empurra vai
+  junto). **Apoiado** é ter um contato que o
+  toca, com a face olhando para cima, empurrando: chão, cubo embaixo, a
+  aresta em que ele se encosta. Parede não apoia; o jogador só anda e pula
+  do que o apoia.
+- **Ilhas**: só os corpos que podem se tocar num tick são resolvidos juntos.
+  Se dois de ilhas diferentes se sobrepõem depois, o tick é refeito como uma
+  ilha só. Um cubo dormindo que um tick empurra acorda e a ilha é refeita
+  com ele se mexendo, no mesmo tick. Uma ilha dorme inteira ou não dorme:
+  todos parados e apoiados, e com lugar nas células. Dorme girado, como está.
+
+Medido sem janela (6 mundos × 4000 ticks, o jogador andando e pulando ao
+acaso, empurrando o que encontra): **nenhuma sobreposição**, o jogador
+nunca fica parado no ar mais que 2 ticks. 64 cubos jogados de 2 a 9 m se
+empilham e dormem todos em 3 s; uma pilha de 27 cubos inclinados se acomoda
+e para.
+
+### As leis do corpo rígido
+
+Provadas para qualquer ilha de corpos, quaisquer corpos fixos em volta e
+quaisquer constantes:
+
+| lei | o que garante |
+|---|---|
+| `rigid_coulomb` | **contato só empurra** (o empurrão normal nunca é negativo) e o atrito de cada contato é no máximo µ vezes o seu empurrão: `|jt|² ≤ (µ jn)²`. É o atrito que os corpos receberam, não um registro à parte |
+| `rigid_apart` | **nada atravessa nada**: uma ilha que começa sem sobreposição (nenhum par, nenhum corpo fixo, nada abaixo do chão) termina o tick sem sobreposição |
+| `rigid_energy` | **a energia nunca cresce**: cinética de translação, de giro (inércia de cubo, s²/6) e potencial, somadas, no máximo o que eram, a não ser que um contato estivesse mais fundo que a pele -- separar esse par é a única coisa em que o tick pode gastar energia |
+| `rigid_no_push_off_air` | **ninguém se empurra no ar nem na parede**: fora do apoio (um contato que o toca, com a face olhando para cima, empurrando), segurar uma direção ou o pulo não muda nada |
+| `rigid_action_reaction` | **ação e reação**: cada passo do solver num contato entre dois corpos da ilha dá a eles o empurrão e o atrito iguais e opostos, cada um na sua superfície: o momento da ilha em cada eixo não muda. Só o chão e os corpos fixos o mudam |
+
+Coulomb, sobreposição e energia são decisões que o código toma e checa (o
+atrito passa por `Ct.safe`, o fim da ilha por `Rb.checked`, a energia por
+`En.gate`), e a prova segue essas decisões; as medições acima dizem que a
+checagem do fim da ilha nunca precisou agir. Ação e reação é da estrutura:
+todo impulso passa por `Imp.give`, +j num corpo e −j no outro.
+
+## As leis (do motor anterior)
 
 Em [`LAWS.bend`](LAWS.bend), provadas em [`PROOF.bend`](PROOF.bend). Cada lei
-é sobre o tick de verdade do jogo, `Body.tick` (o mesmo que o jogo roda), e
+é sobre o tick do motor anterior, `Body.tick` ([`phys.bend`](phys.bend)), e
 vale para qualquer corpo, qualquer conjunto de obstáculos em volta e
 qualquer valor de todas as constantes. Algumas pedem "sem entrada"; outras
 pedem "sem contato", um tick em que nenhum portão de colisão barrou o
@@ -119,15 +203,52 @@ movimento. O tick marca isso no próprio corpo (`hit`).
 | `friction_never_reverses` | no chão, sem entrada, o atrito só freia: nenhum componente da velocidade cresce ou troca de sentido |
 | `coulomb_friction` | o atrito de um tick tem módulo no máximo µ·g, em qualquer direção de deslize: `fx² + fz² ≤ (µg)²` |
 | `friction_work` | teorema trabalho-energia: a energia cinética perdida é **exatamente** o atrito vezes a distância deslizada, e o corpo desliza essa distância |
-| `rest_stays` | atrito estático: um corpo parado no chão ou em cima de um cubo, sem entrada, fica exatamente onde está |
+| `rest_stays` | atrito estático: um corpo parado e apoiado, sem entrada e sem batida, fica exatamente onde está -- só o modo como ele está virado pode mudar, porque o apoio empurra para cima e onde esse empurrão cai é o que o vira |
 | `push_momentum` | uma colisão (o empurrão) **conserva o momento** exatamente |
 | `push_energy` | uma colisão nunca cria energia cinética |
 | `energy_never_grows` | sem entrada, nenhum tick aumenta a energia do corpo mais a dos obstáculos que ele toca; só o motor e o pulo põem energia |
 | `no_clip` | um corpo livre dos obstáculos continua livre depois do tick, com qualquer entrada: nada anda, cai ou é empurrado para dentro de outro cubo |
-| `no_slip_when_held` | o que segura um corpo é o que está embaixo do **meio** dele: apoiado em cheio (ou no ar) ele não sai do lugar |
-| `slip_makes_no_energy` | escorregar de uma beirada não cria energia: mesma velocidade, mesma altura |
+| `free_spin_keeps_the_turning` | um corpo que não toca em nada mantém o giro **exatamente**: um cubo resiste igual a girar em torno de qualquer eixo, então nada alimenta uma bamboleada |
+| `a_hit_adds_the_whole_turning` | uma batida põe no corpo **todo** o giro que ela pede — as três partes do braço cruzado com o impulso, não só a que cai num eixo que o corpo já usava |
+| `no_spin_from_the_middle` | uma batida no meio não gira nada: o que gira é o braço, e braço zero não cruza com nada |
+| `spin_is_across_the_push` | uma batida só gira em torno dos eixos atravessados a ela |
+| `a_stopped_turn_does_not_wind_up` | um corpo apoiado cujo giro o tick recusa (termina virado como estava) sai girando no máximo metade do que o passo deixou, arredondado para cima: um cubo encostado no vizinho não acumula giro sem fim (que o mundo teria de olhar cada vez mais longe e que o arremessaria assim que o vizinho saísse) |
 
-Não há `@unsafe`, `?TODO` nem axiomas. A verificação leva cerca de 10 s.
+Não há `@unsafe`, `?TODO` nem axiomas. A verificação leva alguns minutos e
+precisa de mais pilha do que um shell costuma dar: `./build.sh` pede
+`ulimit -s 1000000` e passa `BUN_JSC_maxPerThreadStackUsage`. Sem os dois o
+checador morre com "machine stack overflow" antes de terminar.
+
+### Rotação: o que é exato e o que não é
+
+Cada corpo carrega **o giro como vetor** (quanto de uma volta inteira ele
+faz em cada eixo por tick) e **a orientação como quatérnio** em 2⁻¹⁵. A
+escolha é deliberada, e a fronteira entre exato e aproximado está aqui:
+
+- **Exato:** o giro. Uma batida soma ao giro o braço cruzado com o impulso,
+  em inteiros, sem arredondar nada; um tick sem contato não mexe nele. As
+  quatro leis acima são sobre essas contas.
+- **Aproximado:** a orientação. Compor rotação com rotação em ponto fixo não
+  fecha em inteiros (é o mesmo motivo pelo qual nenhum motor faz isso): cada
+  tick que gira multiplica o quatérnio pela volta daquele tick e traz o
+  tamanho de volta para 2¹⁵ — certo a 2⁻¹⁵ de si mesmo, um micrômetro num
+  cubo de um metro.
+- **O seno e o cosseno** saem de séries em 2⁻²⁰ com toda divisão arredondada
+  (`Trig`): erro máximo medido de 1,2 · 10⁻⁵, e **exatos** nos quartos de
+  volta — um cubo que não girou é exatamente quadrado.
+- **A colisão de um cubo virado** é o teste dos quinze eixos separadores
+  (`Geo.sat`): as três faces de cada cubo e os nove cruzamentos das arestas,
+  tudo multiplicado para não dividir. Enquanto os dois cubos estão quadrados
+  com o mundo, ele dá **exatamente** o mesmo que o teste de caixa de sempre
+  (o teste `quinze eixos x caixa` de `./fast` confere isso em 3375 posições),
+  então a multidão parada não paga nada pela rotação.
+
+**O que ainda não está aqui:** o giro existe, é guardado, viaja com o cubo e
+decide colisão, mas **nada ainda o põe em movimento** — falta a dinâmica de
+contato (o apoio que aperta fora do meio vira torque, e o cubo tomba). Esse
+trabalho está no ramo `giro-dinamica`: lá o cubo empoleirado tomba e cai
+(o teste `quina` passa), mas ele ainda deixa sobreposições na multidão, que
+é justamente o que `no_clip` proíbe — por isso não está no master.
 
 ### Por que a energia fecha exatamente
 
@@ -199,9 +320,11 @@ Três bugs plausíveis, cada um numa cópia do projeto. Cada um compila
 
 ## Arquitetura
 
-    phys.bend     a física provada: números com sinal, constantes, corpo,
-                  atrito, motor, colisão (divisão de momento), movimentos com
-                  portões, gravidade, o tick
+    rigid.bend    a física do jogo: corpo rígido, contatos (SAT, recorte,
+                  aresta com aresta), impulsos com Coulomb, portão, repouso,
+                  energia, ilhas
+    phys.bend     o motor anterior, o das leis provadas: números com sinal,
+                  constantes, corpo, atrito, motor, colisão, portões, o tick
     ring.bend     a tática de anel: lemas de Nat, normalizador, prova de correção
     LAWS.bend     as leis          PROOF.bend   as provas
     world.bend    o mundo: gerador por hash, trie das células mudadas, vizinhança
@@ -215,7 +338,10 @@ Três bugs plausíveis, cada um numa cópia do projeto. Cada um compila
                   a tabela de células mudadas da GPU, os eventos da janela;
                   font.glsl: a fonte do HUD (tools/font.py); spv.sh: shader → SPIR-V
     tools/        font.py (fonte 8×16 Latin-1); order.py (ordena os defs de um
-                  arquivo .bend: cada um depois dos que usa)
+                  arquivo .bend: cada um depois dos que usa); check.bend (checa
+                  o PROOF.bend em partes paralelas, com o mesmo veredito, ~3x
+                  mais rápido: é o que o build.sh usa); optimize.bend (o
+                  otimizador das provas)
 
 - **O mundo infinito.** Cada célula de 1 m tem, por um hash da semente, 0 a 3
   cubos empilhados. A densidade varia por região (2 % a 17 %), e em volta do
@@ -235,8 +361,10 @@ Três bugs plausíveis, cada um numa cópia do projeto. Cada um compila
 - **A multidão num array plano.** Quando os cubos acordados estão juntos —
   a caixa deles não tem muito mais células do que cubos —, o tick copia a
   multidão, os cubos dormindo das células que ela alcança e o jogador para
-  um único `Array<U32>`: 6 palavras por corpo (x, y e z a partir de um canto
-  de célula, vx, vy e vz com as bandeiras em cima), mais uma corrente por
+  um único `Array<U32>`: 16 palavras por corpo (x, y e z a partir de um canto
+  de célula, vx, vy e vz com as bandeiras em cima, as quatro do quatérnio e as
+  três do giro — dezesseis, e não treze, para o endereço de um corpo ser um
+  deslocamento e um corpo ser uma linha de cache), mais uma corrente por
   célula numa tabela de hash no fim do mesmo array. Ler uma palavra do array
   custa ~10 instruções, contra a trie e as listas do Bend, onde cada nó é
   memória compartilhada com contagem de referências. Cada corpo então lê
@@ -305,11 +433,12 @@ AMD Ryzen 7 5700U com a Radeon integrada (Vega 8, RADV), 1280×720:
 |---|---|
 | GPU, cena parada (`./cubo still`) | 1,91 ms/frame (~450 fps) |
 | GPU, jogando (`./cubo demo`) | 1,5–2,3 ms/frame (330–550 fps) |
-| um tick de um corpo entre 10 obstáculos (`Body.tick`) | 0,79 µs |
-| tick do mundo andando e empurrando | 6,3 µs, ou ~0,1 % de um núcleo a 128 ticks/s |
-| tick do mundo com 64 cubos caindo e se empilhando | 0,16 ms |
-| tick do mundo com 1024 cubos caindo ao mesmo tempo (array plano) | 0,66 ms |
+| tick do mundo andando e empurrando (corpo rígido) | 0,36 ms |
+| tick do mundo com 64 cubos caindo e se empilhando (corpo rígido) | 3–4 ms |
+| tick do mundo com 1024 cubos caindo ao mesmo tempo (corpo rígido, 1024 ilhas) | 4,9 ms |
 | cabeçalho de um frame (câmera, corpos, HUD) | 12 µs |
+
+O tempo real pede 7,8 ms por tick. A tabela de baixo é do motor anterior.
 
 `./build.sh bench && ./bench` roda esses cenários sem janela.
 
@@ -409,6 +538,18 @@ segundo), então o número bom é o da primeira corrida depois de esfriar.
 | 96 100 | 14,63 | 68 |
 | **100 489** | **15,42** | **64,9** |
 | 102 400 | 15,69 | 63,7 |
+
+**O que a rotação cobrou.** Desde que cada corpo carrega rotação, o array da
+multidão tem 16 palavras por corpo em vez de 6, e a mesma corrida de 100 489
+cubos passou a **23,7 ms por tick (42 por segundo)**, medido três vezes com
+a máquina a 86 °C. A conta não é do giro em si: quem não girou não escreve,
+não lê e não copia as sete palavras da rotação (bandeira no bit 27 da
+palavra das velocidades) — isso já foi feito e valeu 7 %. O que pesa é a
+**distância entre corpos vizinhos**: 64 bytes em vez de 24, então uma
+varredura de célula toca quase três vezes mais linhas de cache. O conserto
+claro é pôr as sete palavras numa **área à parte** no fim do array, deixando
+os corpos com 6 palavras de novo; é mecânico, mas passa por todas as
+máquinas de fase e pela família `F.*`, que precisaria receber `cap`.
 
 Numa thread só, os mesmos 102 400 levam 39,4 ms — o ganho medido lado a lado
 é 2,5×. Antes dos chunks o jogo segurava cerca de 10 mil cubos.

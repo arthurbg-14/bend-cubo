@@ -89,17 +89,53 @@ void gput(int ix, int iz, uint ref) {
   }
 }
 
-// a cube at (x, z) in units relative to the origin cell's corner: into
-// the cells it reaches
-void gcube(int ux, int uz, uint ref) {
-  int ix = ux >> 18;
-  int iz = uz >> 18;
-  bool ox = (ux & 262143) != 0;
-  bool oz = (uz & 262143) != 0;
-  gput(ix, iz, ref);
-  if (ox) gput(ix + 1, iz, ref);
-  if (oz) gput(ix, iz + 1, ref);
-  if (ox && oz) gput(ix + 1, iz + 1, ref);
+// a quaternion out of four bytes, and a turn applied to a vector
+vec4 qunp(uint w) {
+  vec4 q = (vec4(float(w & 255u), float((w >> 8) & 255u), float((w >> 16) & 255u),
+                 float((w >> 24) & 255u)) - 128.0) / 127.0;
+  float n = length(q);
+  return n > 0.001 ? q / n : vec4(1.0, 0.0, 0.0, 0.0);
+}
+
+vec3 qap(vec4 q, vec3 v) {
+  vec3 u = vec3(q.y, q.z, q.w);
+  return v + 2.0 * cross(u, cross(u, v) + q.x * v);
+}
+
+// how far a unit cube turned by q reaches from its middle along each axis
+// of the world: half the sum of its turned edges, 0.5 each when square
+vec3 cube_ext(vec4 q) {
+  return 0.5 * (abs(qap(q, vec3(1.0, 0.0, 0.0))) + abs(qap(q, vec3(0.0, 1.0, 0.0))) + abs(qap(q, vec3(0.0, 0.0, 1.0))));
+}
+
+// in units (S a metre): how far that reaches, rounded out, and the middle
+int ext_u(float e) {
+  return e <= 0.5 ? 131072 : int(ceil(e * S)) + 1;
+}
+
+// a cube at (x, z) in units relative to the origin cell's corner, turned
+// by q: into every cell its box reaches. A turned cube pokes into the
+// cells around its own, and a ray (the sun's too) that crosses only those
+// has to meet it there; square with the world it is the cells it covers,
+// as it always was.
+void gcube(int ux, int uz, vec4 q, uint ref) {
+  vec3 e = cube_ext(q);
+  int rx = ext_u(e.x);
+  int rz = ext_u(e.z);
+  int x0 = (ux + 131072 - rx) >> 18;
+  int x1 = (ux + 131072 + rx - 1) >> 18;
+  int z0 = (uz + 131072 - rz) >> 18;
+  int z1 = (uz + 131072 + rz - 1) >> 18;
+  for (int iz = z0; iz <= z1; iz++) {
+    for (int ix = x0; ix <= x1; ix++) {
+      gput(ix, iz, ref);
+    }
+  }
+}
+
+// the top of a cube whose corner is at y (units), turned by q, in 1/256 m
+uint gtop(uint y, vec4 q) {
+  return (y + 131072u + uint(ext_u(cube_ext(q).y))) >> 10;
 }
 
 struct Hit {
@@ -108,6 +144,7 @@ struct Hit {
   uint  kind;   // 0 sky, 1 ground, 2 stack, 3 cube, 4 moving cube, 5 player
   vec3  bmin;
   vec3  bmax;
+  uint  qw;     // the box's turn, as the four bytes qunp reads (square: 0x80808080)
 };
 
 void boxhit(vec3 ro, vec3 inv, vec3 bmin, vec3 bmax, uint kind, inout Hit h) {
@@ -124,7 +161,52 @@ void boxhit(vec3 ro, vec3 inv, vec3 bmin, vec3 bmax, uint kind, inout Hit h) {
     h.bmax = bmax;
     h.n    = a == tn.x ? vec3(-sign(inv.x), 0.0, 0.0) : a == tn.y ? vec3(0.0, -sign(inv.y), 0.0)
                        : vec3(0.0, 0.0, -sign(inv.z));
+    h.qw   = 0x80808080u;
   }
+}
+
+// the same slab test, taken in the box's own frame: the ray is turned
+// back by the body's turn, met against the square box, and the face it
+// lands on is turned forward again. A cube drawn square with the world
+// is a cube drawn bigger than it is, and it swallows its neighbour.
+// The turn is handed back too (qw), and shade() reads the point hit in
+// the box's own frame from it: the edges drawn on a face and the grain
+// follow the turned face. Read along the world's axes, a turned cube got
+// dark bands straight across its faces and a grain that slid over it as
+// it turned.
+void obbhit(vec3 ro, vec3 inv, vec3 bmin, vec3 bmax, uint qw, uint kind, inout Hit h) {
+  vec4 q  = qunp(qw);
+  vec3 c  = 0.5 * (bmin + bmax);
+  vec3 hf = 0.5 * (bmax - bmin);
+  vec4 qi = vec4(q.x, -q.y, -q.z, -q.w);
+  vec3 rd = vec3(1.0) / inv;
+  vec3 lo = qap(qi, ro - c);
+  vec3 li = vec3(1.0) / qap(qi, rd);
+  vec3 t0 = (-hf - lo) * li;
+  vec3 t1 = ( hf - lo) * li;
+  vec3 tn = min(t0, t1);
+  vec3 tf = max(t0, t1);
+  float a = max(max(tn.x, tn.y), tn.z);
+  float b = min(min(tf.x, tf.y), tf.z);
+  if (a <= b && a > 0.0 && a < h.t) {
+    h.t    = a;
+    h.kind = kind;
+    h.bmin = bmin;
+    h.bmax = bmax;
+    vec3 nl = a == tn.x ? vec3(-sign(li.x), 0.0, 0.0)
+            : a == tn.y ? vec3(0.0, -sign(li.y), 0.0)
+                        : vec3(0.0, 0.0, -sign(li.z));
+    h.n = qap(q, nl);
+    h.qw = qw;
+  }
+}
+
+uint cube_q(uint slot, uint i) {
+  return T[slot * 32u + 4u + i * 4u + 3u];
+}
+
+uint dyn_q(uint i) {
+  return F[H_DYN + i * 5u + 4u];
 }
 
 vec3 cube_at(uint slot, uint i) {
@@ -135,7 +217,7 @@ vec3 cube_at(uint slot, uint i) {
 }
 
 vec3 dyn_at(uint i) {
-  uint o = H_DYN + i * 4u;
+  uint o = H_DYN + i * 5u;
   return vec3(float(int(F[o])) / S, float(F[o + 1u]) / S, float(int(F[o + 2u])) / S);
 }
 
@@ -158,15 +240,15 @@ void cell(ivec2 c, vec3 ro, vec3 inv, bool noplayer, inout Hit h) {
     uint r = G[b + 1u + j];
     if ((r & 0x80000000u) != 0u) {
       uint i = r & 0xffffu;
-      uint kind = F[H_DYN + i * 4u + 3u] == 1u ? 5u : 4u;
+      uint kind = F[H_DYN + i * 5u + 3u] == 1u ? 5u : 4u;
       if (kind == 5u && noplayer) {
         continue;
       }
       vec3 p = dyn_at(i);
-      boxhit(ro, inv, p, p + 1.0, kind, h);
+      obbhit(ro, inv, p, p + 1.0, dyn_q(i), kind, h);
     } else {
       vec3 p = cube_at(r >> 3, r & 7u);
-      boxhit(ro, inv, p, p + 1.0, 3u, h);
+      obbhit(ro, inv, p, p + 1.0, cube_q(r >> 3, r & 7u), 3u, h);
     }
   }
 }
@@ -183,6 +265,7 @@ Hit trace(vec3 ro, vec3 rd, float tmax, bool noplayer) {
   h.t = tmax;
   h.kind = 0u;
   h.n = vec3(0.0, 1.0, 0.0);
+  h.qw = 0x80808080u;
   if (rd.y < -1e-6) {
     float tg = -ro.y / rd.y;
     if (tg < h.t) {
@@ -248,10 +331,21 @@ float groundshade(vec3 p) {
         uint n = min((w0 >> 1) & 31u, 7u);
         for (uint j = 0u; j < n; j++) {
           uint r = G[b + 1u + j];
-          vec3 m = (r & 0x80000000u) != 0u ? dyn_at(r & 0xffffu) : cube_at(r >> 3, r & 7u);
-          if (m.y < 0.2) {
-            vec2 e = max(max(m.xz - p.xz, p.xz - m.xz - 1.0), 0.0);
-            d = min(d, length(e) + m.y);
+          bool dyn = (r & 0x80000000u) != 0u;
+          vec3 m = dyn ? dyn_at(r & 0xffffu) : cube_at(r >> 3, r & 7u);
+          vec4 q = qunp(dyn ? dyn_q(r & 0xffffu) : cube_q(r >> 3, r & 7u));
+          vec3 ex = cube_ext(q);
+          if (all(lessThanEqual(ex, vec3(0.5001)))) {
+            // square with the world: its foot is the square under it
+            if (m.y < 0.2) {
+              vec2 e = max(max(m.xz - p.xz, p.xz - m.xz - 1.0), 0.0);
+              d = min(d, length(e) + m.y);
+            }
+          } else if (m.y + 0.5 - ex.y < 0.2) {
+            // turned: how far the point is from the turned box itself, so
+            // the shade under a cube lying on an edge follows the cube
+            vec3 l = qap(vec4(q.x, -q.y, -q.z, -q.w), p - (m + 0.5));
+            d = min(d, length(max(abs(l) - 0.5, 0.0)));
           }
         }
       }
@@ -314,14 +408,21 @@ vec3 shade(Hit h, vec3 ro, vec3 rd, vec3 L) {
     ao = groundshade(p);
   } else {
     base = h.kind == 5u ? vec3(0.10, 0.32, 0.95) : vec3(0.28, 0.70, 0.24);
-    // the cube's edges (a stack's too, every metre up)
-    vec3 q = p - h.bmin;
+    // the cube's edges (a stack's too, every metre up), read in the
+    // box's own frame: the point and the face hit, turned back
+    vec4 hq = qunp(h.qw);
+    vec4 hqi = vec4(hq.x, -hq.y, -hq.z, -hq.w);
     vec3 sz = h.bmax - h.bmin;
+    vec3 q = qap(hqi, p - 0.5 * (h.bmin + h.bmax)) + 0.5 * sz;
+    vec3 ln = qap(hqi, n);
     vec3 e3 = min(q, sz - q);
     e3.y = h.kind == 2u ? min(fract(q.y), 1.0 - fract(q.y)) : e3.y;
-    float e = abs(n.x) > 0.5 ? min(e3.y, e3.z) : abs(n.y) > 0.5 ? min(e3.x, e3.z) : min(e3.x, e3.y);
+    float e = abs(ln.x) > 0.5 ? min(e3.y, e3.z) : abs(ln.y) > 0.5 ? min(e3.x, e3.z) : min(e3.x, e3.y);
     base *= mix(0.55, 1.0, smoothstep(0.0, 0.045, e));
-    base *= 0.94 + 0.06 * hash3(wcell(p, 8u));
+    // the grain, carried by the cube (a stack's metre by metre): the same
+    // on a cube whether it lies in a stack, sleeps, slides or turns
+    vec3 gq = vec3(q.x, h.kind == 2u ? fract(q.y) : q.y, q.z);
+    base *= 0.94 + 0.06 * hash3(uvec3(ivec3(floor(gq * 8.0)) + 64));
     ao = mix(0.72, 1.0, smoothstep(0.0, 0.8, p.y));
   }
   float sun = max(dot(n, L), 0.0);
@@ -434,16 +535,18 @@ void main() {
     uint n = min(T[b + 2u], 7u);
     for (uint i = 0u; i < n; i++) {
       uint o = b + 4u + i * 4u;
-      gcube((ix << 18) + int(T[o]), (iz << 18) + int(T[o + 2u]), (lin << 3) | i);
-      atomicMax(G[HMW], (T[o + 1u] >> 10) + 256u);
+      vec4 q = qunp(T[o + 3u]);
+      gcube((ix << 18) + int(T[o]), (iz << 18) + int(T[o + 2u]), q, (lin << 3) | i);
+      atomicMax(G[HMW], gtop(T[o + 1u], q));
     }
     return;
   }
   if (pc.pass == 2u) {
     if (lin < F[H_NDYN]) {
-      uint o = H_DYN + lin * 4u;
-      gcube(int(F[o]), int(F[o + 2u]), 0x80000000u | lin);
-      atomicMax(G[HMW], (F[o + 1u] >> 10) + 256u);
+      uint o = H_DYN + lin * 5u;
+      vec4 q = qunp(F[o + 4u]);
+      gcube(int(F[o]), int(F[o + 2u]), q, 0x80000000u | lin);
+      atomicMax(G[HMW], gtop(F[o + 1u], q));
     }
     return;
   }
