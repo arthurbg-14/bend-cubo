@@ -3393,6 +3393,10 @@ def cand_e2(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat,
   pivot_e2(P.Rot.mat(P.Quat.half(P.Quat.step(w, P.Wv.mag(w)))), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt,
     P.Rot{P.Rot.turn(P.Rot.q(rt), w), P.Rot.w(rt)}, rx, ry, rz)
 
+def shrink_e2.t1(+c: P.Body, +g: Nat, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, hc1: {Nat.is_le(P.Body.energy(g, c), P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == True{} : Bool})
+  -> Once.Body(((kb: P.Body) => {Nat.is_le(P.Body.energy((g), kb), P.Body.energy((g), P.Body{(x), (y), (z), (vx), (vy), (vz), (gr), (hit), (rt)})) == True{} : Bool}), Body.of_pair((P.Tick.shrink.pair(c, rt)))):
+  Once.Body.up((kb: P.Body) => {Nat.is_le(P.Body.energy((g), kb), P.Body.energy((g), P.Body{(x), (y), (z), (vx), (vy), (vz), (gr), (hit), (rt)})) == True{} : Bool}, Body.of_pair((P.Tick.shrink.pair(c, rt))), Tick.shrink.pair_up((kb: P.Body) => {Nat.is_le(P.Body.energy(g, kb), P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == True{} : Bool}, c, rt, hc1))
+
 def shrink_e2(n: Nat, p: P.Body & Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z,
   hb: Once.Body((kb: P.Body) => {Nat.is_le(P.Body.energy(g, kb),
        P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == True{} : Bool}, Body.of_pair(p)))
@@ -3410,16 +3414,20 @@ def shrink_e2(n: Nat, p: P.Body & Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>
             case True{}:
               hb
             case False{}:
-              shrink_e2(m, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz, Once.Body.up((kb: P.Body) => {Nat.is_le(P.Body.energy((g), kb),
-       P.Body.energy((g), P.Body{(x), (y), (z), (vx), (vy), (vz), (gr), (hit), (rt)})) == True{} : Bool}, Body.of_pair((P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), rt))), Tick.shrink.pair_up((kb: P.Body) => {Nat.is_le(P.Body.energy(g, kb),
-                     P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == True{} : Bool}, P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), rt, cand_e2(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz))))
+              shrink_e2(m, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz, shrink_e2.t1(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), g, x, y, z, vx, vy, vz, gr, hit, rt, cand_e2(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz)))
+
+def start_e2.t1(+c: P.Body, +g: Nat, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, hc1: {Nat.is_le(P.Body.energy(g, c), P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == True{} : Bool})
+  -> Once.Body(((kb: P.Body) => {Nat.is_le(P.Body.energy((g), kb), P.Body.energy((g), P.Body{(x), (y), (z), (vx), (vy), (vz), (gr), (hit), (rt)})) == True{} : Bool}), Body.of_pair((P.Tick.shrink.pair(c, rt)))):
+  Once.Body.up((kb: P.Body) => {Nat.is_le(P.Body.energy((g), kb), P.Body.energy((g), P.Body{(x), (y), (z), (vx), (vy), (vz), (gr), (hit), (rt)})) == True{} : Bool}, Body.of_pair((P.Tick.shrink.pair(c, rt))), Tick.shrink.pair_up((kb: P.Body) => {Nat.is_le(P.Body.energy(g, kb), P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == True{} : Bool}, c, rt, hc1))
+
+def start_e2.t2(+c: P.Body, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z, hc1: {Nat.is_le(P.Body.energy(g, c), P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == True{} : Bool})
+  -> Once.Body((kb: P.Body) => {Nat.is_le(P.Body.energy(g, kb), P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == True{} : Bool}, P.Tick.shrink(7n, P.Tick.shrink.pair(c, rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz)):
+  shrink_e2(7n, P.Tick.shrink.pair(c, rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz, start_e2.t1(c, g, x, y, z, vx, vy, vz, gr, hit, rt, hc1))
 
 def start_e2(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z)
   -> Once.Body((kb: P.Body) => {Nat.is_le(P.Body.energy(g, kb),
        P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == True{} : Bool}, P.Tick.shrink(7n, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz)):
-  shrink_e2(7n, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz, Once.Body.up((kb: P.Body) => {Nat.is_le(P.Body.energy((g), kb),
-       P.Body.energy((g), P.Body{(x), (y), (z), (vx), (vy), (vz), (gr), (hit), (rt)})) == True{} : Bool}, Body.of_pair((P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt))), Tick.shrink.pair_up((kb: P.Body) => {Nat.is_le(P.Body.energy(g, kb),
-       P.Body.energy(g, P.Body{x, y, z, vx, vy, vz, gr, hit, rt})) == True{} : Bool}, P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt, cand_e2(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz))))
+  start_e2.t2(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz, cand_e2(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz))
 
 def keepw_e2(+tip: Bool, moved: Bool, +b: P.Body, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot,
   hb: Once.Body((kb: P.Body) => {Nat.is_le(P.Body.energy(g, kb),
@@ -3977,6 +3985,10 @@ def cand_nc(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat,
   pivot_nc(P.Rot.mat(P.Quat.half(P.Quat.step(w, P.Wv.mag(w)))), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt,
     P.Rot{P.Rot.turn(P.Rot.q(rt), w), P.Rot.w(rt)}, rx, ry, rz, h)
 
+def shrink_nc.t1(+c: P.Body, +s: Nat, +obs: List<&2, P.Body>, +rt: P.Rot, hc1: FREE(s, obs, c))
+  -> Once.Body(((kb: P.Body) => FREE((s), (obs), kb)), Body.of_pair((P.Tick.shrink.pair(c, rt)))):
+  Once.Body.up((kb: P.Body) => FREE((s), (obs), kb), Body.of_pair((P.Tick.shrink.pair(c, rt))), Tick.shrink.pair_up((kb: P.Body) => FREE(s, obs, kb), c, rt, hc1))
+
 def shrink_nc(n: Nat, p: P.Body & Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z,
   +h: {P.Geo.free(s, x, y, z, P.Rot.q(rt), obs) == True{} : Bool},
   hb: Once.Body((kb: P.Body) => FREE(s, obs, kb), Body.of_pair(p)))
@@ -3993,7 +4005,7 @@ def shrink_nc(n: Nat, p: P.Body & Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>
             case True{}:
               hb
             case False{}:
-              shrink_nc(m, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz, h, Once.Body.up((kb: P.Body) => FREE((s), (obs), kb), Body.of_pair((P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), rt))), Tick.shrink.pair_up((kb: P.Body) => FREE(s, obs, kb), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), rt, cand_nc(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz, h))))
+              shrink_nc(m, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz, h, shrink_nc.t1(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), s, obs, rt, cand_nc(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz, h)))
 
 def start_nc(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z,
   +h: {P.Geo.free(s, x, y, z, P.Rot.q(rt), obs) == True{} : Bool})
@@ -4662,6 +4674,10 @@ def cand_sh(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat,
   pivot_sh(P.Rot.mat(P.Quat.half(P.Quat.step(w, P.Wv.mag(w)))), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt,
     P.Rot{P.Rot.turn(P.Rot.q(rt), w), P.Rot.w(rt)}, rx, ry, rz, h)
 
+def shrink_sh.t1(+c: P.Body, +s: Nat, +obs: List<&2, P.Body>, +rt: P.Rot, hc1: SH(s, obs, c))
+  -> Once.Body(((kb: P.Body) => SH((s), (obs), kb)), Body.of_pair((P.Tick.shrink.pair(c, rt)))):
+  Once.Body.up((kb: P.Body) => SH((s), (obs), kb), Body.of_pair((P.Tick.shrink.pair(c, rt))), Tick.shrink.pair_up((kb: P.Body) => SH(s, obs, kb), c, rt, hc1))
+
 def shrink_sh(n: Nat, p: P.Body & Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z,
   +h: {Bool.and(gr, P.Tick.sinks(s, obs, x, y, z, P.Rot.q(rt))) == False{} : Bool},
   hb: Once.Body((kb: P.Body) => SH(s, obs, kb), Body.of_pair(p)))
@@ -4678,12 +4694,20 @@ def shrink_sh(n: Nat, p: P.Body & Bool, +s: Nat, +g: Nat, +obs: List<&2, P.Body>
             case True{}:
               hb
             case False{}:
-              shrink_sh(m, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz, h, Once.Body.up((kb: P.Body) => SH((s), (obs), kb), Body.of_pair((P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), rt))), Tick.shrink.pair_up((kb: P.Body) => SH(s, obs, kb), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), rt, cand_sh(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz, h))))
+              shrink_sh(m, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz, h, shrink_sh.t1(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz), s, obs, rt, cand_sh(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, P.Wv.half(w), rx, ry, rz, h)))
+
+def start_sh.t1(+c: P.Body, +s: Nat, +obs: List<&2, P.Body>, +rt: P.Rot, hc1: SH(s, obs, c))
+  -> Once.Body(((kb: P.Body) => SH((s), (obs), kb)), Body.of_pair((P.Tick.shrink.pair(c, rt)))):
+  Once.Body.up((kb: P.Body) => SH((s), (obs), kb), Body.of_pair((P.Tick.shrink.pair(c, rt))), Tick.shrink.pair_up((kb: P.Body) => SH(s, obs, kb), c, rt, hc1))
+
+def start_sh.t2(+c: P.Body, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z, +h: {Bool.and(gr, P.Tick.sinks(s, obs, x, y, z, P.Rot.q(rt))) == False{} : Bool}, hc1: SH(s, obs, c))
+  -> Once.Body((kb: P.Body) => SH(s, obs, kb), P.Tick.shrink(7n, P.Tick.shrink.pair(c, rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz)):
+  shrink_sh(7n, P.Tick.shrink.pair(c, rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz, h, start_sh.t1(c, s, obs, rt, hc1))
 
 def start_sh(+s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot, +w: P.Wv, +rx: P.Z, +ry: P.Z, +rz: P.Z,
   +h: {Bool.and(gr, P.Tick.sinks(s, obs, x, y, z, P.Rot.q(rt))) == False{} : Bool})
   -> Once.Body((kb: P.Body) => SH(s, obs, kb), P.Tick.shrink(7n, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz)):
-  shrink_sh(7n, P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz, h, Once.Body.up((kb: P.Body) => SH((s), (obs), kb), Body.of_pair((P.Tick.shrink.pair(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt))), Tick.shrink.pair_up((kb: P.Body) => SH(s, obs, kb), P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), rt, cand_sh(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz, h))))
+  start_sh.t2(P.Tick.cand(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz), s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz, h, cand_sh(s, g, obs, x, y, z, vx, vy, vz, gr, hit, rt, w, rx, ry, rz, h))
 
 def keepw_sh(+tip: Bool, moved: Bool, +b: P.Body, +s: Nat, +g: Nat, +obs: List<&2, P.Body>, +x: Nat, +y: Nat, +z: Nat, +vx: P.Z, +vy: P.Z, +vz: P.Z, +gr: Bool, +hit: Bool, +rt: P.Rot,
   +h: {Bool.and(gr, P.Tick.sinks(s, obs, x, y, z, P.Rot.q(rt))) == False{} : Bool},
