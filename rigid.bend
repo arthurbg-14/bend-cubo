@@ -549,13 +549,24 @@ def Imp.accn(+jn: Nat, lam: P.Z) -> Nat:
     case P.Neg{q}:
       Nat.sub(jn, q)
 
-# the friction pushed so far, held to mu jn/256 in size
+# the friction pushed so far, held to mu jn/256 in size: scaled down by
+# lim / |t| when bigger, and the scaled one checked -- a square root a unit
+# short would leave it a hair over, and then there is none (Coulomb holds
+# whatever the root: Imp.clamp_ok)
+def Imp.clamp3(ok: Bool, +r: P.Wv) -> P.Wv:
+  match ok:
+    case True{}:
+      r
+    case False{}:
+      V.zero()
+
 def Imp.clamp2(big: Bool, +t: P.Wv, +lim: Nat, +mag: Nat) -> P.Wv:
   match big:
     case False{}:
       t
     case True{}:
-      V.divn(V.mulz(t, P.Pos{lim}), P.Pick.high(mag, 1n))
+      +r = V.divn(V.mulz(t, P.Pos{lim}), P.Pick.high(mag, 1n))
+      Imp.clamp3(Nat.is_le(V.sq(r), Nat.mul(lim, lim)), r)
 
 def Imp.clamp(+t: P.Wv, +lim: Nat) -> P.Wv:
   +sq = V.sq(t)
@@ -570,14 +581,59 @@ def Imp.side(fl: Bool, +i: Nat, +b: P.Body, +bs: List<&2, P.Body>) -> List<&2, P
       Bs.put(bs, i, b)
 
 # the friction, once the push along the normal is in
-def Imp.fric(+k: P.K, +a: Nat, +b: Nat, +fl: Bool, +ra: P.Wv, +rb: P.Wv, +n: P.Wv, +gap: P.Z, +jn: Nat, +jt: P.Wv,
-  +kf: Nat, done: List<&2, Ct>, +bs: List<&2, P.Body>, +ba: P.Body, +bb: P.Body) -> St:
+# the most friction a contact pushing jn can give: mu jn (mu in 1/256)
+def Imp.lim(+k: P.K, +jn: Nat) -> Nat:
+  Nat.div(Nat.mul(R.mu(k), jn), 256n)
+
+# the friction that would stop the sliding at the contact outright, added
+# to what it pushed so far
+def Imp.tfric(+k: P.K, +fl: Bool, +ba: P.Body, +bb: P.Body, +ra: P.Wv, +rb: P.Wv, +n: P.Wv, +jt: P.Wv, +kf: Nat) -> P.Wv:
   +u = Imp.rel(k, fl, ba, bb, ra, rb)
   +ut = V.sub(u, V.fx(n, P.Z.divn(V.dot(u, n), 65536n)))
-  +jt2 = Imp.clamp(V.sub(jt, V.divn(V.mulz(ut, P.Pos{1024n}), kf)), Nat.div(Nat.mul(R.mu(k), jn), 256n))
-  +dt = V.sub(jt2, jt)
-  St{Ct{a, b, fl, ra, rb, n, gap, jn, jt2} <> done,
-    Imp.side(fl, b, B.pull(bb, dt, rb), Bs.put(bs, a, B.push(ba, dt, ra)))}
+  V.sub(jt, V.divn(V.mulz(ut, P.Pos{1024n}), kf))
+
+# a contact once its push is in, with the friction it asks for (not yet
+# given), and the bodies as the push left them
+type R2 is Data:
+  R2{c: Ct, bs: List<&2, P.Body>, ba: P.Body, bb: P.Body}
+
+def R2.c(+r: R2) -> Ct:
+  R2{c, bs, ba, bb} = r
+  c
+
+def Imp.fric(+k: P.K, +a: Nat, +b: Nat, +fl: Bool, +ra: P.Wv, +rb: P.Wv, +n: P.Wv, +gap: P.Z, +jn: Nat, +jt: P.Wv,
+  +kf: Nat, +bs: List<&2, P.Body>, +ba: P.Body, +bb: P.Body) -> R2:
+  R2{Ct{a, b, fl, ra, rb, n, gap, jn, Imp.clamp(Imp.tfric(k, fl, ba, bb, ra, rb, n, jt, kf), Imp.lim(k, jn))}, bs, ba, bb}
+
+# Coulomb, for one contact: its friction is at most mu times its push
+def Ct.coul(+k: P.K, c: Ct) -> Bool:
+  Ct{a, b, fl, ra, rb, n, gap, +jn, +jt} = c
+  Nat.is_le(V.sq(jt), Nat.mul(Imp.lim(k, jn), Imp.lim(k, jn)))
+
+# the contact as it goes into the list, and as its friction is given: as
+# asked if within Coulomb (the clamp makes it so), else none
+def Ct.safe2(ok: Bool, c: Ct) -> Ct:
+  match ok:
+    case True{}:
+      c
+    case False{}:
+      Ct{a, b, fl, ra, rb, n, gap, jn, jt} = c
+      Ct{a, b, fl, ra, rb, n, gap, jn, V.zero()}
+
+def Ct.safe(+k: P.K, +c: Ct) -> Ct:
+  Ct.safe2(Ct.coul(k, c), c)
+
+def Ct.jt(+c: Ct) -> P.Wv:
+  Ct{a, b, fl, ra, rb, n, gap, jn, jt} = c
+  jt
+
+# the friction of c given to its bodies (ba, bb as the push left them):
+# what it has now less what it had (jt0), equal and opposite, at the arms
+def Imp.fgive(+c: Ct, +jt0: P.Wv, r: R2) -> List<&2, P.Body>:
+  Ct{+a, +b, +fl, +ra, +rb, n, gap, jn, +jt} = c
+  R2{c0, bs, ba, bb} = r
+  +dt = V.sub(jt, jt0)
+  Imp.side(fl, b, B.pull(bb, dt, rb), Bs.put(bs, a, B.push(ba, dt, ra)))
 
 type Sup is Data:
   Sup{touched: Bool, nn: P.Wv, n: Nat, lx: P.Z, hx: P.Z, lz: P.Z, hz: P.Z, dg: P.Z, dn: P.Wv, pj: Nat, pr: P.Wv}
@@ -766,21 +822,33 @@ def Imp.target(+s: Nat, gap: P.Z) -> P.Z:
     case P.Neg{g}:
       P.Pos{Nat.div(Nat.sub(g, R.skin(s)), 2n)}
 
-def Imp.norm(+k: P.K, +a: Nat, +b: Nat, +fl: Bool, +ra: P.Wv, +rb: P.Wv, +n: P.Wv, +gap: P.Z, +jn: Nat, +jt: P.Wv,
-  done: List<&2, Ct>, +bs: List<&2, P.Body>, +ba: P.Body, +bb: P.Body) -> St:
-  +kf = Imp.keff(k, fl, ra, rb, n)
+# the push along the normal so far, and the change that makes the contact
+# close in no faster than it may -- never below nothing (Imp.accn)
+def Imp.jn2(+k: P.K, +fl: Bool, +ra: P.Wv, +rb: P.Wv, +n: P.Wv, +gap: P.Z, +jn: Nat, +kf: Nat, +ba: P.Body, +bb: P.Body) -> Nat:
   +vn = P.Z.divn(V.dot(Imp.rel(k, fl, ba, bb, ra, rb), n), 65536n)
-  +lam = P.Z.divc(P.Z.mul(P.Z.sub(Imp.target(P.K.size(k), gap), vn), P.Pos{1024n}), kf)
-  +jn2 = Imp.accn(jn, lam)
+  Imp.accn(jn, P.Z.divc(P.Z.mul(P.Z.sub(Imp.target(P.K.size(k), gap), vn), P.Pos{1024n}), kf))
+
+def Imp.norm(+k: P.K, +a: Nat, +b: Nat, +fl: Bool, +ra: P.Wv, +rb: P.Wv, +n: P.Wv, +gap: P.Z, +jn: Nat, +jt: P.Wv,
+  +bs: List<&2, P.Body>, +ba: P.Body, +bb: P.Body) -> R2:
+  +kf = Imp.keff(k, fl, ra, rb, n)
+  +jn2 = Imp.jn2(k, fl, ra, rb, n, gap, jn, kf, ba, bb)
   +j = V.fx(n, R.zd(jn2, jn))
   +ba2 = B.push(ba, j, ra)
   +bb2 = R.pb(fl, bb, B.pull(bb, j, rb))
-  Imp.fric(k, a, b, fl, ra, rb, n, gap, jn2, jt, kf, done, Imp.side(fl, b, bb2, Bs.put(bs, a, ba2)), ba2, bb2)
+  Imp.fric(k, a, b, fl, ra, rb, n, gap, jn2, jt, kf, Imp.side(fl, b, bb2, Bs.put(bs, a, ba2)), ba2, bb2)
 
-def Imp.one(+k: P.K, c: Ct, st: St) -> St:
+def Imp.raw(+k: P.K, c: Ct, +bs: List<&2, P.Body>) -> R2:
   Ct{+a, +b, +fl, +ra, +rb, +n, +gap, +jn, +jt} = c
+  Imp.norm(k, a, b, fl, ra, rb, n, gap, jn, jt, bs, Bs.at(bs, a), Bs.at(bs, b))
+
+# one contact solved: its push, then its friction as Ct.safe hands it on
+def Imp.one2(+k: P.K, +jt0: P.Wv, +r: R2, done: List<&2, Ct>) -> St:
+  +c = Ct.safe(k, R2.c(r))
+  St{c <> done, Imp.fgive(c, jt0, r)}
+
+def Imp.one(+k: P.K, +c: Ct, st: St) -> St:
   St{done, +bs} = st
-  Imp.norm(k, a, b, fl, ra, rb, n, gap, jn, jt, done, bs, Bs.at(bs, a), Bs.at(bs, b))
+  Imp.one2(k, Ct.jt(c), Imp.raw(k, c, bs), done)
 
 # one pass over the contacts
 def Imp.pass(+k: P.K, cs: List<&2, Ct>, st: St) -> St:
@@ -906,20 +974,25 @@ def R.hits2(flat: Bool, +s: Nat, +p: P.Body, +o: P.Body) -> Bool:
     case False{}:
       P.Z.above(P.Neg{R.slop(s)}, R.gap(s, p, o))
 
-# a body at p (with the turn q) against one other: overlapping? Two cubes
-# square with the world are two boxes, and that is asked exactly.
-# Two cubes whose middles are 2 s apart along some axis cannot overlap
-# (a cube reaches s sqrt(3) / 2 from its middle): the fifteen directions
-# are only worked out for the ones nearer than that.
-def R.hits3(near: Bool, +s: Nat, +p: P.Body, +o: P.Body) -> Bool:
+# a body as the gate sees it: where it is and how it is turned, nothing
+# else -- so that nothing else can change what it sees (rg_hits_*)
+def R.bare(+b: P.Body) -> P.Body:
+  P.Body{P.Body.x(b), P.Body.y(b), P.Body.z(b), P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, False{}, False{}, P.Rot{B.q(b), V.zero()}}
+
+# a body at p against one other: overlapping? Two cubes square with the
+# world are two boxes, and that is asked exactly. Two cubes whose middles
+# are 2 s apart along some axis cannot overlap (a cube reaches
+# s sqrt(3) / 2 from its middle): the fifteen directions are only worked
+# out for the ones nearer than that.
+def R.hits4(near: Bool, +s: Nat, +p: P.Body, +o: P.Body) -> Bool:
   match near:
     case False{}:
       False{}
     case True{}:
-      R.hits2(Bool.and(P.Quat.flat(B.q(p)), P.Quat.flat(B.q(o))), s, p, o)
+      R.hits2(Bool.and(P.Quat.flat(B.q(p)), P.Quat.flat(B.q(o))), s, R.bare(p), R.bare(o))
 
 def R.hits(+s: Nat, +p: P.Body, +o: P.Body) -> Bool:
-  R.hits3(Ct.near(s, 0n, B.d(p, o)), s, p, o)
+  R.hits4(Ct.near(s, 0n, B.d(p, o)), s, p, o)
 
 def Mv.clear(+s: Nat, +p: P.Body, obs: List<&2, P.Body>) -> Bool:
   match obs:
@@ -1392,13 +1465,65 @@ def Rb.deep(+s: Nat, cs: List<&2, Ct>) -> Bool:
     case Ct{a, b, fl, ra, rb, n, +gap, jn, jt} <> rest:
       Bool.or(P.Z.above(P.Neg{R.skin(s)}, gap), Rb.deep(s, rest))
 
-def Rb.step2(+k: P.K, +bs: List<&2, P.Body>, +ss: List<&2, P.Body>, st: St) -> Rs:
+# the bodies moved and gated, energy and all
+def Rb.moved(+k: P.K, +bs: List<&2, P.Body>, +ss: List<&2, P.Body>, st: St) -> List<&2, P.Body>:
   St{+done, +bs1} = st
-  +moved = Mv.all(List.length(&2, P.Body, bs), k, 0n, bs, bs1, ss, done)
+  Mv.all(List.length(&2, P.Body, bs), k, 0n, bs, bs1, ss, done)
+
+# was some contact of the tick deeper than the skin?
+def Rb.deepof(+s: Nat, st: St) -> Bool:
+  St{done, bs1} = st
+  Rb.deep(s, done)
+
+# the energy gate on the moved bodies (see En.gate): none when a contact
+# was deeper than the skin, where pushing the pair apart is what the
+# energy went into
+def Rb.egate(+k: P.K, +bs: List<&2, P.Body>, deep: Bool, +moved: List<&2, P.Body>) -> List<&2, P.Body>:
   +e0 = En.all(k, bs, bs)
   +e1 = En.all(k, bs, moved)
-  Rs{En.gate(Bool.and(Bool.not(Rb.deep(P.K.size(k), done)), Nat.is_lt(e0, e1)), k, bs, e0, e1, moved),
-    Rb.wakes(ss, 0n, P.K.g(k), done)}
+  En.gate(Bool.and(Bool.not(deep), Nat.is_lt(e0, e1)), k, bs, e0, e1, moved)
+
+def Rb.out(+k: P.K, +bs: List<&2, P.Body>, +ss: List<&2, P.Body>, +st: St) -> List<&2, P.Body>:
+  Rb.egate(k, bs, Rb.deepof(P.K.size(k), st), Rb.moved(k, bs, ss, st))
+
+def Rb.wokeof(+k: P.K, +ss: List<&2, P.Body>, st: St) -> List<&2, P.Body>:
+  St{done, bs1} = st
+  Rb.wakes(ss, 0n, P.K.g(k), done)
+
+# Apart: no two of bs overlap, none overlaps one of the fixed ss, none is
+# under the floor -- by the gate's own tests (the fifteen directions, the
+# floor's corners)
+def Rb.apart(+s: Nat, bs: List<&2, P.Body>, +ss: List<&2, P.Body>) -> Bool:
+  match bs:
+    case []:
+      True{}
+    case +b <> +rest:
+      Bool.and(Mv.fits(s, b, List.append(&2, P.Body, rest, ss)), Rb.apart(s, rest, ss))
+
+# The island's end, checked. Every pose went through the gate, so bodies
+# that began apart end apart; were they not, the tick would leave them
+# where they began, still -- the law (rigid_apart) rests on this check, and
+# no run has ever reached its other side. An island that began with an
+# overlap is handed on as the tick left it.
+def Rb.kept3(was: Bool, +bs: List<&2, P.Body>, +out: List<&2, P.Body>) -> List<&2, P.Body>:
+  match was:
+    case True{}:
+      En.still(bs)
+    case False{}:
+      out
+
+def Rb.kept2(ok: Bool, +s: Nat, +bs: List<&2, P.Body>, +ss: List<&2, P.Body>, +out: List<&2, P.Body>) -> List<&2, P.Body>:
+  match ok:
+    case True{}:
+      out
+    case False{}:
+      Rb.kept3(Rb.apart(s, bs, ss), bs, out)
+
+def Rb.checked(+s: Nat, +bs: List<&2, P.Body>, +ss: List<&2, P.Body>, +out: List<&2, P.Body>) -> List<&2, P.Body>:
+  Rb.kept2(Rb.apart(s, out, ss), s, bs, ss, out)
+
+def Rb.step2(+k: P.K, +bs: List<&2, P.Body>, +ss: List<&2, P.Body>, +st: St) -> Rs:
+  Rs{Rb.checked(P.K.size(k), bs, ss, Rb.out(k, bs, ss, st)), Rb.wokeof(k, ss, st)}
 
 def Rs.bs(r: Rs) -> List<&2, P.Body>:
   Rs{bs, woke} = r
@@ -1711,3 +1836,10 @@ def Is.clash(es: List<&2, Xe>, +s: Nat) -> Bool:
 # its own bodies apart; this looks at the pairs no tick saw
 def Rb.clash(+s: Nat, isl: List<&2, List<&2, P.Body>>) -> Bool:
   Is.clash(List.sort(Xe, Is.le, Is.tags(isl, 0n, [])), s)
+
+def Ct.coulomb(+k: P.K, cs: List<&2, Ct>) -> Bool:
+  match cs:
+    case []:
+      True{}
+    case c <> rest:
+      Bool.and(Ct.coul(k, c), Ct.coulomb(k, rest))

@@ -121,4 +121,15 @@ O que cada caso ensinou (tudo geral, nada de caso especial):
 - ilhas: cruzar ilhas refaz o tick como uma; o dorminhoco empurrado acorda
   e se mexe no mesmo tick; a ilha dorme inteira, girada como está.
 
-Falta: fase 3 (LAWS.bend das leis gerais acima, provadas).
+Fase 3 em andamento: provadas `rigid_coulomb` (contato só empurra +
+Coulomb), `rigid_apart` (nada atravessa nada, por ilha), `rigid_energy` (a
+energia nunca cresce, fora separar o que está mais fundo que a pele) e
+`rigid_no_push_off_air`. Faltam: ação e reação (momento por impulso),
+nada atravessa nada no mundo inteiro (ilhas + dorminhocos: exige provar a
+varredura ordenada do Rb.clash), voo livre exato, repouso é equilíbrio.
+
+Como provar sem o checador explodir: cada garantia vira uma decisão
+checada no código num nível em que os valores ainda são variáveis
+(Ct.safe no contato inteiro, Rb.checked no fim da ilha, R.bare no teste
+de sobreposição), e a prova é a análise de casos dessa decisão; o que o
+solver calcula por dentro nunca é aberto.

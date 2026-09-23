@@ -14,6 +14,8 @@
 
 import Base
 import ./phys.bend as P
+import ./rigid.bend as G
+import ./world.bend as W
 
 # Kinematics and energy in flight
 # -------------------------------
@@ -647,3 +649,60 @@ law spin_is_across_the_push:
   for +jx: P.Z
   {P.Z.mag(P.Rot.crx(P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, P.Pos{0n})) == 0n : Nat}
   & {P.Z.mag(P.Rot.cry(P.Pos{0n}, rx, P.Pos{0n}, jx)) == 0n : Nat}
+
+# The rigid bodies (rigid.bend: the game's physics)
+# ------------------------------------------------
+# Laws about the tick the game runs: Rb.tick on an island of bodies bs
+# among fixed ones ss, and the world's tick of islands (world.bend).
+
+# LAW: contacts only push, and their friction is Coulomb's. After the
+# passes of a tick's solver, every contact pushes its two bodies apart by
+# a push jn that is never negative (a contact never pulls), and the
+# friction it gave them, jt, is at most mu times that push:
+# |jt|^2 <= (mu jn)^2, mu in 1/256. The friction the bodies received is
+# jt itself (each pass gives what jt grew by, Imp.fgive), so this is the
+# friction of the game, not a record kept beside it.
+law rigid_coulomb:
+  for +k: P.K
+  for +bs: List<&2, P.Body>
+  for +ss: List<&2, P.Body>
+  {G.Ct.coulomb(k, G.Rb.done(G.Imp.iter(16n, k, G.St{G.Ct.all(bs, k, 0n, ss, []), G.Rb.fall(k, bs)}))) == True{} : Bool}
+
+# LAW: nothing passes through anything. An island of bodies that begins
+# apart -- no two of them overlapping, none overlapping one of the fixed
+# bodies around it, none under the floor (Rb.apart: the fifteen
+# directions' test, the floor's corners) -- ends the tick apart, whatever
+# the bodies, the fixed ones, their speeds and turns, and the constants.
+law rigid_apart:
+  for +k: P.K
+  for +bs: List<&2, P.Body>
+  for +ss: List<&2, P.Body>
+  for start: {G.Rb.apart(P.K.size(k), bs, ss) == True{} : Bool}
+  {G.Rb.apart(P.K.size(k), G.Rs.bs(G.Rb.tick(k, bs, ss)), ss) == True{} : Bool}
+
+# LAW: energy never grows, but to push apart what is inside something.
+# The mechanical energy of an island -- every body's v^2 + 6 L^2 / s^2
+# (the kinetic energy of its moving and of its turning, a cube's inertia
+# being s^2 / 6) plus g y -- is at most what it was after the tick,
+# unless some contact of the tick was deeper into its pair than the skin
+# (Rb.deepof): pushing that pair apart is the one thing the tick may
+# spend energy on.
+law rigid_energy:
+  for +k: P.K
+  for +bs: List<&2, P.Body>
+  for +ss: List<&2, P.Body>
+  st = G.Imp.iter(16n, k, G.St{G.Ct.all(bs, k, 0n, ss, []), G.Rb.fall(k, bs)})
+  {Bool.or(G.Rb.deepof(P.K.size(k), st), Nat.is_le(G.En.all(k, bs, G.Rs.bs(G.Rb.tick(k, bs, ss))), G.En.all(k, bs, bs))) == True{} : Bool}
+
+# LAW: no pushing off the air, nor off a wall. The player walks and jumps
+# only off what held it the tick before -- a contact that touched it with
+# a face looking up and pushed it (Hd.held: the floor, a cube under it,
+# the edge it leans on). Not held, holding a direction or jump changes
+# nothing: a wall's face looks sideways, so pressing into one never holds
+# the player up, and it falls.
+law rigid_no_push_off_air:
+  for +k: P.K
+  for inp: P.In
+  for +p: P.Body
+  for air: {P.Body.ground(p) == False{} : Bool}
+  {W.W.drive(k, inp, p) == p : P.Body}

@@ -7,6 +7,8 @@ import Base
 import ./ring.bend as R
 import ./phys.bend as P
 import ./LAWS.bend as Laws
+import ./rigid.bend as G
+import ./world.bend as W
 
 # Kit
 # ---
@@ -7613,3 +7615,278 @@ def stop_pair(+s: Nat, +g: Nat, r: P.Body & List<&2, P.Body>, +hgr: {P.Body.grou
 
 def Laws.a_stopped_turn_does_not_wind_up(k, obs, inp, b, held, stopped):
   stop_pair(P.K.size(k), P.K.g(k), P.Body.step(k, obs, inp, b), held)(stopped)
+
+# The rigid bodies
+# ----------------
+
+def rg_and(x: Bool, -y: Bool, hx: {x == True{} : Bool}, hy: {y == True{} : Bool}) -> {Bool.and(x, y) == True{} : Bool}:
+  match x:
+    case True{}:
+      hy
+    case False{}:
+      Empty.absurd({Bool.and(False{}, y) == True{} : Bool}, clash2(hx))
+
+# the contact Ct.safe hands on is within Coulomb, whatever it was handed
+def rg_safe_pick(ok: Bool, +k: P.K, c: G.Ct, e: {G.Ct.coul(k, c) == ok : Bool})
+  -> {G.Ct.coul(k, G.Ct.safe2(ok, c)) == True{} : Bool}:
+  match ok:
+    case True{}:
+      e
+    case False{}:
+      match c:
+        case G.Ct{a, b, fl, ra, rb, n, gap, +jn, jt}:
+          le_zero_l(Nat.mul(G.Imp.lim(k, jn), G.Imp.lim(k, jn)))
+
+def rg_safe(+k: P.K, +c: G.Ct) -> {G.Ct.coul(k, G.Ct.safe(k, c)) == True{} : Bool}:
+  rg_safe_pick(G.Ct.coul(k, c), k, c, {==})
+
+# a step of the solver puts in front the contact Ct.safe hands on, and
+# gives back the rest as it was
+def rg_one(+k: P.K, +c: G.Ct, +st: G.St, h: {G.Ct.coulomb(k, G.Rb.done(st)) == True{} : Bool})
+  -> {G.Ct.coulomb(k, G.Rb.done(G.Imp.one(k, c, st))) == True{} : Bool}:
+  match st:
+    case G.St{done, +bs}:
+      rg_and(G.Ct.coul(k, G.Ct.safe(k, G.R2.c(G.Imp.raw(k, c, bs)))), G.Ct.coulomb(k, done),
+        rg_safe(k, G.R2.c(G.Imp.raw(k, c, bs))), h)
+
+def rg_pass(+k: P.K, cs: List<&2, G.Ct>, +st: G.St, h: {G.Ct.coulomb(k, G.Rb.done(st)) == True{} : Bool})
+  -> {G.Ct.coulomb(k, G.Rb.done(G.Imp.pass(k, cs, st))) == True{} : Bool}:
+  match cs:
+    case []:
+      h
+    case +c <> rest:
+      rg_pass(k, rest, G.Imp.one(k, c, st), rg_one(k, c, st, h))
+
+# a pass starts from no contacts, so whatever it is handed, all it hands
+# back went through a step
+def rg_again(+k: P.K, +st: G.St) -> {G.Ct.coulomb(k, G.Rb.done(G.Imp.again(k, st))) == True{} : Bool}:
+  match st:
+    case G.St{done, +bs}:
+      rg_pass(k, done, G.St{[], bs}, {==})
+
+def rg_iter(n: Nat, +k: P.K, +st: G.St, h: {G.Ct.coulomb(k, G.Rb.done(st)) == True{} : Bool})
+  -> {G.Ct.coulomb(k, G.Rb.done(G.Imp.iter(n, k, st))) == True{} : Bool}:
+  match n:
+    case 0n:
+      h
+    case 1n+m:
+      rg_iter(m, k, G.Imp.again(k, st), rg_again(k, st))
+
+def Laws.rigid_coulomb(k, bs, ss):
+  rg_iter(15n, k, G.Imp.again(k, G.St{G.Ct.all(bs, k, 0n, ss, []), G.Rb.fall(k, bs)}),
+    rg_again(k, G.St{G.Ct.all(bs, k, 0n, ss, []), G.Rb.fall(k, bs)}))
+
+def rg_not(a: Bool, -b: Bool, e: {a == b : Bool}) -> {Bool.not(a) == Bool.not(b) : Bool}:
+  %e : {Bool.not(a) == Bool.not(_) : Bool}
+  {==}
+
+def rg_and2(x: Bool, -x2: Bool, y: Bool, -y2: Bool, ex: {x == x2 : Bool}, ey: {y == y2 : Bool})
+  -> {Bool.and(x, y) == Bool.and(x2, y2) : Bool}:
+  %ex : {Bool.and(x, y) == Bool.and(_, y2) : Bool}
+  %ey : {Bool.and(x, y) == Bool.and(x, _) : Bool}
+  {==}
+
+def rg_trans(a: Bool, -b: Bool, -c: Bool, e1: {a == b : Bool}, e2: {b == c : Bool}) -> {a == c : Bool}:
+  %e2 : {a == _ : Bool}
+  e1
+
+def rg_absurd(x: Bool, e: {x == False{} : Bool}, h: {x == True{} : Bool}) -> {False{} == True{} : Bool}:
+  %e : {_ == True{} : Bool}
+  h
+
+# stopping a body changes nothing the gate looks at: it sees a body bare
+# (R.bare), where it is and how it is turned
+def rg_h4o(near: Bool, +s: Nat, +p: P.Body, +o: P.Body)
+  -> {G.R.hits4(near, s, p, G.B.set(o, G.V.zero(), G.V.zero())) == G.R.hits4(near, s, p, o) : Bool}:
+  match near:
+    case False{}:
+      {==}
+    case True{}:
+      {==}
+
+def rg_hits_o(+s: Nat, +p: P.Body, +o: P.Body)
+  -> {G.R.hits(s, p, G.B.set(o, G.V.zero(), G.V.zero())) == G.R.hits(s, p, o) : Bool}:
+  rg_h4o(G.Ct.near(s, 0n, G.B.d(p, o)), s, p, o)
+
+def rg_h4p(near: Bool, +s: Nat, +b: P.Body, +o: P.Body)
+  -> {G.R.hits4(near, s, G.B.set(b, G.V.zero(), G.V.zero()), o) == G.R.hits4(near, s, b, o) : Bool}:
+  match near:
+    case False{}:
+      {==}
+    case True{}:
+      {==}
+
+def rg_hits_p(+s: Nat, +b: P.Body, +o: P.Body)
+  -> {G.R.hits(s, G.B.set(b, G.V.zero(), G.V.zero()), o) == G.R.hits(s, b, o) : Bool}:
+  rg_h4p(G.Ct.near(s, 0n, G.B.d(b, o)), s, b, o)
+
+def rg_floor(+s: Nat, +b: P.Body) -> {G.Mv.floor(s, G.B.set(b, G.V.zero(), G.V.zero())) == G.Mv.floor(s, b) : Bool}:
+  {==}
+
+def rg_clear_p(+s: Nat, +b: P.Body, obs: List<&2, P.Body>)
+  -> {G.Mv.clear(s, G.B.set(b, G.V.zero(), G.V.zero()), obs) == G.Mv.clear(s, b, obs) : Bool}:
+  match obs:
+    case []:
+      {==}
+    case +o <> +rest:
+      rg_and2(Bool.not(G.R.hits(s, G.B.set(b, G.V.zero(), G.V.zero()), o)), Bool.not(G.R.hits(s, b, o)),
+        G.Mv.clear(s, G.B.set(b, G.V.zero(), G.V.zero()), rest), G.Mv.clear(s, b, rest),
+        rg_not(G.R.hits(s, G.B.set(b, G.V.zero(), G.V.zero()), o), G.R.hits(s, b, o), rg_hits_p(s, b, o)),
+        rg_clear_p(s, b, rest))
+
+def rg_clear_still(+s: Nat, +p: P.Body, rest: List<&2, P.Body>, +ss: List<&2, P.Body>)
+  -> {G.Mv.clear(s, p, List.append(&2, P.Body, G.En.still(rest), ss)) == G.Mv.clear(s, p, List.append(&2, P.Body, rest, ss)) : Bool}:
+  match rest:
+    case []:
+      {==}
+    case +o <> +r:
+      rg_and2(Bool.not(G.R.hits(s, p, G.B.set(o, G.V.zero(), G.V.zero()))), Bool.not(G.R.hits(s, p, o)),
+        G.Mv.clear(s, p, List.append(&2, P.Body, G.En.still(r), ss)), G.Mv.clear(s, p, List.append(&2, P.Body, r, ss)),
+        rg_not(G.R.hits(s, p, G.B.set(o, G.V.zero(), G.V.zero())), G.R.hits(s, p, o), rg_hits_o(s, p, o)),
+        rg_clear_still(s, p, r, ss))
+
+# the bodies stopped where they are are apart exactly when they were
+def rg_apart_still(+s: Nat, bs: List<&2, P.Body>, +ss: List<&2, P.Body>)
+  -> {G.Rb.apart(s, G.En.still(bs), ss) == G.Rb.apart(s, bs, ss) : Bool}:
+  match bs:
+    case []:
+      {==}
+    case +b <> +rest:
+      +b0 = G.B.set(b, G.V.zero(), G.V.zero())
+      +obs0 = List.append(&2, P.Body, G.En.still(rest), ss)
+      +obs = List.append(&2, P.Body, rest, ss)
+      rg_and2(G.Mv.fits(s, b0, obs0), G.Mv.fits(s, b, obs), G.Rb.apart(s, G.En.still(rest), ss), G.Rb.apart(s, rest, ss),
+        rg_and2(G.Mv.floor(s, b0), G.Mv.floor(s, b), G.Mv.clear(s, b0, obs0), G.Mv.clear(s, b, obs),
+          rg_floor(s, b),
+          rg_trans(G.Mv.clear(s, b0, obs0), G.Mv.clear(s, b, obs0), G.Mv.clear(s, b, obs),
+            rg_clear_p(s, b, obs0), rg_clear_still(s, b, rest, ss))),
+        rg_apart_still(s, rest, ss))
+
+def rg_kept3(was: Bool, +bs: List<&2, P.Body>, +out: List<&2, P.Body>, +s: Nat, +ss: List<&2, P.Body>,
+  e: {G.Rb.apart(s, bs, ss) == was : Bool}, start: {G.Rb.apart(s, bs, ss) == True{} : Bool})
+  -> {G.Rb.apart(s, G.Rb.kept3(was, bs, out), ss) == True{} : Bool}:
+  match was:
+    case True{}:
+      %Equal.sym(Bool, G.Rb.apart(s, G.En.still(bs), ss), G.Rb.apart(s, bs, ss), rg_apart_still(s, bs, ss)) : {_ == True{} : Bool}
+      start
+    case False{}:
+      Empty.absurd({G.Rb.apart(s, out, ss) == True{} : Bool}, clash2(rg_absurd(G.Rb.apart(s, bs, ss), e, start)))
+
+def rg_kept2(ok: Bool, +s: Nat, +bs: List<&2, P.Body>, +ss: List<&2, P.Body>, +out: List<&2, P.Body>,
+  e: {G.Rb.apart(s, out, ss) == ok : Bool}, start: {G.Rb.apart(s, bs, ss) == True{} : Bool})
+  -> {G.Rb.apart(s, G.Rb.kept2(ok, s, bs, ss, out), ss) == True{} : Bool}:
+  match ok:
+    case True{}:
+      e
+    case False{}:
+      rg_kept3(G.Rb.apart(s, bs, ss), bs, out, s, ss, {==}, start)
+
+def Laws.rigid_apart(k, bs, ss, start):
+  +out = G.Rb.out(k, bs, ss, G.Imp.iter(16n, k, G.St{G.Ct.all(bs, k, 0n, ss, []), G.Rb.fall(k, bs)}))
+  rg_kept2(G.Rb.apart(P.K.size(k), out, ss), P.K.size(k), bs, ss, out, {==}, start)
+
+def rg_or_r(a: Bool, -b: Bool, h: {b == True{} : Bool}) -> {Bool.or(a, b) == True{} : Bool}:
+  match a:
+    case True{}:
+      {==}
+    case False{}:
+      h
+
+# a body stopped where it is has no more energy than it had: the same
+# height, and no moving or turning
+def rg_div0(+d: Nat) -> {Nat.div(0n, d) == 0n : Nat}:
+  match d:
+    case 0n:
+      {==}
+    case 1n+p:
+      {==}
+
+def rg_e_one(+k: P.K, +y0: Nat, +b: P.Body)
+  -> {Nat.is_le(G.En.one(k, y0, G.B.set(b, G.V.zero(), G.V.zero())), G.En.one(k, y0, b)) == True{} : Bool}:
+  +d = P.Pick.high(Nat.div(Nat.mul(P.K.size(k), P.K.size(k)), 65536n), 1n)
+  +gy = Nat.mul(P.K.g(k), Nat.sub(P.Body.y(b), y0))
+  +top = G.En.one(k, y0, b)
+  %Equal.sym(Nat, Nat.div(0n, d), 0n, rg_div0(d)) : {Nat.is_le(Nat.add(_, gy), top) == True{} : Bool}
+  le_add_l(gy, Nat.add(G.V.sq(G.B.v(b)), G.En.rot(P.K.size(k), G.B.L(b))))
+
+def rg_e_still(+k: P.K, bs: List<&2, P.Body>)
+  -> {Nat.is_le(G.En.all(k, bs, G.En.still(bs)), G.En.all(k, bs, bs)) == True{} : Bool}:
+  match bs:
+    case []:
+      {==}
+    case +b <> +rest:
+      +y0 = Nat.sub(P.Body.y(b), P.K.size(k))
+      le_add2(G.En.one(k, y0, G.B.set(b, G.V.zero(), G.V.zero())), G.En.one(k, y0, b),
+        G.En.all(k, rest, G.En.still(rest)), G.En.all(k, rest, rest), rg_e_one(k, y0, b), rg_e_still(k, rest))
+
+# the energy gate: whatever it hands back has no more energy than the
+# bodies began with
+def rg_cut4(ok: Bool, +k: P.K, +b0s: List<&2, P.Body>, +e0: Nat, +bs: List<&2, P.Body>,
+  e: {Nat.is_le(G.En.all(k, b0s, bs), e0) == ok : Bool}, hst: {Nat.is_le(G.En.all(k, b0s, G.En.still(b0s)), e0) == True{} : Bool})
+  -> {Nat.is_le(G.En.all(k, b0s, G.En.cut4(ok, b0s, bs)), e0) == True{} : Bool}:
+  match ok:
+    case True{}:
+      e
+    case False{}:
+      hst
+
+def rg_cut2(ok: Bool, +k: P.K, +b0s: List<&2, P.Body>, +e0: Nat, +bs: List<&2, P.Body>, +kin: Nat, +over: Nat,
+  hst: {Nat.is_le(G.En.all(k, b0s, G.En.still(b0s)), e0) == True{} : Bool})
+  -> {Nat.is_le(G.En.all(k, b0s, G.En.cut2(ok, k, b0s, e0, bs, kin, over)), e0) == True{} : Bool}:
+  match ok:
+    case False{}:
+      hst
+    case True{}:
+      +sc = G.En.scale(bs, P.Fric.floor(Nat.mul(Nat.div(Nat.mul(Nat.sub(kin, over), 65536n), P.Pick.high(kin, 1n)), 65536n), 65536n))
+      rg_cut4(Nat.is_le(G.En.all(k, b0s, sc), e0), k, b0s, e0, sc, {==}, hst)
+
+def rg_gate(over: Bool, +k: P.K, +b0s: List<&2, P.Body>, +bs: List<&2, P.Body>,
+  e: {Nat.is_lt(G.En.all(k, b0s, b0s), G.En.all(k, b0s, bs)) == over : Bool},
+  hst: {Nat.is_le(G.En.all(k, b0s, G.En.still(b0s)), G.En.all(k, b0s, b0s)) == True{} : Bool})
+  -> {Nat.is_le(G.En.all(k, b0s, G.En.gate(over, k, b0s, G.En.all(k, b0s, b0s), G.En.all(k, b0s, bs), bs)), G.En.all(k, b0s, b0s)) == True{} : Bool}:
+  match over:
+    case False{}:
+      lt_false_le(G.En.all(k, b0s, b0s), G.En.all(k, b0s, bs), e)
+    case True{}:
+      +e0 = G.En.all(k, b0s, b0s)
+      +e1 = G.En.all(k, b0s, bs)
+      rg_cut2(Nat.is_lt(Nat.sub(e1, e0), G.En.kin(k, bs)), k, b0s, e0, bs, G.En.kin(k, bs), Nat.sub(e1, e0), hst)
+
+def rg_egate(deep: Bool, +k: P.K, +bs: List<&2, P.Body>, +moved: List<&2, P.Body>)
+  -> {Bool.or(deep, Nat.is_le(G.En.all(k, bs, G.Rb.egate(k, bs, deep, moved)), G.En.all(k, bs, bs))) == True{} : Bool}:
+  match deep:
+    case True{}:
+      {==}
+    case False{}:
+      rg_gate(Nat.is_lt(G.En.all(k, bs, bs), G.En.all(k, bs, moved)), k, bs, moved, {==}, rg_e_still(k, bs))
+
+# and the island's end check hands back the gate's bodies, or the bodies
+# stopped where they began
+def rg_e_k3(was: Bool, +k: P.K, +bs: List<&2, P.Body>, +deep: Bool, +out: List<&2, P.Body>,
+  e_out: {Bool.or(deep, Nat.is_le(G.En.all(k, bs, out), G.En.all(k, bs, bs))) == True{} : Bool})
+  -> {Bool.or(deep, Nat.is_le(G.En.all(k, bs, G.Rb.kept3(was, bs, out)), G.En.all(k, bs, bs))) == True{} : Bool}:
+  match was:
+    case True{}:
+      rg_or_r(deep, Nat.is_le(G.En.all(k, bs, G.En.still(bs)), G.En.all(k, bs, bs)), rg_e_still(k, bs))
+    case False{}:
+      e_out
+
+def rg_e_k2(ok: Bool, +k: P.K, +s: Nat, +bs: List<&2, P.Body>, +ss: List<&2, P.Body>, +deep: Bool, +out: List<&2, P.Body>,
+  e_out: {Bool.or(deep, Nat.is_le(G.En.all(k, bs, out), G.En.all(k, bs, bs))) == True{} : Bool})
+  -> {Bool.or(deep, Nat.is_le(G.En.all(k, bs, G.Rb.kept2(ok, s, bs, ss, out)), G.En.all(k, bs, bs))) == True{} : Bool}:
+  match ok:
+    case True{}:
+      e_out
+    case False{}:
+      rg_e_k3(G.Rb.apart(s, bs, ss), k, bs, deep, out, e_out)
+
+def Laws.rigid_energy(k, bs, ss):
+  +st = G.Imp.iter(16n, k, G.St{G.Ct.all(bs, k, 0n, ss, []), G.Rb.fall(k, bs)})
+  +deep = G.Rb.deepof(P.K.size(k), st)
+  +moved = G.Rb.moved(k, bs, ss, st)
+  +out = G.Rb.egate(k, bs, deep, moved)
+  rg_e_k2(G.Rb.apart(P.K.size(k), out, ss), k, P.K.size(k), bs, ss, deep, out, rg_egate(deep, k, bs, moved))
+
+def Laws.rigid_no_push_off_air(k, inp, p, air):
+  %Equal.sym(Bool, P.Body.ground(p), False{}, air) : {W.W.drive2(_, k, inp, p) == p : P.Body}
+  {==}

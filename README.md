@@ -12,14 +12,11 @@ resolvem tudo de uma vez. Tombar da borda, sair girando de uma batida fora
 do meio, escorregar, cair de uma parede: nada disso é regra à parte, é o
 que os impulsos nos pontos de contato fazem.
 
-As 36 leis de [`LAWS.bend`](LAWS.bend) são **provadas** (`bend PROOF.bend`
-só passa se todas valem), para qualquer valor das constantes. Elas são do
-motor anterior, [`phys.bend`](phys.bend), que continua no repositório. As
-leis gerais do motor novo (ação e reação, contato só empurra, Coulomb, a
-energia nunca cresce, nada atravessa nada, nada flutua, repouso é
-equilíbrio) estão em [`PROMPT-FISICA-REAL.md`](PROMPT-FISICA-REAL.md) e
-ainda **não estão provadas**; por enquanto valem medidas (ver "O motor de
-corpo rígido").
+As leis estão em [`LAWS.bend`](LAWS.bend) e são **provadas** (`bend
+PROOF.bend` só passa se todas valem), para qualquer valor das constantes e
+quaisquer corpos. As do motor novo (a tabela em "O motor de corpo rígido")
+são sobre o tick que o jogo roda; as 36 anteriores são do motor antigo,
+[`phys.bend`](phys.bend), que continua no repositório.
 
 A GPU desenha (Vulkan); o Bend simula.
 
@@ -145,6 +142,23 @@ acaso, empurrando o que encontra): **nenhuma sobreposição**, o jogador
 nunca fica parado no ar mais que 2 ticks. 64 cubos jogados de 2 a 9 m se
 empilham e dormem todos em 3 s; uma pilha de 27 cubos inclinados se acomoda
 e para.
+
+### As leis do corpo rígido
+
+Provadas para qualquer ilha de corpos, quaisquer corpos fixos em volta e
+quaisquer constantes:
+
+| lei | o que garante |
+|---|---|
+| `rigid_coulomb` | **contato só empurra** (o empurrão normal nunca é negativo) e o atrito de cada contato é no máximo µ vezes o seu empurrão: `|jt|² ≤ (µ jn)²`. É o atrito que os corpos receberam, não um registro à parte |
+| `rigid_apart` | **nada atravessa nada**: uma ilha que começa sem sobreposição (nenhum par, nenhum corpo fixo, nada abaixo do chão) termina o tick sem sobreposição |
+| `rigid_energy` | **a energia nunca cresce**: cinética de translação, de giro (inércia de cubo, s²/6) e potencial, somadas, no máximo o que eram, a não ser que um contato estivesse mais fundo que a pele -- separar esse par é a única coisa em que o tick pode gastar energia |
+| `rigid_no_push_off_air` | **ninguém se empurra no ar nem na parede**: fora do apoio (um contato que o toca, com a face olhando para cima, empurrando), segurar uma direção ou o pulo não muda nada |
+
+Cada garantia é uma decisão que o código toma e checa (o atrito passa por
+`Ct.safe`, o fim da ilha por `Rb.checked`, a energia por `En.gate`), e a
+prova segue essas decisões; as medições acima dizem que a checagem do fim
+da ilha nunca precisou agir.
 
 ## As leis (do motor anterior)
 
