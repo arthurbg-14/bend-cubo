@@ -120,6 +120,7 @@ static u32 show_clip(int v, u32 most) {
 // the motion after from the middle -- never a jump across the window. A
 // frame's motion is one Move.
 #include <X11/XKBlib.h>
+#include <X11/Xatom.h>
 #include <dlfcn.h>
 #include <X11/extensions/XInput2.h>
 
@@ -139,7 +140,32 @@ static struct {
   Cursor        blank;
   u8            down[256];
   u32           code[256];
+  u32           ww;
+  u32           wh;
 } show_look;
+
+// The window fills the screen: asked of the window manager the way every
+// desktop's takes it (EWMH, XWayland's too), both as the state it reads
+// when it takes the window and as a request once it has; F11 toggles it
+// (on 1, toggle 2). The swapchain follows the size the window gets.
+static void show_fullscreen(BendWin* win, long how) {
+  Atom state = XInternAtom(win->dpy, "_NET_WM_STATE", False);
+  Atom full  = XInternAtom(win->dpy, "_NET_WM_STATE_FULLSCREEN", False);
+  if (how == 1) {
+    XChangeProperty(win->dpy, win->win, state, XA_ATOM, 32, PropModeReplace, (unsigned char*)&full, 1);
+  }
+  XEvent ev = { 0 };
+  ev.xclient.type         = ClientMessage;
+  ev.xclient.window       = win->win;
+  ev.xclient.message_type = state;
+  ev.xclient.format       = 32;
+  ev.xclient.data.l[0]    = how;
+  ev.xclient.data.l[1]    = (long)full;
+  ev.xclient.data.l[3]    = 1;
+  XSendEvent(win->dpy, DefaultRootWindow(win->dpy), False,
+    SubstructureRedirectMask | SubstructureNotifyMask, &ev);
+  XFlush(win->dpy);
+}
 
 typedef Status (*ShowXIQuery)(Display*, int*, int*);
 typedef int    (*ShowXISelect)(Display*, Window, XIEventMask*, int);
@@ -200,8 +226,11 @@ static void show_look_open(BendWin* win) {
   show_look.vx    = 1u << 30;
   show_look.vy    = 1u << 30;
   show_look.rx    = -1;
+  show_look.ww    = (u32)win->img->width;
+  show_look.wh    = (u32)win->img->height;
   XSelectInput(win->dpy, win->win, KeyPressMask | KeyReleaseMask | ButtonPressMask
-    | ButtonReleaseMask | PointerMotionMask | FocusChangeMask);
+    | ButtonReleaseMask | PointerMotionMask | FocusChangeMask | StructureNotifyMask);
+  show_fullscreen(win, 1);
   XkbSetDetectableAutoRepeat(win->dpy, True, NULL);
   show_raw_open(win);
   Window fw;
@@ -265,8 +294,8 @@ static void show_look_release(BendWin* win) {
 // back to the middle when the pointer strays past a quarter of the window
 // (not again before the last warp is seen)
 static void show_look_center(BendWin* win) {
-  int cx = (int)win->img->width / 2;
-  int cy = (int)win->img->height / 2;
+  int cx = (int)show_look.ww / 2;
+  int cy = (int)show_look.wh / 2;
   if (!show_look.grab || !show_look.focus || show_look.rx < 0 || show_look.warped
     || (abs(show_look.rx - cx) < cx / 2 && abs(show_look.ry - cy) < cy / 2)) {
     return;
@@ -298,11 +327,11 @@ static void show_look_flush(BendWin* win) {
 }
 
 static void show_pump(BendWin* win) {
-  u32 w = win->img->width;
-  u32 h = win->img->height;
   if (!show_look.ready) {
     show_look_open(win);
   }
+  u32 w = show_look.ww;
+  u32 h = show_look.wh;
   while (XPending(win->dpy) > 0) {
     XEvent ev;
     XNextEvent(win->dpy, &ev);
@@ -317,7 +346,14 @@ static void show_pump(BendWin* win) {
         continue;
       }
     }
-    if (ev.type == KeyPress || ev.type == KeyRelease) {
+    if ((ev.type == KeyPress || ev.type == KeyRelease) && XLookupKeysym(&ev.xkey, 0) == XK_F11) {
+      if (ev.type == KeyPress) {
+        show_fullscreen(win, 2);
+      }
+    } else if (ev.type == ConfigureNotify) {
+      show_look.ww = (u32)ev.xconfigure.width;
+      show_look.wh = (u32)ev.xconfigure.height;
+    } else if (ev.type == KeyPress || ev.type == KeyRelease) {
       show_look_key(win, &ev.xkey, ev.type == KeyPress);
     } else if (ev.type == ButtonPress || ev.type == ButtonRelease) {
       u32 b = ev.xbutton.button;

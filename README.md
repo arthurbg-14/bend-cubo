@@ -43,6 +43,7 @@ A GPU desenha (Vulkan); o Bend simula.
 | Enter | voltar ao início |
 | N | mundo novo (outra semente) |
 | H | mostrar / esconder as teclas |
+| F11 | tela cheia / janela (o jogo abre em tela cheia) |
 | Esc | sair |
 
 Andar acelera 20 m/s² enquanto a tecla estiver segurada, e o atrito tira
