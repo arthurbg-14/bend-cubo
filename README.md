@@ -154,11 +154,13 @@ quaisquer constantes:
 | `rigid_apart` | **nada atravessa nada**: uma ilha que começa sem sobreposição (nenhum par, nenhum corpo fixo, nada abaixo do chão) termina o tick sem sobreposição |
 | `rigid_energy` | **a energia nunca cresce**: cinética de translação, de giro (inércia de cubo, s²/6) e potencial, somadas, no máximo o que eram, a não ser que um contato estivesse mais fundo que a pele -- separar esse par é a única coisa em que o tick pode gastar energia |
 | `rigid_no_push_off_air` | **ninguém se empurra no ar nem na parede**: fora do apoio (um contato que o toca, com a face olhando para cima, empurrando), segurar uma direção ou o pulo não muda nada |
+| `rigid_action_reaction` | **ação e reação**: cada passo do solver num contato entre dois corpos da ilha dá a eles o empurrão e o atrito iguais e opostos, no mesmo ponto: o momento da ilha em cada eixo não muda. Só o chão e os corpos fixos o mudam |
 
-Cada garantia é uma decisão que o código toma e checa (o atrito passa por
-`Ct.safe`, o fim da ilha por `Rb.checked`, a energia por `En.gate`), e a
-prova segue essas decisões; as medições acima dizem que a checagem do fim
-da ilha nunca precisou agir.
+Coulomb, sobreposição e energia são decisões que o código toma e checa (o
+atrito passa por `Ct.safe`, o fim da ilha por `Rb.checked`, a energia por
+`En.gate`), e a prova segue essas decisões; as medições acima dizem que a
+checagem do fim da ilha nunca precisou agir. Ação e reação é da estrutura:
+todo impulso passa por `Imp.give`, +j num corpo e −j no outro.
 
 ## As leis (do motor anterior)
 

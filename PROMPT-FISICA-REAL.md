@@ -124,8 +124,8 @@ O que cada caso ensinou (tudo geral, nada de caso especial):
 Fase 3 em andamento: provadas `rigid_coulomb` (contato só empurra +
 Coulomb), `rigid_apart` (nada atravessa nada, por ilha), `rigid_energy` (a
 energia nunca cresce, fora separar o que está mais fundo que a pele) e
-`rigid_no_push_off_air`. Faltam: ação e reação (momento por impulso),
-nada atravessa nada no mundo inteiro (ilhas + dorminhocos: exige provar a
+`rigid_no_push_off_air` e `rigid_action_reaction` (momento por passo do
+solver, pela estrutura: Imp.give). Faltam: nada atravessa nada no mundo inteiro (ilhas + dorminhocos: exige provar a
 varredura ordenada do Rb.clash), voo livre exato, repouso é equilíbrio.
 
 Como provar sem o checador explodir: cada garantia vira uma decisão

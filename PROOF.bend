@@ -7646,8 +7646,8 @@ def rg_one(+k: P.K, +c: G.Ct, +st: G.St, h: {G.Ct.coulomb(k, G.Rb.done(st)) == T
   -> {G.Ct.coulomb(k, G.Rb.done(G.Imp.one(k, c, st))) == True{} : Bool}:
   match st:
     case G.St{done, +bs}:
-      rg_and(G.Ct.coul(k, G.Ct.safe(k, G.R2.c(G.Imp.raw(k, c, bs)))), G.Ct.coulomb(k, done),
-        rg_safe(k, G.R2.c(G.Imp.raw(k, c, bs))), h)
+      +raw = G.Imp.raw(k, c, G.Bs.at(bs, G.Ct.a(c)), G.Bs.at(bs, G.Ct.b(c)))
+      rg_and(G.Ct.coul(k, G.Ct.safe(k, G.R2.c(raw))), G.Ct.coulomb(k, done), rg_safe(k, G.R2.c(raw)), h)
 
 def rg_pass(+k: P.K, cs: List<&2, G.Ct>, +st: G.St, h: {G.Ct.coulomb(k, G.Rb.done(st)) == True{} : Bool})
   -> {G.Ct.coulomb(k, G.Rb.done(G.Imp.pass(k, cs, st))) == True{} : Bool}:
@@ -7890,3 +7890,204 @@ def Laws.rigid_energy(k, bs, ss):
 def Laws.rigid_no_push_off_air(k, inp, p, air):
   %Equal.sym(Bool, P.Body.ground(p), False{}, air) : {W.W.drive2(_, k, inp, p) == p : P.Body}
   {==}
+
+# Action and reaction
+# -------------------
+
+# Signed numbers add as integers: a + b, the minus parts moved across
+def rg_zint_pn(lt: Bool, +x: Nat, +y: Nat, e: {Nat.is_lt(x, y) == lt : Bool})
+  -> {Nat.add(Nat.add(P.Z.pos(P.Z.diff(lt, x, y)), 0n), y) == Nat.add(Nat.add(x, 0n), P.Z.neg(P.Z.diff(lt, x, y))) : Nat}:
+  match lt:
+    case True{}:
+      %sub_add(x, y, lt_true_le(x, y, e)) : {_ == Nat.add(Nat.add(x, 0n), Nat.sub(y, x)) : Nat}
+      R.eq([x, Nat.sub(y, x)], R.Add{R.V{0n}, R.V{1n}}, R.Add{R.Add{R.V{0n}, R.N{0n}}, R.V{1n}}, {==})
+    case False{}:
+      %sub_add(y, x, lt_false_le(x, y, e)) : {Nat.add(Nat.add(Nat.sub(x, y), 0n), y) == Nat.add(Nat.add(_, 0n), 0n) : Nat}
+      R.eq([y, Nat.sub(x, y)], R.Add{R.Add{R.V{1n}, R.N{0n}}, R.V{0n}}, R.Add{R.Add{R.Add{R.V{0n}, R.V{1n}}, R.N{0n}}, R.N{0n}}, {==})
+
+def rg_zint_np(lt: Bool, +x: Nat, +y: Nat, e: {Nat.is_lt(y, x) == lt : Bool})
+  -> {Nat.add(Nat.add(P.Z.pos(P.Z.diff(lt, y, x)), x), 0n) == Nat.add(Nat.add(0n, y), P.Z.neg(P.Z.diff(lt, y, x))) : Nat}:
+  match lt:
+    case True{}:
+      %sub_add(y, x, lt_true_le(y, x, e)) : {Nat.add(Nat.add(0n, _), 0n) == Nat.add(Nat.add(0n, y), Nat.sub(x, y)) : Nat}
+      R.eq([y, Nat.sub(x, y)], R.Add{R.Add{R.N{0n}, R.Add{R.V{0n}, R.V{1n}}}, R.N{0n}}, R.Add{R.Add{R.N{0n}, R.V{0n}}, R.V{1n}}, {==})
+    case False{}:
+      %sub_add(x, y, lt_false_le(y, x, e)) : {Nat.add(Nat.add(Nat.sub(y, x), x), 0n) == Nat.add(Nat.add(0n, _), 0n) : Nat}
+      R.eq([x, Nat.sub(y, x)], R.Add{R.Add{R.V{1n}, R.V{0n}}, R.N{0n}}, R.Add{R.Add{R.N{0n}, R.Add{R.V{0n}, R.V{1n}}}, R.N{0n}}, {==})
+
+def rg_zint(a: P.Z, b: P.Z)
+  -> {Nat.add(Nat.add(P.Z.pos(P.Z.add(a, b)), P.Z.neg(a)), P.Z.neg(b)) == Nat.add(Nat.add(P.Z.pos(a), P.Z.pos(b)), P.Z.neg(P.Z.add(a, b))) : Nat}:
+  match a b:
+    case P.Pos{+x} P.Pos{+y}:
+      R.eq([x, y], R.Add{R.Add{R.Add{R.V{0n}, R.V{1n}}, R.N{0n}}, R.N{0n}}, R.Add{R.Add{R.V{0n}, R.V{1n}}, R.N{0n}}, {==})
+    case P.Neg{+x} P.Neg{+y}:
+      R.eq([x, y], R.Add{R.Add{R.N{0n}, R.V{0n}}, R.V{1n}}, R.Add{R.Add{R.N{0n}, R.N{0n}}, R.Add{R.V{0n}, R.V{1n}}}, {==})
+    case P.Pos{+x} P.Neg{+y}:
+      rg_zint_pn(Nat.is_lt(x, y), x, y, {==})
+    case P.Neg{+x} P.Pos{+y}:
+      rg_zint_np(Nat.is_lt(y, x), x, y, {==})
+
+# and a - b likewise
+def rg_zsub(+a: P.Z, b: P.Z)
+  -> {Nat.add(Nat.add(P.Z.pos(P.Z.add(a, P.Z.opp(b))), P.Z.neg(a)), P.Z.pos(b)) == Nat.add(Nat.add(P.Z.pos(a), P.Z.neg(b)), P.Z.neg(P.Z.add(a, P.Z.opp(b)))) : Nat}:
+  match b:
+    case P.Pos{+m}:
+      rg_zint(a, P.Neg{m})
+    case P.Neg{+m}:
+      rg_zint(a, P.Pos{m})
+
+
+def rg_add_eq(a: Nat, -b: Nat, c: Nat, -d: Nat, e1: {a == b : Nat}, e2: {c == d : Nat}) -> {Nat.add(a, c) == Nat.add(b, d) : Nat}:
+  %e2 : {Nat.add(a, c) == Nat.add(b, _) : Nat}
+  %e1 : {Nat.add(a, c) == Nat.add(_, c) : Nat}
+  {==}
+
+# the algebra of one step: a0 + j + d at one body, b0 - j - d at the other,
+# and the list's momentum before (S), after the first write (L1), after
+# the second (L2)
+def rg_mo_core(+pS: Nat, +nS: Nat, +pL1: Nat, +nL1: Nat, +pL2: Nat, +nL2: Nat, +a0: P.Z, +j: P.Z, +d: P.Z, +b0: P.Z,
+  e1: {Nat.add(Nat.add(Nat.add(pL1, P.Z.pos(a0)), nS), P.Z.neg(P.Z.add(P.Z.add(a0, j), d))) == Nat.add(Nat.add(Nat.add(pS, P.Z.pos(P.Z.add(P.Z.add(a0, j), d))), nL1), P.Z.neg(a0)) : Nat},
+  e2: {Nat.add(Nat.add(Nat.add(pL2, P.Z.pos(b0)), nL1), P.Z.neg(P.Z.add(P.Z.add(b0, P.Z.opp(j)), P.Z.opp(d)))) == Nat.add(Nat.add(Nat.add(pL1, P.Z.pos(P.Z.add(P.Z.add(b0, P.Z.opp(j)), P.Z.opp(d)))), nL2), P.Z.neg(b0)) : Nat})
+  -> {Nat.add(pL2, nS) == Nat.add(pS, nL2) : Nat}:
+  +sum = rg_add_eq(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(pL1, P.Z.pos(a0)), nS), P.Z.neg(P.Z.add(P.Z.add(a0, j), d))), Nat.add(Nat.add(Nat.add(pL2, P.Z.pos(b0)), nL1), P.Z.neg(P.Z.add(P.Z.add(b0, P.Z.opp(j)), P.Z.opp(d))))), Nat.add(Nat.add(P.Z.pos(P.Z.add(a0, j)), P.Z.neg(a0)), P.Z.neg(j))), Nat.add(Nat.add(P.Z.pos(P.Z.add(P.Z.add(a0, j), d)), P.Z.neg(P.Z.add(a0, j))), P.Z.neg(d))), Nat.add(Nat.add(P.Z.pos(P.Z.add(b0, P.Z.opp(j))), P.Z.neg(b0)), P.Z.pos(j))), Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(pS, P.Z.pos(P.Z.add(P.Z.add(a0, j), d))), nL1), P.Z.neg(a0)), Nat.add(Nat.add(Nat.add(pL1, P.Z.pos(P.Z.add(P.Z.add(b0, P.Z.opp(j)), P.Z.opp(d)))), nL2), P.Z.neg(b0))), Nat.add(Nat.add(P.Z.pos(a0), P.Z.pos(j)), P.Z.neg(P.Z.add(a0, j)))), Nat.add(Nat.add(P.Z.pos(P.Z.add(a0, j)), P.Z.pos(d)), P.Z.neg(P.Z.add(P.Z.add(a0, j), d)))), Nat.add(Nat.add(P.Z.pos(b0), P.Z.neg(j)), P.Z.neg(P.Z.add(b0, P.Z.opp(j))))), Nat.add(Nat.add(P.Z.pos(P.Z.add(P.Z.add(b0, P.Z.opp(j)), P.Z.opp(d))), P.Z.neg(P.Z.add(b0, P.Z.opp(j)))), P.Z.pos(d)), Nat.add(Nat.add(P.Z.pos(P.Z.add(b0, P.Z.opp(j))), P.Z.neg(d)), P.Z.neg(P.Z.add(P.Z.add(b0, P.Z.opp(j)), P.Z.opp(d)))), rg_add_eq(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(pL1, P.Z.pos(a0)), nS), P.Z.neg(P.Z.add(P.Z.add(a0, j), d))), Nat.add(Nat.add(Nat.add(pL2, P.Z.pos(b0)), nL1), P.Z.neg(P.Z.add(P.Z.add(b0, P.Z.opp(j)), P.Z.opp(d))))), Nat.add(Nat.add(P.Z.pos(P.Z.add(a0, j)), P.Z.neg(a0)), P.Z.neg(j))), Nat.add(Nat.add(P.Z.pos(P.Z.add(P.Z.add(a0, j), d)), P.Z.neg(P.Z.add(a0, j))), P.Z.neg(d))), Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(pS, P.Z.pos(P.Z.add(P.Z.add(a0, j), d))), nL1), P.Z.neg(a0)), Nat.add(Nat.add(Nat.add(pL1, P.Z.pos(P.Z.add(P.Z.add(b0, P.Z.opp(j)), P.Z.opp(d)))), nL2), P.Z.neg(b0))), Nat.add(Nat.add(P.Z.pos(a0), P.Z.pos(j)), P.Z.neg(P.Z.add(a0, j)))), Nat.add(Nat.add(P.Z.pos(P.Z.add(a0, j)), P.Z.pos(d)), P.Z.neg(P.Z.add(P.Z.add(a0, j), d)))), Nat.add(Nat.add(P.Z.pos(P.Z.add(b0, P.Z.opp(j))), P.Z.neg(b0)), P.Z.pos(j)), Nat.add(Nat.add(P.Z.pos(b0), P.Z.neg(j)), P.Z.neg(P.Z.add(b0, P.Z.opp(j)))), rg_add_eq(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(pL1, P.Z.pos(a0)), nS), P.Z.neg(P.Z.add(P.Z.add(a0, j), d))), Nat.add(Nat.add(Nat.add(pL2, P.Z.pos(b0)), nL1), P.Z.neg(P.Z.add(P.Z.add(b0, P.Z.opp(j)), P.Z.opp(d))))), Nat.add(Nat.add(P.Z.pos(P.Z.add(a0, j)), P.Z.neg(a0)), P.Z.neg(j))), Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(pS, P.Z.pos(P.Z.add(P.Z.add(a0, j), d))), nL1), P.Z.neg(a0)), Nat.add(Nat.add(Nat.add(pL1, P.Z.pos(P.Z.add(P.Z.add(b0, P.Z.opp(j)), P.Z.opp(d)))), nL2), P.Z.neg(b0))), Nat.add(Nat.add(P.Z.pos(a0), P.Z.pos(j)), P.Z.neg(P.Z.add(a0, j)))), Nat.add(Nat.add(P.Z.pos(P.Z.add(P.Z.add(a0, j), d)), P.Z.neg(P.Z.add(a0, j))), P.Z.neg(d)), Nat.add(Nat.add(P.Z.pos(P.Z.add(a0, j)), P.Z.pos(d)), P.Z.neg(P.Z.add(P.Z.add(a0, j), d))), rg_add_eq(Nat.add(Nat.add(Nat.add(Nat.add(pL1, P.Z.pos(a0)), nS), P.Z.neg(P.Z.add(P.Z.add(a0, j), d))), Nat.add(Nat.add(Nat.add(pL2, P.Z.pos(b0)), nL1), P.Z.neg(P.Z.add(P.Z.add(b0, P.Z.opp(j)), P.Z.opp(d))))), Nat.add(Nat.add(Nat.add(Nat.add(pS, P.Z.pos(P.Z.add(P.Z.add(a0, j), d))), nL1), P.Z.neg(a0)), Nat.add(Nat.add(Nat.add(pL1, P.Z.pos(P.Z.add(P.Z.add(b0, P.Z.opp(j)), P.Z.opp(d)))), nL2), P.Z.neg(b0))), Nat.add(Nat.add(P.Z.pos(P.Z.add(a0, j)), P.Z.neg(a0)), P.Z.neg(j)), Nat.add(Nat.add(P.Z.pos(a0), P.Z.pos(j)), P.Z.neg(P.Z.add(a0, j))), rg_add_eq(Nat.add(Nat.add(Nat.add(pL1, P.Z.pos(a0)), nS), P.Z.neg(P.Z.add(P.Z.add(a0, j), d))), Nat.add(Nat.add(Nat.add(pS, P.Z.pos(P.Z.add(P.Z.add(a0, j), d))), nL1), P.Z.neg(a0)), Nat.add(Nat.add(Nat.add(pL2, P.Z.pos(b0)), nL1), P.Z.neg(P.Z.add(P.Z.add(b0, P.Z.opp(j)), P.Z.opp(d)))), Nat.add(Nat.add(Nat.add(pL1, P.Z.pos(P.Z.add(P.Z.add(b0, P.Z.opp(j)), P.Z.opp(d)))), nL2), P.Z.neg(b0)), e1, e2), rg_zint(a0, j)), rg_zint(P.Z.add(a0, j), d)), rg_zsub(b0, j)), rg_zsub(P.Z.add(b0, P.Z.opp(j)), d))
+  +r1 = R.eq([pS, nS, pL1, nL1, pL2, nL2, P.Z.pos(a0), P.Z.neg(a0), P.Z.pos(j), P.Z.neg(j), P.Z.pos(d), P.Z.neg(d), P.Z.pos(b0), P.Z.neg(b0), P.Z.pos(P.Z.add(a0, j)), P.Z.neg(P.Z.add(a0, j)), P.Z.pos(P.Z.add(P.Z.add(a0, j), d)), P.Z.neg(P.Z.add(P.Z.add(a0, j), d)), P.Z.pos(P.Z.add(b0, P.Z.opp(j))), P.Z.neg(P.Z.add(b0, P.Z.opp(j))), P.Z.pos(P.Z.add(P.Z.add(b0, P.Z.opp(j)), P.Z.opp(d))), P.Z.neg(P.Z.add(P.Z.add(b0, P.Z.opp(j)), P.Z.opp(d)))], R.Add{R.Add{R.Add{R.Add{R.Add{R.Add{R.Add{R.Add{R.V{2n}, R.V{6n}}, R.V{1n}}, R.V{17n}}, R.Add{R.Add{R.Add{R.V{4n}, R.V{12n}}, R.V{3n}}, R.V{21n}}}, R.Add{R.Add{R.V{14n}, R.V{7n}}, R.V{9n}}}, R.Add{R.Add{R.V{16n}, R.V{15n}}, R.V{11n}}}, R.Add{R.Add{R.V{18n}, R.V{13n}}, R.V{8n}}}, R.Add{R.Add{R.V{20n}, R.V{19n}}, R.V{10n}}}, R.Add{R.Add{R.Add{R.Add{R.Add{R.Add{R.Add{R.Add{R.Add{R.Add{R.Add{R.Add{R.Add{R.Add{R.Add{R.Add{R.Add{R.Add{R.V{2n}, R.V{3n}}, R.V{6n}}, R.V{7n}}, R.V{12n}}, R.V{13n}}, R.V{16n}}, R.V{17n}}, R.V{20n}}, R.V{21n}}, R.V{14n}}, R.V{15n}}, R.V{18n}}, R.V{19n}}, R.V{8n}}, R.V{9n}}, R.V{10n}}, R.V{11n}}, R.Add{R.V{4n}, R.V{1n}}}, {==})
+  +r2 = R.eq([pS, nS, pL1, nL1, pL2, nL2, P.Z.pos(a0), P.Z.neg(a0), P.Z.pos(j), P.Z.neg(j), P.Z.pos(d), P.Z.neg(d), P.Z.pos(b0), P.Z.neg(b0), P.Z.pos(P.Z.add(a0, j)), P.Z.neg(P.Z.add(a0, j)), P.Z.pos(P.Z.add(P.Z.add(a0, j), d)), P.Z.neg(P.Z.add(P.Z.add(a0, j), d)), P.Z.pos(P.Z.add(b0, P.Z.opp(j))), P.Z.neg(P.Z.add(b0, P.Z.opp(j))), P.Z.pos(P.Z.add(P.Z.add(b0, P.Z.opp(j)), P.Z.opp(d))), P.Z.neg(P.Z.add(P.Z.add(b0, P.Z.opp(j)), P.Z.opp(d)))], R.Add{R.Add{R.Add{R.Add{R.Add{R.Add{R.Add{R.Add{R.V{0n}, R.V{16n}}, R.V{3n}}, R.V{7n}}, R.Add{R.Add{R.Add{R.V{2n}, R.V{20n}}, R.V{5n}}, R.V{13n}}}, R.Add{R.Add{R.V{6n}, R.V{8n}}, R.V{15n}}}, R.Add{R.Add{R.V{14n}, R.V{10n}}, R.V{17n}}}, R.Add{R.Add{R.V{12n}, R.V{9n}}, R.V{19n}}}, R.Add{R.Add{R.V{18n}, R.V{11n}}, R.V{21n}}}, R.Add{R.Add{R.Add{R.Add{R.Add{R.Add{R.Add{R.Add{R.Add{R.Add{R.Add{R.Add{R.Add{R.Add{R.Add{R.Add{R.Add{R.Add{R.V{2n}, R.V{3n}}, R.V{6n}}, R.V{7n}}, R.V{12n}}, R.V{13n}}, R.V{16n}}, R.V{17n}}, R.V{20n}}, R.V{21n}}, R.V{14n}}, R.V{15n}}, R.V{18n}}, R.V{19n}}, R.V{8n}}, R.V{9n}}, R.V{10n}}, R.V{11n}}, R.Add{R.V{0n}, R.V{5n}}}, {==})
+  add_cancel(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(pL1, nL1), P.Z.pos(a0)), P.Z.neg(a0)), P.Z.pos(b0)), P.Z.neg(b0)), P.Z.pos(P.Z.add(P.Z.add(a0, j), d))), P.Z.neg(P.Z.add(P.Z.add(a0, j), d))), P.Z.pos(P.Z.add(P.Z.add(b0, P.Z.opp(j)), P.Z.opp(d)))), P.Z.neg(P.Z.add(P.Z.add(b0, P.Z.opp(j)), P.Z.opp(d)))), P.Z.pos(P.Z.add(a0, j))), P.Z.neg(P.Z.add(a0, j))), P.Z.pos(P.Z.add(b0, P.Z.opp(j)))), P.Z.neg(P.Z.add(b0, P.Z.opp(j)))), P.Z.pos(j)), P.Z.neg(j)), P.Z.pos(d)), P.Z.neg(d)), Nat.add(pL2, nS), Nat.add(pS, nL2),
+    Equal.trans(Nat, Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(pL1, nL1), P.Z.pos(a0)), P.Z.neg(a0)), P.Z.pos(b0)), P.Z.neg(b0)), P.Z.pos(P.Z.add(P.Z.add(a0, j), d))), P.Z.neg(P.Z.add(P.Z.add(a0, j), d))), P.Z.pos(P.Z.add(P.Z.add(b0, P.Z.opp(j)), P.Z.opp(d)))), P.Z.neg(P.Z.add(P.Z.add(b0, P.Z.opp(j)), P.Z.opp(d)))), P.Z.pos(P.Z.add(a0, j))), P.Z.neg(P.Z.add(a0, j))), P.Z.pos(P.Z.add(b0, P.Z.opp(j)))), P.Z.neg(P.Z.add(b0, P.Z.opp(j)))), P.Z.pos(j)), P.Z.neg(j)), P.Z.pos(d)), P.Z.neg(d)), Nat.add(pL2, nS)), Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(pL1, P.Z.pos(a0)), nS), P.Z.neg(P.Z.add(P.Z.add(a0, j), d))), Nat.add(Nat.add(Nat.add(pL2, P.Z.pos(b0)), nL1), P.Z.neg(P.Z.add(P.Z.add(b0, P.Z.opp(j)), P.Z.opp(d))))), Nat.add(Nat.add(P.Z.pos(P.Z.add(a0, j)), P.Z.neg(a0)), P.Z.neg(j))), Nat.add(Nat.add(P.Z.pos(P.Z.add(P.Z.add(a0, j), d)), P.Z.neg(P.Z.add(a0, j))), P.Z.neg(d))), Nat.add(Nat.add(P.Z.pos(P.Z.add(b0, P.Z.opp(j))), P.Z.neg(b0)), P.Z.pos(j))), Nat.add(Nat.add(P.Z.pos(P.Z.add(P.Z.add(b0, P.Z.opp(j)), P.Z.opp(d))), P.Z.neg(P.Z.add(b0, P.Z.opp(j)))), P.Z.pos(d))), Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(pL1, nL1), P.Z.pos(a0)), P.Z.neg(a0)), P.Z.pos(b0)), P.Z.neg(b0)), P.Z.pos(P.Z.add(P.Z.add(a0, j), d))), P.Z.neg(P.Z.add(P.Z.add(a0, j), d))), P.Z.pos(P.Z.add(P.Z.add(b0, P.Z.opp(j)), P.Z.opp(d)))), P.Z.neg(P.Z.add(P.Z.add(b0, P.Z.opp(j)), P.Z.opp(d)))), P.Z.pos(P.Z.add(a0, j))), P.Z.neg(P.Z.add(a0, j))), P.Z.pos(P.Z.add(b0, P.Z.opp(j)))), P.Z.neg(P.Z.add(b0, P.Z.opp(j)))), P.Z.pos(j)), P.Z.neg(j)), P.Z.pos(d)), P.Z.neg(d)), Nat.add(pS, nL2)),
+      Equal.sym(Nat, Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(pL1, P.Z.pos(a0)), nS), P.Z.neg(P.Z.add(P.Z.add(a0, j), d))), Nat.add(Nat.add(Nat.add(pL2, P.Z.pos(b0)), nL1), P.Z.neg(P.Z.add(P.Z.add(b0, P.Z.opp(j)), P.Z.opp(d))))), Nat.add(Nat.add(P.Z.pos(P.Z.add(a0, j)), P.Z.neg(a0)), P.Z.neg(j))), Nat.add(Nat.add(P.Z.pos(P.Z.add(P.Z.add(a0, j), d)), P.Z.neg(P.Z.add(a0, j))), P.Z.neg(d))), Nat.add(Nat.add(P.Z.pos(P.Z.add(b0, P.Z.opp(j))), P.Z.neg(b0)), P.Z.pos(j))), Nat.add(Nat.add(P.Z.pos(P.Z.add(P.Z.add(b0, P.Z.opp(j)), P.Z.opp(d))), P.Z.neg(P.Z.add(b0, P.Z.opp(j)))), P.Z.pos(d))), Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(pL1, nL1), P.Z.pos(a0)), P.Z.neg(a0)), P.Z.pos(b0)), P.Z.neg(b0)), P.Z.pos(P.Z.add(P.Z.add(a0, j), d))), P.Z.neg(P.Z.add(P.Z.add(a0, j), d))), P.Z.pos(P.Z.add(P.Z.add(b0, P.Z.opp(j)), P.Z.opp(d)))), P.Z.neg(P.Z.add(P.Z.add(b0, P.Z.opp(j)), P.Z.opp(d)))), P.Z.pos(P.Z.add(a0, j))), P.Z.neg(P.Z.add(a0, j))), P.Z.pos(P.Z.add(b0, P.Z.opp(j)))), P.Z.neg(P.Z.add(b0, P.Z.opp(j)))), P.Z.pos(j)), P.Z.neg(j)), P.Z.pos(d)), P.Z.neg(d)), Nat.add(pL2, nS)), r1),
+      Equal.trans(Nat, Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(pL1, P.Z.pos(a0)), nS), P.Z.neg(P.Z.add(P.Z.add(a0, j), d))), Nat.add(Nat.add(Nat.add(pL2, P.Z.pos(b0)), nL1), P.Z.neg(P.Z.add(P.Z.add(b0, P.Z.opp(j)), P.Z.opp(d))))), Nat.add(Nat.add(P.Z.pos(P.Z.add(a0, j)), P.Z.neg(a0)), P.Z.neg(j))), Nat.add(Nat.add(P.Z.pos(P.Z.add(P.Z.add(a0, j), d)), P.Z.neg(P.Z.add(a0, j))), P.Z.neg(d))), Nat.add(Nat.add(P.Z.pos(P.Z.add(b0, P.Z.opp(j))), P.Z.neg(b0)), P.Z.pos(j))), Nat.add(Nat.add(P.Z.pos(P.Z.add(P.Z.add(b0, P.Z.opp(j)), P.Z.opp(d))), P.Z.neg(P.Z.add(b0, P.Z.opp(j)))), P.Z.pos(d))), Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(pS, P.Z.pos(P.Z.add(P.Z.add(a0, j), d))), nL1), P.Z.neg(a0)), Nat.add(Nat.add(Nat.add(pL1, P.Z.pos(P.Z.add(P.Z.add(b0, P.Z.opp(j)), P.Z.opp(d)))), nL2), P.Z.neg(b0))), Nat.add(Nat.add(P.Z.pos(a0), P.Z.pos(j)), P.Z.neg(P.Z.add(a0, j)))), Nat.add(Nat.add(P.Z.pos(P.Z.add(a0, j)), P.Z.pos(d)), P.Z.neg(P.Z.add(P.Z.add(a0, j), d)))), Nat.add(Nat.add(P.Z.pos(b0), P.Z.neg(j)), P.Z.neg(P.Z.add(b0, P.Z.opp(j))))), Nat.add(Nat.add(P.Z.pos(P.Z.add(b0, P.Z.opp(j))), P.Z.neg(d)), P.Z.neg(P.Z.add(P.Z.add(b0, P.Z.opp(j)), P.Z.opp(d))))), Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(Nat.add(pL1, nL1), P.Z.pos(a0)), P.Z.neg(a0)), P.Z.pos(b0)), P.Z.neg(b0)), P.Z.pos(P.Z.add(P.Z.add(a0, j), d))), P.Z.neg(P.Z.add(P.Z.add(a0, j), d))), P.Z.pos(P.Z.add(P.Z.add(b0, P.Z.opp(j)), P.Z.opp(d)))), P.Z.neg(P.Z.add(P.Z.add(b0, P.Z.opp(j)), P.Z.opp(d)))), P.Z.pos(P.Z.add(a0, j))), P.Z.neg(P.Z.add(a0, j))), P.Z.pos(P.Z.add(b0, P.Z.opp(j)))), P.Z.neg(P.Z.add(b0, P.Z.opp(j)))), P.Z.pos(j)), P.Z.neg(j)), P.Z.pos(d)), P.Z.neg(d)), Nat.add(pS, nL2)), sum, r2)))
+
+
+def rg_pz(+ax: Nat, +q: P.Body) -> Nat:
+  P.Z.pos(G.V.at(ax, G.B.v(q)))
+
+def rg_nz(+ax: Nat, +q: P.Body) -> Nat:
+  P.Z.neg(G.V.at(ax, G.B.v(q)))
+
+# writing x at i of xs changes the momentum by x less what was there
+def rg_put_sum(+ax: Nat, xs: List<&2, P.Body>, i: Nat, +x: P.Body, h: {Nat.is_lt(i, List.length(&2, P.Body, xs)) == True{} : Bool})
+  -> {Nat.add(Nat.add(Nat.add(G.Mo.p(ax, G.Bs.put(xs, i, x)), rg_pz(ax, G.Bs.at(xs, i))), G.Mo.n(ax, xs)), rg_nz(ax, x))
+      == Nat.add(Nat.add(Nat.add(G.Mo.p(ax, xs), rg_pz(ax, x)), G.Mo.n(ax, G.Bs.put(xs, i, x))), rg_nz(ax, G.Bs.at(xs, i))) : Nat}:
+  match xs i:
+    case Nil{} 0n:
+      Empty.absurd({Nat.add(Nat.add(Nat.add(0n, rg_pz(ax, G.Bs.at([], 0n))), 0n), rg_nz(ax, x))
+        == Nat.add(Nat.add(Nat.add(0n, rg_pz(ax, x)), 0n), rg_nz(ax, G.Bs.at([], 0n))) : Nat}, clash2(h))
+    case Nil{} 1n++j:
+      Empty.absurd({Nat.add(Nat.add(Nat.add(0n, rg_pz(ax, G.Bs.at([], 1n+j))), 0n), rg_nz(ax, x))
+        == Nat.add(Nat.add(Nat.add(0n, rg_pz(ax, x)), 0n), rg_nz(ax, G.Bs.at([], 1n+j))) : Nat}, clash2(h))
+    case +y <> +rest 0n:
+      R.eq([rg_pz(ax, x), rg_pz(ax, y), rg_nz(ax, x), rg_nz(ax, y), G.Mo.p(ax, rest), G.Mo.n(ax, rest)],
+        R.Add{R.Add{R.Add{R.Add{R.V{0n}, R.V{4n}}, R.V{1n}}, R.Add{R.V{3n}, R.V{5n}}}, R.V{2n}},
+        R.Add{R.Add{R.Add{R.Add{R.V{1n}, R.V{4n}}, R.V{0n}}, R.Add{R.V{2n}, R.V{5n}}}, R.V{3n}}, {==})
+    case +y <> +rest 1n++j:
+      +py = rg_pz(ax, y)
+      +ny = rg_nz(ax, y)
+      +p1 = G.Mo.p(ax, G.Bs.put(rest, j, x))
+      +q = rg_pz(ax, G.Bs.at(rest, j))
+      +n0 = G.Mo.n(ax, rest)
+      +xn = rg_nz(ax, x)
+      +p0 = G.Mo.p(ax, rest)
+      +px = rg_pz(ax, x)
+      +n1 = G.Mo.n(ax, G.Bs.put(rest, j, x))
+      +nq = rg_nz(ax, G.Bs.at(rest, j))
+      +ihl = Nat.add(Nat.add(Nat.add(p1, q), n0), xn)
+      +ihr = Nat.add(Nat.add(Nat.add(p0, px), n1), nq)
+      Equal.trans(Nat, Nat.add(Nat.add(Nat.add(Nat.add(py, p1), q), Nat.add(ny, n0)), xn), Nat.add(Nat.add(py, ny), ihl),
+        Nat.add(Nat.add(Nat.add(Nat.add(py, p0), px), Nat.add(ny, n1)), nq),
+        R.eq([py, ny, p1, q, n0, xn, p0, px, n1, nq], R.Add{R.Add{R.Add{R.Add{R.V{0n}, R.V{2n}}, R.V{3n}}, R.Add{R.V{1n}, R.V{4n}}}, R.V{5n}},
+          R.Add{R.Add{R.V{0n}, R.V{1n}}, R.Add{R.Add{R.Add{R.V{2n}, R.V{3n}}, R.V{4n}}, R.V{5n}}}, {==}),
+        Equal.trans(Nat, Nat.add(Nat.add(py, ny), ihl), Nat.add(Nat.add(py, ny), ihr),
+          Nat.add(Nat.add(Nat.add(Nat.add(py, p0), px), Nat.add(ny, n1)), nq),
+          Equal.cong(Nat, Nat, t => Nat.add(Nat.add(py, ny), t), ihl, ihr, rg_put_sum(ax, rest, j, x, h)),
+          R.eq([py, ny, p1, q, n0, xn, p0, px, n1, nq], R.Add{R.Add{R.V{0n}, R.V{1n}}, R.Add{R.Add{R.Add{R.V{6n}, R.V{7n}}, R.V{8n}}, R.V{9n}}},
+            R.Add{R.Add{R.Add{R.Add{R.V{0n}, R.V{6n}}, R.V{7n}}, R.Add{R.V{1n}, R.V{8n}}}, R.V{9n}}, {==})))
+
+# writing at j leaves every other place as it was
+def rg_at_put_ne(xs: List<&2, P.Body>, i: Nat, j: Nat, +x: P.Body, h: {Nat.is_eq(i, j) == False{} : Bool})
+  -> {G.Bs.at(G.Bs.put(xs, j, x), i) == G.Bs.at(xs, i) : P.Body}:
+  match xs i j:
+    case Nil{} _ _:
+      {==}
+    case +y <> +rest 0n 0n:
+      Empty.absurd({G.Bs.at(G.Bs.put(y <> rest, 0n, x), 0n) == G.Bs.at(y <> rest, 0n) : P.Body}, clash(h))
+    case +y <> +rest 0n 1n++q:
+      {==}
+    case +y <> +rest 1n++p 0n:
+      {==}
+    case +y <> +rest 1n++p 1n++q:
+      rg_at_put_ne(rest, p, q, x, h)
+
+def rg_len_put(xs: List<&2, P.Body>, i: Nat, +x: P.Body) -> {List.length(&2, P.Body, G.Bs.put(xs, i, x)) == List.length(&2, P.Body, xs) : Nat}:
+  match xs i:
+    case Nil{} _:
+      {==}
+    case +y <> +rest 0n:
+      {==}
+    case +y <> +rest 1n++j:
+      Equal.cong(Nat, Nat, n => 1n+n, List.length(&2, P.Body, G.Bs.put(rest, j, x)), List.length(&2, P.Body, rest), rg_len_put(rest, j, x))
+
+def rg_in_put(+xs: List<&2, P.Body>, +a: Nat, +b: Nat, +x: P.Body, hb: {Nat.is_lt(b, List.length(&2, P.Body, xs)) == True{} : Bool})
+  -> {Nat.is_lt(b, List.length(&2, P.Body, G.Bs.put(xs, a, x))) == True{} : Bool}:
+  %Equal.sym(Nat, List.length(&2, P.Body, G.Bs.put(xs, a, x)), List.length(&2, P.Body, xs), rg_len_put(xs, a, x))
+    : {Nat.is_lt(b, _) == True{} : Bool}
+  hb
+
+# the second write, with what the first left at b being what was there
+def rg_e2_of(+ax: Nat, +bs: List<&2, P.Body>, +a: Nat, +b: Nat, +xa: P.Body, +xb: P.Body,
+  hab: {Nat.is_eq(b, a) == False{} : Bool}, hb: {Nat.is_lt(b, List.length(&2, P.Body, bs)) == True{} : Bool})
+  -> {Nat.add(Nat.add(Nat.add(G.Mo.p(ax, G.Bs.put(G.Bs.put(bs, a, xa), b, xb)), rg_pz(ax, G.Bs.at(bs, b))), G.Mo.n(ax, G.Bs.put(bs, a, xa))), rg_nz(ax, xb))
+      == Nat.add(Nat.add(Nat.add(G.Mo.p(ax, G.Bs.put(bs, a, xa)), rg_pz(ax, xb)), G.Mo.n(ax, G.Bs.put(G.Bs.put(bs, a, xa), b, xb))), rg_nz(ax, G.Bs.at(bs, b))) : Nat}:
+  +l1 = G.Bs.put(bs, a, xa)
+  +l2 = G.Bs.put(l1, b, xb)
+  %rg_at_put_ne(bs, b, a, xa, hab)
+    : {Nat.add(Nat.add(Nat.add(G.Mo.p(ax, l2), rg_pz(ax, _)), G.Mo.n(ax, l1)), rg_nz(ax, xb))
+      == Nat.add(Nat.add(Nat.add(G.Mo.p(ax, l1), rg_pz(ax, xb)), G.Mo.n(ax, l2)), rg_nz(ax, _)) : Nat}
+  rg_put_sum(ax, l1, b, xb, rg_in_put(bs, a, b, xa, hb))
+
+# an impulse given equal and opposite: +j + dt at a, -j - dt at b (along
+# each axis in turn, so that the velocity's part reduces)
+def rg_give_ax(ax: Nat, +bs: List<&2, P.Body>, +a: Nat, +b: Nat, +ra: P.Wv, +rb: P.Wv, +j: P.Wv, +dt: P.Wv,
+  hab: {Nat.is_eq(b, a) == False{} : Bool}, ha: {Nat.is_lt(a, List.length(&2, P.Body, bs)) == True{} : Bool},
+  hb: {Nat.is_lt(b, List.length(&2, P.Body, bs)) == True{} : Bool})
+  -> {Nat.add(G.Mo.p(ax, G.Bs.put(G.Bs.put(bs, a, G.B.push(G.B.push(G.Bs.at(bs, a), j, ra), dt, ra)), b, G.B.pull(G.B.pull(G.Bs.at(bs, b), j, rb), dt, rb))), G.Mo.n(ax, bs))
+      == Nat.add(G.Mo.p(ax, bs), G.Mo.n(ax, G.Bs.put(G.Bs.put(bs, a, G.B.push(G.B.push(G.Bs.at(bs, a), j, ra), dt, ra)), b, G.B.pull(G.B.pull(G.Bs.at(bs, b), j, rb), dt, rb)))) : Nat}:
+  match ax:
+    case 0n:
+      +xa = G.B.push(G.B.push(G.Bs.at(bs, a), j, ra), dt, ra)
+      +xb = G.B.pull(G.B.pull(G.Bs.at(bs, b), j, rb), dt, rb)
+      +l1 = G.Bs.put(bs, a, xa)
+      +l2 = G.Bs.put(l1, b, xb)
+      rg_mo_core(G.Mo.p(0n, bs), G.Mo.n(0n, bs), G.Mo.p(0n, l1), G.Mo.n(0n, l1), G.Mo.p(0n, l2), G.Mo.n(0n, l2),
+        G.V.at(0n, G.B.v(G.Bs.at(bs, a))), G.V.at(0n, j), G.V.at(0n, dt), G.V.at(0n, G.B.v(G.Bs.at(bs, b))),
+        rg_put_sum(0n, bs, a, xa, ha), rg_e2_of(0n, bs, a, b, xa, xb, hab, hb))
+    case 1n+m:
+      match m:
+        case 0n:
+          +xa = G.B.push(G.B.push(G.Bs.at(bs, a), j, ra), dt, ra)
+          +xb = G.B.pull(G.B.pull(G.Bs.at(bs, b), j, rb), dt, rb)
+          +l1 = G.Bs.put(bs, a, xa)
+          +l2 = G.Bs.put(l1, b, xb)
+          rg_mo_core(G.Mo.p(1n, bs), G.Mo.n(1n, bs), G.Mo.p(1n, l1), G.Mo.n(1n, l1), G.Mo.p(1n, l2), G.Mo.n(1n, l2),
+            G.V.at(1n, G.B.v(G.Bs.at(bs, a))), G.V.at(1n, j), G.V.at(1n, dt), G.V.at(1n, G.B.v(G.Bs.at(bs, b))),
+            rg_put_sum(1n, bs, a, xa, ha), rg_e2_of(1n, bs, a, b, xa, xb, hab, hb))
+        case 1n++o:
+          +xa = G.B.push(G.B.push(G.Bs.at(bs, a), j, ra), dt, ra)
+          +xb = G.B.pull(G.B.pull(G.Bs.at(bs, b), j, rb), dt, rb)
+          +l1 = G.Bs.put(bs, a, xa)
+          +l2 = G.Bs.put(l1, b, xb)
+          rg_mo_core(G.Mo.p(1n+1n+o, bs), G.Mo.n(1n+1n+o, bs), G.Mo.p(1n+1n+o, l1), G.Mo.n(1n+1n+o, l1), G.Mo.p(1n+1n+o, l2), G.Mo.n(1n+1n+o, l2),
+            G.V.at(1n+1n+o, G.B.v(G.Bs.at(bs, a))), G.V.at(1n+1n+o, j), G.V.at(1n+1n+o, dt), G.V.at(1n+1n+o, G.B.v(G.Bs.at(bs, b))),
+            rg_put_sum(1n+1n+o, bs, a, xa, ha), rg_e2_of(1n+1n+o, bs, a, b, xa, xb, hab, hb))
+
+def Laws.rigid_action_reaction(k, c, done, bs, ax, two, ab, ina, inb):
+  +ba = G.Bs.at(bs, G.Ct.a(c))
+  +bb = G.Bs.at(bs, G.Ct.b(c))
+  +raw = G.Imp.raw(k, c, ba, bb)
+  +j = G.R2.j(raw)
+  +dt = G.V.sub(G.Ct.jt(G.Ct.safe(k, G.R2.c(raw))), G.Ct.jt(c))
+  +pl = G.B.pull(G.B.pull(bb, j, G.Ct.rb(c)), dt, G.Ct.rb(c))
+  +pu = G.Bs.put(bs, G.Ct.a(c), G.B.push(G.B.push(ba, j, G.Ct.ra(c)), dt, G.Ct.ra(c)))
+  %Equal.sym(Bool, G.Ct.fl(c), False{}, two)
+    : {Nat.add(G.Mo.p(ax, G.Imp.side(_, G.Ct.b(c), pl, pu)), G.Mo.n(ax, bs))
+      == Nat.add(G.Mo.p(ax, bs), G.Mo.n(ax, G.Imp.side(_, G.Ct.b(c), pl, pu))) : Nat}
+  rg_give_ax(ax, bs, G.Ct.a(c), G.Ct.b(c), G.Ct.ra(c), G.Ct.rb(c), j, dt, ab, ina, inb)

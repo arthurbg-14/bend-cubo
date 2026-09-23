@@ -595,15 +595,19 @@ def Imp.tfric(+k: P.K, +fl: Bool, +ba: P.Body, +bb: P.Body, +ra: P.Wv, +rb: P.Wv
 # a contact once its push is in, with the friction it asks for (not yet
 # given), and the bodies as the push left them
 type R2 is Data:
-  R2{c: Ct, bs: List<&2, P.Body>, ba: P.Body, bb: P.Body}
+  R2{c: Ct, j: P.Wv}
 
 def R2.c(+r: R2) -> Ct:
-  R2{c, bs, ba, bb} = r
+  R2{c, j} = r
   c
 
+def R2.j(+r: R2) -> P.Wv:
+  R2{c, j} = r
+  j
+
 def Imp.fric(+k: P.K, +a: Nat, +b: Nat, +fl: Bool, +ra: P.Wv, +rb: P.Wv, +n: P.Wv, +gap: P.Z, +jn: Nat, +jt: P.Wv,
-  +kf: Nat, +bs: List<&2, P.Body>, +ba: P.Body, +bb: P.Body) -> R2:
-  R2{Ct{a, b, fl, ra, rb, n, gap, jn, Imp.clamp(Imp.tfric(k, fl, ba, bb, ra, rb, n, jt, kf), Imp.lim(k, jn))}, bs, ba, bb}
+  +kf: Nat, +j: P.Wv, +ba: P.Body, +bb: P.Body) -> R2:
+  R2{Ct{a, b, fl, ra, rb, n, gap, jn, Imp.clamp(Imp.tfric(k, fl, ba, bb, ra, rb, n, jt, kf), Imp.lim(k, jn))}, j}
 
 # Coulomb, for one contact: its friction is at most mu times its push
 def Ct.coul(+k: P.K, c: Ct) -> Bool:
@@ -627,13 +631,33 @@ def Ct.jt(+c: Ct) -> P.Wv:
   Ct{a, b, fl, ra, rb, n, gap, jn, jt} = c
   jt
 
-# the friction of c given to its bodies (ba, bb as the push left them):
-# what it has now less what it had (jt0), equal and opposite, at the arms
-def Imp.fgive(+c: Ct, +jt0: P.Wv, r: R2) -> List<&2, P.Body>:
-  Ct{+a, +b, +fl, +ra, +rb, n, gap, jn, +jt} = c
-  R2{c0, bs, ba, bb} = r
-  +dt = V.sub(jt, jt0)
-  Imp.side(fl, b, B.pull(bb, dt, rb), Bs.put(bs, a, B.push(ba, dt, ra)))
+def Ct.a(+c: Ct) -> Nat:
+  Ct{a, b, fl, ra, rb, n, gap, jn, jt} = c
+  a
+
+def Ct.b(+c: Ct) -> Nat:
+  Ct{a, b, fl, ra, rb, n, gap, jn, jt} = c
+  b
+
+def Ct.fl(+c: Ct) -> Bool:
+  Ct{a, b, fl, ra, rb, n, gap, jn, jt} = c
+  fl
+
+def Ct.ra(+c: Ct) -> P.Wv:
+  Ct{a, b, fl, ra, rb, n, gap, jn, jt} = c
+  ra
+
+def Ct.rb(+c: Ct) -> P.Wv:
+  Ct{a, b, fl, ra, rb, n, gap, jn, jt} = c
+  rb
+
+# What a solved contact gives its two bodies (ba, bb as they were): the
+# push j along the normal and the friction dt, both at once, equal and
+# opposite, at the same point (each body's arm to it). A fixed body is
+# left as it is. This is the only way the solver changes a velocity.
+def Imp.give(+c: Ct, +j: P.Wv, +dt: P.Wv, bs: List<&2, P.Body>, +ba: P.Body, +bb: P.Body) -> List<&2, P.Body>:
+  Imp.side(Ct.fl(c), Ct.b(c), B.pull(B.pull(bb, j, Ct.rb(c)), dt, Ct.rb(c)),
+    Bs.put(bs, Ct.a(c), B.push(B.push(ba, j, Ct.ra(c)), dt, Ct.ra(c))))
 
 type Sup is Data:
   Sup{touched: Bool, nn: P.Wv, n: Nat, lx: P.Z, hx: P.Z, lz: P.Z, hz: P.Z, dg: P.Z, dn: P.Wv, pj: Nat, pr: P.Wv}
@@ -829,26 +853,29 @@ def Imp.jn2(+k: P.K, +fl: Bool, +ra: P.Wv, +rb: P.Wv, +n: P.Wv, +gap: P.Z, +jn: 
   Imp.accn(jn, P.Z.divc(P.Z.mul(P.Z.sub(Imp.target(P.K.size(k), gap), vn), P.Pos{1024n}), kf))
 
 def Imp.norm(+k: P.K, +a: Nat, +b: Nat, +fl: Bool, +ra: P.Wv, +rb: P.Wv, +n: P.Wv, +gap: P.Z, +jn: Nat, +jt: P.Wv,
-  +bs: List<&2, P.Body>, +ba: P.Body, +bb: P.Body) -> R2:
+  +ba: P.Body, +bb: P.Body) -> R2:
   +kf = Imp.keff(k, fl, ra, rb, n)
   +jn2 = Imp.jn2(k, fl, ra, rb, n, gap, jn, kf, ba, bb)
   +j = V.fx(n, R.zd(jn2, jn))
-  +ba2 = B.push(ba, j, ra)
-  +bb2 = R.pb(fl, bb, B.pull(bb, j, rb))
-  Imp.fric(k, a, b, fl, ra, rb, n, gap, jn2, jt, kf, Imp.side(fl, b, bb2, Bs.put(bs, a, ba2)), ba2, bb2)
+  Imp.fric(k, a, b, fl, ra, rb, n, gap, jn2, jt, kf, j, B.push(ba, j, ra), R.pb(fl, bb, B.pull(bb, j, rb)))
 
-def Imp.raw(+k: P.K, c: Ct, +bs: List<&2, P.Body>) -> R2:
+# the contact solved (its push in, its friction asked for) and the push,
+# from the contact and its two bodies
+def Imp.raw(+k: P.K, c: Ct, +ba: P.Body, +bb: P.Body) -> R2:
   Ct{+a, +b, +fl, +ra, +rb, +n, +gap, +jn, +jt} = c
-  Imp.norm(k, a, b, fl, ra, rb, n, gap, jn, jt, bs, Bs.at(bs, a), Bs.at(bs, b))
+  Imp.norm(k, a, b, fl, ra, rb, n, gap, jn, jt, ba, bb)
 
-# one contact solved: its push, then its friction as Ct.safe hands it on
-def Imp.one2(+k: P.K, +jt0: P.Wv, +r: R2, done: List<&2, Ct>) -> St:
+# one contact solved: its push, then its friction as Ct.safe hands it on,
+# both given to the bodies at once (Imp.give)
+def Imp.one2(+k: P.K, +c0: Ct, +r: R2, done: List<&2, Ct>, bs: List<&2, P.Body>, +ba: P.Body, +bb: P.Body) -> St:
   +c = Ct.safe(k, R2.c(r))
-  St{c <> done, Imp.fgive(c, jt0, r)}
+  St{c <> done, Imp.give(c0, R2.j(r), V.sub(Ct.jt(c), Ct.jt(c0)), bs, ba, bb)}
 
 def Imp.one(+k: P.K, +c: Ct, st: St) -> St:
   St{done, +bs} = st
-  Imp.one2(k, Ct.jt(c), Imp.raw(k, c, bs), done)
+  +ba = Bs.at(bs, Ct.a(c))
+  +bb = Bs.at(bs, Ct.b(c))
+  Imp.one2(k, c, Imp.raw(k, c, ba, bb), done, bs, ba, bb)
 
 # one pass over the contacts
 def Imp.pass(+k: P.K, cs: List<&2, Ct>, st: St) -> St:
@@ -1843,3 +1870,33 @@ def Ct.coulomb(+k: P.K, cs: List<&2, Ct>) -> Bool:
       True{}
     case c <> rest:
       Bool.and(Ct.coul(k, c), Ct.coulomb(k, rest))
+
+# Momentum
+# --------
+# along axis ax (0 x, 1 y, 2 z) of a list of bodies of mass 1: what goes
+# one way (Mo.p) and what goes the other (Mo.n); the momentum is
+# Mo.p - Mo.n, and a law about it moves the minus to the other side
+def V.at(+ax: Nat, +v: P.Wv) -> P.Z:
+  match ax:
+    case 0n:
+      P.Wv.x(v)
+    case 1n+m:
+      match m:
+        case 0n:
+          P.Wv.y(v)
+        case 1n+o:
+          P.Wv.z(v)
+
+def Mo.p(+ax: Nat, bs: List<&2, P.Body>) -> Nat:
+  match bs:
+    case []:
+      0n
+    case +b <> rest:
+      Nat.add(P.Z.pos(V.at(ax, B.v(b))), Mo.p(ax, rest))
+
+def Mo.n(+ax: Nat, bs: List<&2, P.Body>) -> Nat:
+  match bs:
+    case []:
+      0n
+    case +b <> rest:
+      Nat.add(P.Z.neg(V.at(ax, B.v(b))), Mo.n(ax, rest))

@@ -706,3 +706,21 @@ law rigid_no_push_off_air:
   for +p: P.Body
   for air: {P.Body.ground(p) == False{} : Bool}
   {W.W.drive(k, inp, p) == p : P.Body}
+
+# LAW: action and reaction. Every step of the solver on a contact between
+# two bodies of the island (not the floor, not a fixed body) gives them
+# its push and its friction equal and opposite, at the same point: the
+# island's momentum along every axis is what it was (Mo.p - Mo.n, the
+# minus moved across). Only the floor and the fixed bodies change it.
+law rigid_action_reaction:
+  for +k: P.K
+  for +c: G.Ct
+  for +done: List<&2, G.Ct>
+  for +bs: List<&2, P.Body>
+  for ax: Nat
+  for two: {G.Ct.fl(c) == False{} : Bool}
+  for ab: {Nat.is_eq(G.Ct.b(c), G.Ct.a(c)) == False{} : Bool}
+  for ina: {Nat.is_lt(G.Ct.a(c), List.length(&2, P.Body, bs)) == True{} : Bool}
+  for inb: {Nat.is_lt(G.Ct.b(c), List.length(&2, P.Body, bs)) == True{} : Bool}
+  after = G.Rb.bodies(G.Imp.one(k, c, G.St{done, bs}))
+  {Nat.add(G.Mo.p(ax, after), G.Mo.n(ax, bs)) == Nat.add(G.Mo.p(ax, bs), G.Mo.n(ax, after)) : Nat}
