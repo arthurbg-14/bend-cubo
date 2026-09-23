@@ -74,10 +74,13 @@ def type_level(bs: List<&2, String>) -> List<&2, String>:
 def is_proof.rt(+rt: String, +tl: List<&2, String>) -> Bool:
   Bool.or(String.starts_with(rt, "{"), Bool.or(C.mem(tl, head_of(rt)), String.eq(head_of(rt), "Empty")))
 
+# a proof states a claim: a law, an equality, a claim def (FS, SH, ...), or a
+# claim family it takes as a parameter (R(...) with R: ... -> Type)
 def is_proof.if(isdef: Bool, +b: String, +tl: List<&2, String>) -> Bool:
   match isdef:
     case True{}:
-      Bool.or(String.starts_with(block_name(b), "Laws."), is_proof.rt(ret_type(b), tl))
+      Bool.or(String.starts_with(block_name(b), "Laws."),
+        Bool.or(is_proof.rt(ret_type(b), tl), C.mem(C.names(C.Sig.ps(C.sig_of(b))), head_of(ret_type(b)))))
     case False{}:
       False{}
 

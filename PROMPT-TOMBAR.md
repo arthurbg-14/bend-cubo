@@ -1,11 +1,17 @@
 # Tarefa: as 10 leis que faltam depois do conserto do tombo (21/09/2026)
 
-> **Estado atual (22/09/2026, fim do dia): 27 de 35 provadas.**
-> `on_a_corner_it_tips_x` e `_z` fechadas. Faltam 8:
-> `past_the_edge_it_tips_{px,nx,pz,nz}` e
-> `tipping_is_never_thrown_away_{px,nx,pz,nz}`. Leia a ÚLTIMA seção deste
-> arquivo ("Sessão de 22/09/2026 (parte 3)") antes de tudo — as seções
-> do meio registram becos sem saída já descartados.
+> **Estado atual (23/09/2026): 35 de 35 provadas — `bend PROOF.bend`
+> imprime "All terms check." (84 s; `tools/check.bend`, o que o build.sh
+> usa, ~26 s).** As 8 do fim (`past_the_edge_it_tips_*`,
+> `tipping_is_never_thrown_away_*`) fecharam com quatro peças no fim do
+> PROOF.bend: `step_o` (o passo parado com um obstáculo, genérico num
+> predicado R: os cinco jeitos de cada `Move.x`/`Move.z` terminam no mesmo
+> lugar e o empurrão só muda a velocidade do obstáculo), `sign_*`/`tip_*`
+> (o sinal do braço pelo pé, vindo de `past`), `spin_o` (o giro atravessa a
+> busca com um obstáculo, família ROTW no chão falso) e `step_o3` (o passo
+> entregando o giro como parâmetro com três fatos sobre ele, para as
+> `tipping_*` não recalcularem o giro). O histórico abaixo fica como
+> registro dos becos sem saída.
 
 ## Estado (21/09, histórico)
 
