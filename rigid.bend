@@ -198,6 +198,127 @@ def Bs.drop(xs: List<&2, P.Body>, i: Nat) -> List<&2, P.Body>:
     case x <> rest 1n+j:
       x <> Bs.drop(rest, j)
 
+# The bodies of an island by place, as the solver reads and writes them:
+# a tree of depth d over 2^d places, the first half of them to the left.
+# A list took the solver down half the island for every body it touched,
+# twice a contact, sixteen passes a tick: with a few hundred cubes in a
+# pile, more than half the tick. Here it is d steps.
+type Tr is Data:
+  TE{}
+  TL{x: P.Body}
+  TN{a: Tr, c: Tr}
+
+type Bt is Data:
+  Bt{d: Nat, h: Nat, t: Tr}
+
+def Tr.none() -> P.Body:
+  P.Body{0n, 0n, 0n, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, False{}, False{}, P.Rot.rest()}
+
+# the body at i of a tree of depth l, h = 2^(l-1) places to a side, hi
+# whether i is in the second half
+def Tr.at(l: Nat, t: Tr, +i: Nat, +h: Nat, hi: Bool) -> P.Body:
+  match l t hi:
+    case _ TE{} _:
+      Tr.none()
+    case _ TL{x} _:
+      x
+    case 0n TN{a, c} _:
+      Tr.none()
+    case 1n+k TN{a, c} False{}:
+      Tr.at(k, a, i, Nat.div(h, 2n), Nat.is_le(Nat.div(h, 2n), i))
+    case 1n+k TN{a, c} True{}:
+      Tr.at(k, c, Nat.sub(i, h), Nat.div(h, 2n), Nat.is_le(Nat.div(h, 2n), Nat.sub(i, h)))
+
+def Tr.put(l: Nat, t: Tr, +i: Nat, +h: Nat, hi: Bool, +b: P.Body) -> Tr:
+  match l t hi:
+    case _ TE{} _:
+      TE{}
+    case _ TL{x} _:
+      TL{b}
+    case 0n TN{a, c} _:
+      TN{a, c}
+    case 1n+k TN{a, c} False{}:
+      TN{Tr.put(k, a, i, Nat.div(h, 2n), Nat.is_le(Nat.div(h, 2n), i), b), c}
+    case 1n+k TN{a, c} True{}:
+      TN{a, Tr.put(k, c, Nat.sub(i, h), Nat.div(h, 2n), Nat.is_le(Nat.div(h, 2n), Nat.sub(i, h)), b)}
+
+# 2^(d-1): the places to a side of a tree of depth d (none for a leaf)
+def Bt.half(+d: Nat) -> Nat:
+  match d:
+    case 0n:
+      0n
+    case 1n+k:
+      Nat.pow(2n, k)
+
+def Bt.at(bt: Bt, +i: Nat) -> P.Body:
+  Bt{d, +h, t} = bt
+  Tr.at(d, t, i, h, Nat.is_le(h, i))
+
+def Bt.put(bt: Bt, +i: Nat, +b: P.Body) -> Bt:
+  Bt{+d, +h, t} = bt
+  Bt{d, h, Tr.put(d, t, i, h, Nat.is_le(h, i), b)}
+
+# the first 2^l bodies of xs as a tree of depth l
+def Tr.leaf(xs: List<&2, P.Body>) -> Tr:
+  match xs:
+    case []:
+      TE{}
+    case x <> rest:
+      TL{x}
+
+def Tr.build(l: Nat, +xs: List<&2, P.Body>) -> Tr:
+  match l:
+    case 0n:
+      Tr.leaf(xs)
+    case 1n++k:
+      TN{Tr.build(k, List.take(&2, P.Body, xs, Nat.pow(2n, k))), Tr.build(k, List.drop(&2, P.Body, xs, Nat.pow(2n, k)))}
+
+# the least d with 2^d = p at least n (fuel: a number of 48 bits)
+def Bt.dep(f: Nat, ok: Bool, +d: Nat, +p: Nat, +n: Nat) -> Nat:
+  match f ok:
+    case _ True{}:
+      d
+    case 0n False{}:
+      d
+    case 1n+g False{}:
+      Bt.dep(g, Nat.is_le(n, Nat.mul(p, 2n)), Nat.add(d, 1n), Nat.mul(p, 2n), n)
+
+def Bt.of(+xs: List<&2, P.Body>) -> Bt:
+  +n = List.length(&2, P.Body, xs)
+  +d = Bt.dep(48n, Nat.is_le(n, 1n), 0n, 1n, n)
+  Bt{d, Bt.half(d), Tr.build(d, xs)}
+
+def Tr.list(t: Tr, acc: List<&2, P.Body>) -> List<&2, P.Body>:
+  match t:
+    case TE{}:
+      acc
+    case TL{x}:
+      x <> acc
+    case TN{a, c}:
+      Tr.list(a, Tr.list(c, acc))
+
+def Bt.list(bt: Bt) -> List<&2, P.Body>:
+  Bt{d, h, t} = bt
+  Tr.list(t, [])
+
+# is there a body at i? (the same way down as Tr.at)
+def Tr.has(l: Nat, t: Tr, +i: Nat, +h: Nat, hi: Bool) -> Bool:
+  match l t hi:
+    case _ TE{} _:
+      False{}
+    case _ TL{x} _:
+      True{}
+    case 0n TN{a, c} _:
+      False{}
+    case 1n+k TN{a, c} False{}:
+      Tr.has(k, a, i, Nat.div(h, 2n), Nat.is_le(Nat.div(h, 2n), i))
+    case 1n+k TN{a, c} True{}:
+      Tr.has(k, c, Nat.sub(i, h), Nat.div(h, 2n), Nat.is_le(Nat.div(h, 2n), Nat.sub(i, h)))
+
+def Bt.has(bt: Bt, +i: Nat) -> Bool:
+  Bt{d, +h, t} = bt
+  Tr.has(d, t, i, h, Nat.is_le(h, i))
+
 # Contacts
 # --------
 # A contact between a and b (or a and the floor): the arms from each
@@ -532,7 +653,7 @@ def Ct.fix(cs: List<&2, Ct>, +j: Nat) -> List<&2, Ct>:
       Ct{a, Nat.add(j, 1n), True{}, ra, rb, n, gap, jn, jt} <> Ct.fix(rest, j)
 
 type St is Data:
-  St{done: List<&2, Ct>, bs: List<&2, P.Body>}
+  St{done: List<&2, Ct>, bs: Bt}
 
 def Imp.keff2(fl: Bool, +ta: Nat, +tb: Nat) -> Nat:
   match fl:
@@ -587,12 +708,12 @@ def Imp.clamp(+t0: P.Wv, +lim: Nat) -> P.Wv:
   +mag = P.Fric.ceil(sq, P.Fric.floor(sq, P.Pick.high(V.l1(t), 1n)))
   Imp.clamp2(Nat.is_lt(Nat.mul(lim, lim), sq), t, lim, mag)
 
-def Imp.side(fl: Bool, +i: Nat, +b: P.Body, +bs: List<&2, P.Body>) -> List<&2, P.Body>:
+def Imp.side(fl: Bool, +i: Nat, +b: P.Body, +bs: Bt) -> Bt:
   match fl:
     case True{}:
       bs
     case False{}:
-      Bs.put(bs, i, b)
+      Bt.put(bs, i, b)
 
 # the friction, once the push along the normal is in
 # the most friction a contact pushing jn can give: mu jn (mu in 1/256),
@@ -684,13 +805,14 @@ def Ct.rb(+c: Ct) -> P.Wv:
   Ct{a, b, fl, ra, rb, n, gap, jn, jt} = c
   rb
 
-# What a solved contact gives its two bodies (ba, bb as they were): the
-# push j along the normal and the friction dt, both at once, equal and
-# opposite, each at its own surface (Ct.clipped). A fixed body is
-# left as it is. This is the only way the solver changes a velocity.
-def Imp.give(+c: Ct, +j: P.Wv, +dt: P.Wv, bs: List<&2, P.Body>, +ba: P.Body, +bb: P.Body) -> List<&2, P.Body>:
-  Imp.side(Ct.fl(c), Ct.b(c), B.pull(B.pull(bb, j, Ct.rb(c)), dt, Ct.rb(c)),
-    Bs.put(bs, Ct.a(c), B.push(B.push(ba, j, Ct.ra(c)), dt, Ct.ra(c))))
+# What a solved contact gives its two bodies (ba as it was): the push j
+# along the normal and the friction dt, both at once, equal and opposite,
+# each at its own surface (Ct.clipped) -- b read after a is written, which
+# for two bodies is b as it was. A fixed body is left as it is. This is
+# the only way the solver changes a velocity.
+def Imp.give(+c: Ct, +j: P.Wv, +dt: P.Wv, bs: Bt, +ba: P.Body) -> Bt:
+  +bs1 = Bt.put(bs, Ct.a(c), B.push(B.push(ba, j, Ct.ra(c)), dt, Ct.ra(c)))
+  Imp.side(Ct.fl(c), Ct.b(c), B.pull(B.pull(Bt.at(bs1, Ct.b(c)), j, Ct.rb(c)), dt, Ct.rb(c)), bs1)
 
 type Sup is Data:
   Sup{touched: Bool, nn: P.Wv, n: Nat, lx: P.Z, hx: P.Z, lz: P.Z, hz: P.Z, dg: P.Z, dn: P.Wv, pj: Nat, pr: P.Wv, ns: P.Wv}
@@ -917,15 +1039,15 @@ def Imp.raw(+k: P.K, +dv: P.Wv, c: Ct, +ba: P.Body, +bb: P.Body) -> R2:
 
 # one contact solved: its push, then its friction as Ct.safe hands it on,
 # both given to the bodies at once (Imp.give)
-def Imp.one2(+k: P.K, +c0: Ct, +r: R2, done: List<&2, Ct>, bs: List<&2, P.Body>, +ba: P.Body, +bb: P.Body) -> St:
+def Imp.one2(+k: P.K, +c0: Ct, +r: R2, done: List<&2, Ct>, bs: Bt, +ba: P.Body) -> St:
   +c = Ct.safe(k, R2.c(r))
-  St{c <> done, Imp.give(c0, R2.j(r), V.sub(Ct.jt(c), Ct.jt(c0)), bs, ba, bb)}
+  St{c <> done, Imp.give(c0, R2.j(r), V.sub(Ct.jt(c), Ct.jt(c0)), bs, ba)}
 
 def Imp.one(+k: P.K, +dv: P.Wv, +c: Ct, st: St) -> St:
   St{done, +bs} = st
-  +ba = Bs.at(bs, Ct.a(c))
-  +bb = Bs.at(bs, Ct.b(c))
-  Imp.one2(k, c, Imp.raw(k, dv, c, ba, bb), done, bs, ba, bb)
+  +ba = Bt.at(bs, Ct.a(c))
+  +bb = Bt.at(bs, Ct.b(c))
+  Imp.one2(k, c, Imp.raw(k, dv, c, ba, bb), done, bs, ba)
 
 # one pass over the contacts
 def Imp.pass(+k: P.K, +dv: P.Wv, cs: List<&2, Ct>, st: St) -> St:
@@ -1449,18 +1571,18 @@ def Mv.one(+k: P.K, +b0: P.Body, +b1: P.Body, +obs: List<&2, P.Body>, +su: Sup, 
     Mv.apart(P.K.size(k), b1, obs),
     Bool.not(Hd.t(hd)), Mc{Mv.away(V.sub(Sup.nn(su), Sup.ns(su))), Sup.dn(su), Sup.pr(su), Sup.pivots(su), Mv.away(Sup.ns(su))}), Hd.held(hd), Hd.t(hd))
 
-def Mv.pm1(mine: Bool, +k: P.K, +p: Nat, +b0s: List<&2, P.Body>) -> Bool:
+def Mv.pm1(mine: Bool, +k: P.K, +p: Nat, +b0s: Bt) -> Bool:
   match mine:
     case False{}:
       False{}
     case True{}:
-      Bool.not(Mv.small(k, Bs.at(b0s, p)))
+      Bool.not(Mv.small(k, Bt.at(b0s, p)))
 
 # is the body at i touched and pushed by a body -- not a fixed one -- that
 # was moving when the tick began, more than a body at rest may? (moving
 # for real: two bodies that each looked at the other's jitter stood each
 # other off and a heap never came to rest)
-def Mv.pm(+k: P.K, +i: Nat, cs: List<&2, Ct>, +cut: P.Z, +b0s: List<&2, P.Body>) -> Bool:
+def Mv.pm(+k: P.K, +i: Nat, cs: List<&2, Ct>, +cut: P.Z, +b0s: Bt) -> Bool:
   match cs:
     case []:
       False{}
@@ -1476,25 +1598,253 @@ def Mv.put(+i: Nat, +b: P.Body, cur: List<&2, P.Body>) -> List<&2, P.Body>:
 type Inf is Data:
   Inf{su: Sup, hd: Hd, pm: Bool}
 
-def Mv.inf(+k: P.K, +i: Nat, +b0s: List<&2, P.Body>, +cs: List<&2, Ct>) -> Inf:
+# The contacts of every body, by place: a tree of depth d like Tr, a list
+# of contacts at each place, each contact at the places of both its
+# bodies (only a) in the order the list had. Every body looked through
+# every contact of the island for its own, four times over, and in a
+# pile of a few hundred that was a fifth of the tick.
+type Cb is Data:
+  CbL{cs: List<&2, Ct>}
+  CbN{a: Cb, c: Cb}
+
+def Cb.new(l: Nat) -> Cb:
+  match l:
+    case 0n:
+      CbL{[]}
+    case 1n++k:
+      CbN{Cb.new(k), Cb.new(k)}
+
+def Cb.add(l: Nat, t: Cb, +i: Nat, +h: Nat, hi: Bool, +c: Ct) -> Cb:
+  match l t hi:
+    case _ CbL{cs} _:
+      CbL{c <> cs}
+    case 0n CbN{a, d} _:
+      CbN{a, d}
+    case 1n+k CbN{a, d} False{}:
+      CbN{Cb.add(k, a, i, Nat.div(h, 2n), Nat.is_le(Nat.div(h, 2n), i), c), d}
+    case 1n+k CbN{a, d} True{}:
+      CbN{a, Cb.add(k, d, Nat.sub(i, h), Nat.div(h, 2n), Nat.is_le(Nat.div(h, 2n), Nat.sub(i, h)), c)}
+
+def Cb.get(l: Nat, t: Cb, +i: Nat, +h: Nat, hi: Bool) -> List<&2, Ct>:
+  match l t hi:
+    case _ CbL{cs} _:
+      cs
+    case 0n CbN{a, d} _:
+      []
+    case 1n+k CbN{a, d} False{}:
+      Cb.get(k, a, i, Nat.div(h, 2n), Nat.is_le(Nat.div(h, 2n), i))
+    case 1n+k CbN{a, d} True{}:
+      Cb.get(k, d, Nat.sub(i, h), Nat.div(h, 2n), Nat.is_le(Nat.div(h, 2n), Nat.sub(i, h)))
+
+def Cb.put2(two: Bool, +d: Nat, +h: Nat, +b: Nat, +c: Ct, t: Cb) -> Cb:
+  match two:
+    case False{}:
+      t
+    case True{}:
+      Cb.add(d, t, b, h, Nat.is_le(h, b), c)
+
+# cs taken from the end, each put in front: every place keeps the order
+def Cb.fill(cs: List<&2, Ct>, +d: Nat, +h: Nat, t: Cb) -> Cb:
+  match cs:
+    case []:
+      t
+    case +c <> rest:
+      Cb.fill(rest, d, h, Cb.put2(Bool.and(Bool.not(Ct.fl(c)), Bool.not(Nat.is_eq(Ct.b(c), Ct.a(c)))), d, h, Ct.b(c), c,
+        Cb.add(d, t, Ct.a(c), h, Nat.is_le(h, Ct.a(c)), c)))
+
+def Mv.inf(+k: P.K, +i: Nat, +b0s: Bt, +cs: List<&2, Ct>) -> Inf:
   +cut = Mv.cut(P.K.size(k), i, cs)
   Inf{Sup.of(cut, i, cs, Sup.none()), Hd.of(k, cut, i, cs, Hd{False{}, False{}, False{}}), Mv.pm(k, i, cs, cut, b0s)}
 
-def Mv.infs(n: Nat, +k: P.K, +i: Nat, +b0s: List<&2, P.Body>, +cs: List<&2, Ct>) -> List<&2, Inf>:
+def Mv.infs2(n: Nat, +k: P.K, +i: Nat, +b0t: Bt, +d: Nat, +h: Nat, +cb: Cb) -> List<&2, Inf>:
   match n:
     case 0n:
       []
     case 1n+m:
-      Mv.inf(k, i, b0s, cs) <> Mv.infs(m, k, Nat.add(i, 1n), b0s, cs)
+      Mv.inf(k, i, b0t, Cb.get(d, cb, i, h, Nat.is_le(h, i))) <> Mv.infs2(m, k, Nat.add(i, 1n), b0t, d, h, cb)
 
-def Mv.all(fs: List<&2, Inf>, +k: P.K, +i: Nat, +b0s: List<&2, P.Body>, +cur: List<&2, P.Body>, +ss: List<&2, P.Body>)
-  -> List<&2, P.Body>:
+def Bt.dd(bt: Bt) -> Nat:
+  Bt{d, h, t} = bt
+  d
+
+def Bt.hh(bt: Bt) -> Nat:
+  Bt{d, h, t} = bt
+  h
+
+def Mv.infs(+n: Nat, +k: P.K, +b0s: List<&2, P.Body>, cs: List<&2, Ct>) -> List<&2, Inf>:
+  +b0t = Bt.of(b0s)
+  +d = Bt.dd(b0t)
+  +h = Bt.hh(b0t)
+  Mv.infs2(n, k, 0n, b0t, d, h, Cb.fill(List.reverse(&2, Ct, cs), d, h, Cb.new(d)))
+
+# What each body may run into in the gate: the bodies and the fixed ones
+# near enough, in a tree of lists by place (fixed ones counted from n).
+# Two cubes, turned any way, overlap only with middles closer than
+# sqrt(3) sides along every axis, and a pose the gate tries is never
+# further from where the body began than its reach: twice what it goes
+# before and after the impulses, what the turning about a pivot sweeps
+# (24 L / s), and the millimetres it may be set back or step away. The
+# gate asks a pose against these alone: every other body is further than
+# any pose of either can reach, and was never refused by -- so it passes
+# exactly what it passed. Every body was tried against every other, every
+# fixed one, every pose: in a pile of hundreds, a third of the tick.
+type Ib is Data:
+  IbL{js: List<&2, Nat>}
+  IbN{a: Ib, c: Ib}
+
+def Ib.new(l: Nat) -> Ib:
+  match l:
+    case 0n:
+      IbL{[]}
+    case 1n++k:
+      IbN{Ib.new(k), Ib.new(k)}
+
+def Ib.add(l: Nat, t: Ib, +i: Nat, +h: Nat, hi: Bool, +j: Nat) -> Ib:
+  match l t hi:
+    case _ IbL{js} _:
+      IbL{j <> js}
+    case 0n IbN{a, d} _:
+      IbN{a, d}
+    case 1n+k IbN{a, d} False{}:
+      IbN{Ib.add(k, a, i, Nat.div(h, 2n), Nat.is_le(Nat.div(h, 2n), i), j), d}
+    case 1n+k IbN{a, d} True{}:
+      IbN{a, Ib.add(k, d, Nat.sub(i, h), Nat.div(h, 2n), Nat.is_le(Nat.div(h, 2n), Nat.sub(i, h)), j)}
+
+def Ib.get(l: Nat, t: Ib, +i: Nat, +h: Nat, hi: Bool) -> List<&2, Nat>:
+  match l t hi:
+    case _ IbL{js} _:
+      js
+    case 0n IbN{a, d} _:
+      []
+    case 1n+k IbN{a, d} False{}:
+      Ib.get(k, a, i, Nat.div(h, 2n), Nat.is_le(Nat.div(h, 2n), i))
+    case 1n+k IbN{a, d} True{}:
+      Ib.get(k, d, Nat.sub(i, h), Nat.div(h, 2n), Nat.is_le(Nat.div(h, 2n), Nat.sub(i, h)))
+
+def Ib.add_if(ok: Bool, +d: Nat, +h: Nat, +i: Nat, +j: Nat, t: Ib) -> Ib:
+  match ok:
+    case False{}:
+      t
+    case True{}:
+      Ib.add(d, t, i, h, Nat.is_le(h, i), j)
+
+# a body (or a fixed one) for the sweep: its x, its place, its reach
+type Ge is Data:
+  Ge{x: Nat, i: Nat, r: Nat, b: P.Body}
+
+def Ge.x(e: Ge) -> Nat:
+  Ge{x, i, r, b} = e
+  x
+
+def Ge.i(+e: Ge) -> Nat:
+  Ge{x, i, r, b} = e
+  i
+
+def Ge.r(+e: Ge) -> Nat:
+  Ge{x, i, r, b} = e
+  r
+
+def Ge.b(+e: Ge) -> P.Body:
+  Ge{x, i, r, b} = e
+  b
+
+def Ge.le(a: Ge, b: Ge) -> Bool:
+  Nat.is_le(Ge.x(a), Ge.x(b))
+
+def Gn.reach(+s: Nat, +b0: P.Body, +b1: P.Body) -> Nat:
+  Nat.add(Nat.add(Nat.mul(2n, Nat.add(V.l1(B.v(b0)), V.l1(B.v(b1)))), Nat.div(Nat.mul(24n, V.l1(B.L(b1))), P.Pick.high(s, 1n))),
+    8192n)
+
+def Gn.dyn(b0s: List<&2, P.Body>, b1s: List<&2, P.Body>, +s: Nat, +i: Nat) -> List<&2, Ge>:
+  match b0s b1s:
+    case Nil{} _:
+      []
+    case _ Nil{}:
+      []
+    case +b0 <> r0 +b1 <> r1:
+      Ge{P.Body.x(b1), i, Gn.reach(s, b0, b1), b1} <> Gn.dyn(r0, r1, s, Nat.add(i, 1n))
+
+def Gn.sta(ss: List<&2, P.Body>, +j: Nat) -> List<&2, Ge>:
+  match ss:
+    case []:
+      []
+    case +o <> rest:
+      Ge{P.Body.x(o), j, 0n, o} <> Gn.sta(rest, Nat.add(j, 1n))
+
+def Gn.rmax(es: List<&2, Ge>, +m: Nat) -> Nat:
+  match es:
+    case []:
+      m
+    case +e <> rest:
+      Gn.rmax(rest, P.Pick.high(m, Ge.r(e)))
+
+# the x of the first entry, or past everything
+def Gn.hx(es: List<&2, Ge>) -> Nat:
+  match es:
+    case []:
+      Nat.mul(4294967295n, 65536n)
+    case +e <> rest:
+      Ge.x(e)
+
+def Gn.near(+s: Nat, +e: Ge, +f: Ge) -> Bool:
+  +lim = Nat.add(Nat.div(Nat.mul(7n, s), 4n), Nat.add(Ge.r(e), Ge.r(f)))
+  +d = B.d(Ge.b(e), Ge.b(f))
+  Bool.and(Nat.is_lt(P.Z.mag(P.Wv.x(d)), lim), Bool.and(Nat.is_lt(P.Z.mag(P.Wv.y(d)), lim), Nat.is_lt(P.Z.mag(P.Wv.z(d)), lim)))
+
+def Gn.pair(ok: Bool, +n: Nat, +d: Nat, +h: Nat, +i: Nat, +j: Nat, t: Ib) -> Ib:
+  match ok:
+    case False{}:
+      t
+    case True{}:
+      Ib.add_if(Nat.is_lt(j, n), d, h, j, i, Ib.add_if(Nat.is_lt(i, n), d, h, i, j, t))
+
+# the entries after e, while their x is within e's window
+def Gn.ahead(rest: List<&2, Ge>, stop: Bool, +s: Nat, +w: Nat, +n: Nat, +d: Nat, +h: Nat, +e: Ge, t: Ib) -> Ib:
+  match rest stop:
+    case _ True{}:
+      t
+    case Nil{} False{}:
+      t
+    case +f <> +more False{}:
+      Gn.ahead(more, Nat.is_lt(Nat.add(Nat.add(Ge.x(e), w), Ge.r(e)), Gn.hx(more)), s, w, n, d, h, e,
+        Gn.pair(Bool.and(Gn.near(s, e, f), Bool.or(Nat.is_lt(Ge.i(e), n), Nat.is_lt(Ge.i(f), n))), n, d, h, Ge.i(e), Ge.i(f), t))
+
+def Gn.sweep(es: List<&2, Ge>, +s: Nat, +w: Nat, +n: Nat, +d: Nat, +h: Nat, t: Ib) -> Ib:
+  match es:
+    case []:
+      t
+    case +e <> +rest:
+      Gn.sweep(rest, s, w, n, d, h, Gn.ahead(rest, Nat.is_lt(Nat.add(Nat.add(Ge.x(e), w), Ge.r(e)), Gn.hx(rest)), s, w, n, d, h, e, t))
+
+# the near ones of every body, by place
+def Gn.of(+s: Nat, +n: Nat, +d: Nat, +h: Nat, b0s: List<&2, P.Body>, +b1s: List<&2, P.Body>, +ss: List<&2, P.Body>) -> Ib:
+  +es = List.append(&2, Ge, Gn.dyn(b0s, b1s, s, 0n), Gn.sta(ss, n))
+  Gn.sweep(List.sort(Ge, Ge.le, es), s, Nat.add(Nat.div(Nat.mul(7n, s), 4n), Gn.rmax(es, 0n)), n, d, h, Ib.new(d))
+
+# the obstacles at the places js: bodies (below n) from cur, fixed ones
+# from ss
+def Gn.one(dyn: Bool, +j: Nat, +n: Nat, +cur: Bt, +sst: Bt) -> P.Body:
+  match dyn:
+    case True{}:
+      Bt.at(cur, j)
+    case False{}:
+      Bt.at(sst, Nat.sub(j, n))
+
+def Gn.obs(js: List<&2, Nat>, +n: Nat, +cur: Bt, +sst: Bt) -> List<&2, P.Body>:
+  match js:
+    case []:
+      []
+    case +j <> rest:
+      Gn.one(Nat.is_lt(j, n), j, n, cur, sst) <> Gn.obs(rest, n, cur, sst)
+
+def Mv.all(fs: List<&2, Inf>, +k: P.K, +i: Nat, +b0t: Bt, +cur: Bt, +nb: Ib, +n: Nat, +d: Nat, +h: Nat, +sst: Bt) -> Bt:
   match fs:
     case []:
       cur
     case Inf{+su, +hd, +pm} <> rest:
-      Mv.all(rest, k, Nat.add(i, 1n), b0s,
-        Mv.put(i, Mv.one(k, Bs.at(b0s, i), Bs.at(cur, i), List.append(&2, P.Body, Bs.drop(cur, i), ss), su, hd, pm), cur), ss)
+      Mv.all(rest, k, Nat.add(i, 1n), b0t,
+        Bt.put(cur, i, Mv.one(k, Bt.at(b0t, i), Bt.at(cur, i), Gn.obs(Ib.get(d, nb, i, h, Nat.is_le(h, i)), n, cur, sst), su, hd, pm)),
+        nb, n, d, h, sst)
 
 # The tick of an island
 # ---------------------
@@ -1581,24 +1931,25 @@ def Mv.retry(+k: P.K, +b0: P.Body, +b1: P.Body, +cur: P.Body, +obs: List<&2, P.B
 
 # (only a body something touched: what touches nothing was refused by
 # nothing, or by something it will not find moved)
-def Mv.again1(touched: Bool, +k: P.K, +i: Nat, +b0s: List<&2, P.Body>, +b1s: List<&2, P.Body>, +cur: List<&2, P.Body>,
-  +ss: List<&2, P.Body>, +su: Sup, +hd: Hd, +pm: Bool) -> List<&2, P.Body>:
+def Mv.again1(touched: Bool, +k: P.K, +i: Nat, +b0t: Bt, +b1t: Bt, +cur: Bt, +nb: Ib, +n: Nat, +d: Nat, +h: Nat, +sst: Bt,
+  +su: Sup, +hd: Hd, +pm: Bool) -> Bt:
   match touched:
     case False{}:
       cur
     case True{}:
-      +b1 = Bs.at(b1s, i)
-      Mv.put(i, Mv.retry(k, Bs.at(b0s, i), b1, Bs.at(cur, i),
-        Mv.apart2(P.K.size(k), b1, List.append(&2, P.Body, Bs.drop(cur, i), ss), List.append(&2, P.Body, Bs.drop(b0s, i), ss)),
-        su, hd, pm), cur)
+      +b1 = Bt.at(b1t, i)
+      +js = Ib.get(d, nb, i, h, Nat.is_le(h, i))
+      Bt.put(cur, i, Mv.retry(k, Bt.at(b0t, i), b1, Bt.at(cur, i),
+        Mv.apart2(P.K.size(k), b1, Gn.obs(js, n, cur, sst), Gn.obs(js, n, b0t, sst)), su, hd, pm))
 
-def Mv.all2(fs: List<&2, Inf>, +k: P.K, +i: Nat, +b0s: List<&2, P.Body>, +b1s: List<&2, P.Body>, +cur: List<&2, P.Body>,
-  +ss: List<&2, P.Body>) -> List<&2, P.Body>:
+def Mv.all2(fs: List<&2, Inf>, +k: P.K, +i: Nat, +b0t: Bt, +b1t: Bt, +cur: Bt, +nb: Ib, +n: Nat, +d: Nat, +h: Nat, +sst: Bt)
+  -> Bt:
   match fs:
     case []:
       cur
     case Inf{+su, +hd, +pm} <> rest:
-      Mv.all2(rest, k, Nat.add(i, 1n), b0s, b1s, Mv.again1(Hd.t(hd), k, i, b0s, b1s, cur, ss, su, hd, pm), ss)
+      Mv.all2(rest, k, Nat.add(i, 1n), b0t, b1t, Mv.again1(Hd.t(hd), k, i, b0t, b1t, cur, nb, n, d, h, sst, su, hd, pm), nb, n, d,
+        h, sst)
 
 # The most a body may go and turn, along each axis: 2^20 (some 1000 m/s),
 # and 2^23 s^2 / 2^26 -- a quarter turn a tick (Mv.w), its corners at
@@ -1630,6 +1981,10 @@ def Rb.done(st: St) -> List<&2, Ct>:
   done
 
 def Rb.bodies(st: St) -> List<&2, P.Body>:
+  St{done, bs} = st
+  Bt.list(bs)
+
+def Rb.tree(st: St) -> Bt:
   St{done, bs} = st
   bs
 
@@ -1791,10 +2146,17 @@ def Rb.deep(+s: Nat, cs: List<&2, Ct>) -> Bool:
 
 # the bodies moved and gated, energy and all
 def Rb.moved(+k: P.K, +bs: List<&2, P.Body>, +ss: List<&2, P.Body>, st: St) -> List<&2, P.Body>:
-  St{+done, +bs1} = st
-  +fs = Mv.infs(List.length(&2, P.Body, bs), k, 0n, bs, done)
-  +b1s = Rb.caps(k, bs1)
-  Mv.all2(fs, k, 0n, bs, b1s, Mv.all(fs, k, 0n, bs, b1s, ss), ss)
+  St{+done, bs1} = st
+  +n = List.length(&2, P.Body, bs)
+  +fs = Mv.infs(n, k, bs, done)
+  +b1s = Rb.caps(k, Bt.list(bs1))
+  +b0t = Bt.of(bs)
+  +b1t = Bt.of(b1s)
+  +sst = Bt.of(ss)
+  +d = Bt.dd(b0t)
+  +h = Bt.hh(b0t)
+  +nb = Gn.of(P.K.size(k), n, d, h, bs, b1s, ss)
+  Bt.list(Mv.all2(fs, k, 0n, b0t, b1t, Mv.all(fs, k, 0n, b0t, b1t, nb, n, d, h, sst), nb, n, d, h, sst))
 
 # was some contact of the tick deeper than the skin?
 def Rb.deepof(+s: Nat, st: St) -> Bool:
@@ -1863,7 +2225,7 @@ def Rs.woke(r: Rs) -> List<&2, P.Body>:
 # the tick of the bodies bs among the fixed ones ss, the player (at 0)
 # driving itself by dv
 def Rb.tick(+k: P.K, +dv: P.Wv, +bs: List<&2, P.Body>, +ss: List<&2, P.Body>) -> Rs:
-  Rb.step2(k, bs, ss, Imp.iter(16n, k, dv, St{Ct.all(bs, k, 0n, ss, []), Rb.fall(k, bs)}))
+  Rb.step2(k, bs, ss, Imp.iter(16n, k, dv, St{Ct.all(bs, k, 0n, ss, []), Bt.of(Rb.fall(k, bs))}))
 
 def Rb.step(+k: P.K, +bs: List<&2, P.Body>) -> List<&2, P.Body>:
   Rs.bs(Rb.tick(k, V.zero(), bs, []))
@@ -2200,3 +2562,30 @@ def Mo.n(+ax: Nat, bs: List<&2, P.Body>) -> Nat:
       0n
     case +b <> rest:
       Nat.add(P.Z.neg(V.at(ax, B.v(b))), Mo.n(ax, rest))
+
+# the same, of the bodies of a tree
+def Mo.tp(+ax: Nat, t: Tr) -> Nat:
+  match t:
+    case TE{}:
+      0n
+    case TL{b}:
+      P.Z.pos(V.at(ax, B.v(b)))
+    case TN{a, c}:
+      Nat.add(Mo.tp(ax, a), Mo.tp(ax, c))
+
+def Mo.tn(+ax: Nat, t: Tr) -> Nat:
+  match t:
+    case TE{}:
+      0n
+    case TL{b}:
+      P.Z.neg(V.at(ax, B.v(b)))
+    case TN{a, c}:
+      Nat.add(Mo.tn(ax, a), Mo.tn(ax, c))
+
+def Mo.bp(+ax: Nat, bt: Bt) -> Nat:
+  Bt{d, h, t} = bt
+  Mo.tp(ax, t)
+
+def Mo.bn(+ax: Nat, bt: Bt) -> Nat:
+  Bt{d, h, t} = bt
+  Mo.tn(ax, t)

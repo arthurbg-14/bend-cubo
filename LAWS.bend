@@ -667,7 +667,7 @@ law rigid_coulomb:
   for +dv: P.Wv
   for +bs: List<&2, P.Body>
   for +ss: List<&2, P.Body>
-  {G.Ct.coulomb(k, G.Rb.done(G.Imp.iter(16n, k, dv, G.St{G.Ct.all(bs, k, 0n, ss, []), G.Rb.fall(k, bs)}))) == True{} : Bool}
+  {G.Ct.coulomb(k, G.Rb.done(G.Imp.iter(16n, k, dv, G.St{G.Ct.all(bs, k, 0n, ss, []), G.Bt.of(G.Rb.fall(k, bs))}))) == True{} : Bool}
 
 # LAW: nothing passes through anything. An island of bodies that begins
 # apart -- no two of them overlapping, none overlapping one of the fixed
@@ -694,7 +694,7 @@ law rigid_energy:
   for +dv: P.Wv
   for +bs: List<&2, P.Body>
   for +ss: List<&2, P.Body>
-  st = G.Imp.iter(16n, k, dv, G.St{G.Ct.all(bs, k, 0n, ss, []), G.Rb.fall(k, bs)})
+  st = G.Imp.iter(16n, k, dv, G.St{G.Ct.all(bs, k, 0n, ss, []), G.Bt.of(G.Rb.fall(k, bs))})
   {Bool.or(G.Rb.deepof(P.K.size(k), st), Nat.is_le(G.En.all(k, bs, G.Rs.bs(G.Rb.tick(k, dv, bs, ss))), G.En.all(k, bs, bs))) == True{} : Bool}
 
 # LAW: no pushing off the air, nor off a wall. The player walks and jumps
@@ -712,19 +712,20 @@ law rigid_no_push_off_air:
 
 # LAW: action and reaction. Every step of the solver on a contact between
 # two bodies of the island (not the floor, not a fixed body) gives them
-# its push and its friction equal and opposite, at the same point: the
-# island's momentum along every axis is what it was (Mo.p - Mo.n, the
-# minus moved across). Only the floor and the fixed bodies change it.
+# its push and its friction equal and opposite, each at its own surface:
+# the island's momentum along every axis is what it was (Mo.bp - Mo.bn,
+# the minus moved across), the bodies being the solver's own tree of
+# them (Bt), whatever is in it. Only the floor and the fixed bodies
+# change it.
 law rigid_action_reaction:
   for +k: P.K
   for +dv: P.Wv
   for +c: G.Ct
   for +done: List<&2, G.Ct>
-  for +bs: List<&2, P.Body>
+  for +bs: G.Bt
   for ax: Nat
   for two: {G.Ct.fl(c) == False{} : Bool}
-  for ab: {Nat.is_eq(G.Ct.b(c), G.Ct.a(c)) == False{} : Bool}
-  for ina: {Nat.is_lt(G.Ct.a(c), List.length(&2, P.Body, bs)) == True{} : Bool}
-  for inb: {Nat.is_lt(G.Ct.b(c), List.length(&2, P.Body, bs)) == True{} : Bool}
-  after = G.Rb.bodies(G.Imp.one(k, dv, c, G.St{done, bs}))
-  {Nat.add(G.Mo.p(ax, after), G.Mo.n(ax, bs)) == Nat.add(G.Mo.p(ax, bs), G.Mo.n(ax, after)) : Nat}
+  for ina: {G.Bt.has(bs, G.Ct.a(c)) == True{} : Bool}
+  for inb: {G.Bt.has(bs, G.Ct.b(c)) == True{} : Bool}
+  after = G.Rb.tree(G.Imp.one(k, dv, c, G.St{done, bs}))
+  {Nat.add(G.Mo.bp(ax, after), G.Mo.bn(ax, bs)) == Nat.add(G.Mo.bp(ax, bs), G.Mo.bn(ax, after)) : Nat}

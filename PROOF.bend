@@ -7646,7 +7646,7 @@ def rg_one(+k: P.K, +dv: P.Wv, +c: G.Ct, +st: G.St, h: {G.Ct.coulomb(k, G.Rb.don
   -> {G.Ct.coulomb(k, G.Rb.done(G.Imp.one(k, dv, c, st))) == True{} : Bool}:
   match st:
     case G.St{done, +bs}:
-      +raw = G.Imp.raw(k, dv, c, G.Bs.at(bs, G.Ct.a(c)), G.Bs.at(bs, G.Ct.b(c)))
+      +raw = G.Imp.raw(k, dv, c, G.Bt.at(bs, G.Ct.a(c)), G.Bt.at(bs, G.Ct.b(c)))
       rg_and(G.Ct.coul(k, G.Ct.safe(k, G.R2.c(raw))), G.Ct.coulomb(k, done), rg_safe(k, G.R2.c(raw)), h)
 
 def rg_pass(+k: P.K, +dv: P.Wv, cs: List<&2, G.Ct>, +st: G.St, h: {G.Ct.coulomb(k, G.Rb.done(st)) == True{} : Bool})
@@ -7673,8 +7673,8 @@ def rg_iter(n: Nat, +k: P.K, +dv: P.Wv, +st: G.St, h: {G.Ct.coulomb(k, G.Rb.done
       rg_iter(m, k, dv, G.Imp.again(k, dv, st), rg_again(k, dv, st))
 
 def Laws.rigid_coulomb(k, dv, bs, ss):
-  rg_iter(15n, k, dv, G.Imp.again(k, dv, G.St{G.Ct.all(bs, k, 0n, ss, []), G.Rb.fall(k, bs)}),
-    rg_again(k, dv, G.St{G.Ct.all(bs, k, 0n, ss, []), G.Rb.fall(k, bs)}))
+  rg_iter(15n, k, dv, G.Imp.again(k, dv, G.St{G.Ct.all(bs, k, 0n, ss, []), G.Bt.of(G.Rb.fall(k, bs))}),
+    rg_again(k, dv, G.St{G.Ct.all(bs, k, 0n, ss, []), G.Bt.of(G.Rb.fall(k, bs))}))
 
 def rg_not(a: Bool, -b: Bool, e: {a == b : Bool}) -> {Bool.not(a) == Bool.not(b) : Bool}:
   %e : {Bool.not(a) == Bool.not(_) : Bool}
@@ -7782,7 +7782,7 @@ def rg_kept2(ok: Bool, +s: Nat, +bs: List<&2, P.Body>, +ss: List<&2, P.Body>, +o
       rg_kept3(G.Rb.apart(s, bs, ss), bs, out, s, ss, {==}, start)
 
 def Laws.rigid_apart(k, dv, bs, ss, start):
-  +out = G.Rb.out(k, bs, ss, G.Imp.iter(16n, k, dv, G.St{G.Ct.all(bs, k, 0n, ss, []), G.Rb.fall(k, bs)}))
+  +out = G.Rb.out(k, bs, ss, G.Imp.iter(16n, k, dv, G.St{G.Ct.all(bs, k, 0n, ss, []), G.Bt.of(G.Rb.fall(k, bs))}))
   rg_kept2(G.Rb.apart(P.K.size(k), out, ss), P.K.size(k), bs, ss, out, {==}, start)
 
 def rg_or_r(a: Bool, -b: Bool, h: {b == True{} : Bool}) -> {Bool.or(a, b) == True{} : Bool}:
@@ -7881,7 +7881,7 @@ def rg_e_k2(ok: Bool, +k: P.K, +s: Nat, +bs: List<&2, P.Body>, +ss: List<&2, P.B
       rg_e_k3(G.Rb.apart(s, bs, ss), k, bs, deep, out, e_out)
 
 def Laws.rigid_energy(k, dv, bs, ss):
-  +st = G.Imp.iter(16n, k, dv, G.St{G.Ct.all(bs, k, 0n, ss, []), G.Rb.fall(k, bs)})
+  +st = G.Imp.iter(16n, k, dv, G.St{G.Ct.all(bs, k, 0n, ss, []), G.Bt.of(G.Rb.fall(k, bs))})
   +deep = G.Rb.deepof(P.K.size(k), st)
   +moved = G.Rb.moved(k, bs, ss, st)
   +out = G.Rb.egate(k, bs, deep, moved)
@@ -8079,15 +8079,165 @@ def rg_give_ax(ax: Nat, +bs: List<&2, P.Body>, +a: Nat, +b: Nat, +ra: P.Wv, +rb:
             G.V.at(1n+1n+o, G.B.v(G.Bs.at(bs, a))), G.V.at(1n+1n+o, j), G.V.at(1n+1n+o, dt), G.V.at(1n+1n+o, G.B.v(G.Bs.at(bs, b))),
             rg_put_sum(1n+1n+o, bs, a, xa, ha), rg_e2_of(1n+1n+o, bs, a, b, xa, xb, hab, hb))
 
-def Laws.rigid_action_reaction(k, dv, c, done, bs, ax, two, ab, ina, inb):
-  +ba = G.Bs.at(bs, G.Ct.a(c))
-  +bb = G.Bs.at(bs, G.Ct.b(c))
+# writing x at i of a tree changes its momentum by x less what was there
+def rg_tput_sum(+ax: Nat, l: Nat, t: G.Tr, +i: Nat, +h: Nat, hi: Bool, +x: P.Body, hh: {G.Tr.has(l, t, i, h, hi) == True{} : Bool})
+  -> {Nat.add(Nat.add(Nat.add(G.Mo.tp(ax, G.Tr.put(l, t, i, h, hi, x)), rg_pz(ax, G.Tr.at(l, t, i, h, hi))), G.Mo.tn(ax, t)), rg_nz(ax, x))
+      == Nat.add(Nat.add(Nat.add(G.Mo.tp(ax, t), rg_pz(ax, x)), G.Mo.tn(ax, G.Tr.put(l, t, i, h, hi, x))), rg_nz(ax, G.Tr.at(l, t, i, h, hi))) : Nat}:
+  match l t hi:
+    case 0n G.TE{} _:
+      Empty.absurd({Nat.add(Nat.add(Nat.add(0n, rg_pz(ax, G.Tr.none())), 0n), rg_nz(ax, x))
+        == Nat.add(Nat.add(Nat.add(0n, rg_pz(ax, x)), 0n), rg_nz(ax, G.Tr.none())) : Nat}, clash2(hh))
+    case 1n++k G.TE{} _:
+      Empty.absurd({Nat.add(Nat.add(Nat.add(0n, rg_pz(ax, G.Tr.none())), 0n), rg_nz(ax, x))
+        == Nat.add(Nat.add(Nat.add(0n, rg_pz(ax, x)), 0n), rg_nz(ax, G.Tr.none())) : Nat}, clash2(hh))
+    case 0n G.TL{+y} _:
+      R.eq([rg_pz(ax, x), rg_pz(ax, y), rg_nz(ax, y), rg_nz(ax, x)],
+        R.Add{R.Add{R.Add{R.V{0n}, R.V{1n}}, R.V{2n}}, R.V{3n}},
+        R.Add{R.Add{R.Add{R.V{1n}, R.V{0n}}, R.V{3n}}, R.V{2n}}, {==})
+    case 1n++k G.TL{+y} _:
+      R.eq([rg_pz(ax, x), rg_pz(ax, y), rg_nz(ax, y), rg_nz(ax, x)],
+        R.Add{R.Add{R.Add{R.V{0n}, R.V{1n}}, R.V{2n}}, R.V{3n}},
+        R.Add{R.Add{R.Add{R.V{1n}, R.V{0n}}, R.V{3n}}, R.V{2n}}, {==})
+    case 0n G.TN{a, c} _:
+      Empty.absurd({Nat.add(Nat.add(Nat.add(Nat.add(G.Mo.tp(ax, a), G.Mo.tp(ax, c)), rg_pz(ax, G.Tr.none())), Nat.add(G.Mo.tn(ax, a), G.Mo.tn(ax, c))), rg_nz(ax, x))
+        == Nat.add(Nat.add(Nat.add(Nat.add(G.Mo.tp(ax, a), G.Mo.tp(ax, c)), rg_pz(ax, x)), Nat.add(G.Mo.tn(ax, a), G.Mo.tn(ax, c))), rg_nz(ax, G.Tr.none())) : Nat}, clash2(hh))
+    case 1n++k G.TN{+a, +c} False{}:
+      +h2 = Nat.div(h, 2n)
+      +hi2 = Nat.is_le(h2, i)
+      +pc = G.Mo.tp(ax, c)
+      +nc = G.Mo.tn(ax, c)
+      +p1 = G.Mo.tp(ax, G.Tr.put(k, a, i, h2, hi2, x))
+      +q = rg_pz(ax, G.Tr.at(k, a, i, h2, hi2))
+      +n0 = G.Mo.tn(ax, a)
+      +xn = rg_nz(ax, x)
+      +p0 = G.Mo.tp(ax, a)
+      +px = rg_pz(ax, x)
+      +n1 = G.Mo.tn(ax, G.Tr.put(k, a, i, h2, hi2, x))
+      +nq = rg_nz(ax, G.Tr.at(k, a, i, h2, hi2))
+      +ihl = Nat.add(Nat.add(Nat.add(p1, q), n0), xn)
+      +ihr = Nat.add(Nat.add(Nat.add(p0, px), n1), nq)
+      Equal.trans(Nat, Nat.add(Nat.add(Nat.add(Nat.add(p1, pc), q), Nat.add(n0, nc)), xn), Nat.add(Nat.add(pc, nc), ihl),
+        Nat.add(Nat.add(Nat.add(Nat.add(p0, pc), px), Nat.add(n1, nc)), nq),
+        R.eq([pc, nc, p1, q, n0, xn, p0, px, n1, nq], R.Add{R.Add{R.Add{R.Add{R.V{2n}, R.V{0n}}, R.V{3n}}, R.Add{R.V{4n}, R.V{1n}}}, R.V{5n}},
+          R.Add{R.Add{R.V{0n}, R.V{1n}}, R.Add{R.Add{R.Add{R.V{2n}, R.V{3n}}, R.V{4n}}, R.V{5n}}}, {==}),
+        Equal.trans(Nat, Nat.add(Nat.add(pc, nc), ihl), Nat.add(Nat.add(pc, nc), ihr),
+          Nat.add(Nat.add(Nat.add(Nat.add(p0, pc), px), Nat.add(n1, nc)), nq),
+          Equal.cong(Nat, Nat, u => Nat.add(Nat.add(pc, nc), u), ihl, ihr, rg_tput_sum(ax, k, a, i, h2, hi2, x, hh)),
+          R.eq([pc, nc, p1, q, n0, xn, p0, px, n1, nq], R.Add{R.Add{R.V{0n}, R.V{1n}}, R.Add{R.Add{R.Add{R.V{6n}, R.V{7n}}, R.V{8n}}, R.V{9n}}},
+            R.Add{R.Add{R.Add{R.Add{R.V{6n}, R.V{0n}}, R.V{7n}}, R.Add{R.V{8n}, R.V{1n}}}, R.V{9n}}, {==})))
+    case 1n++k G.TN{+a, +c} True{}:
+      +h2 = Nat.div(h, 2n)
+      +i2 = Nat.sub(i, h)
+      +hi2 = Nat.is_le(h2, i2)
+      +pa = G.Mo.tp(ax, a)
+      +na = G.Mo.tn(ax, a)
+      +p1 = G.Mo.tp(ax, G.Tr.put(k, c, i2, h2, hi2, x))
+      +q = rg_pz(ax, G.Tr.at(k, c, i2, h2, hi2))
+      +n0 = G.Mo.tn(ax, c)
+      +xn = rg_nz(ax, x)
+      +p0 = G.Mo.tp(ax, c)
+      +px = rg_pz(ax, x)
+      +n1 = G.Mo.tn(ax, G.Tr.put(k, c, i2, h2, hi2, x))
+      +nq = rg_nz(ax, G.Tr.at(k, c, i2, h2, hi2))
+      +ihl = Nat.add(Nat.add(Nat.add(p1, q), n0), xn)
+      +ihr = Nat.add(Nat.add(Nat.add(p0, px), n1), nq)
+      Equal.trans(Nat, Nat.add(Nat.add(Nat.add(Nat.add(pa, p1), q), Nat.add(na, n0)), xn), Nat.add(Nat.add(pa, na), ihl),
+        Nat.add(Nat.add(Nat.add(Nat.add(pa, p0), px), Nat.add(na, n1)), nq),
+        R.eq([pa, na, p1, q, n0, xn, p0, px, n1, nq], R.Add{R.Add{R.Add{R.Add{R.V{0n}, R.V{2n}}, R.V{3n}}, R.Add{R.V{1n}, R.V{4n}}}, R.V{5n}},
+          R.Add{R.Add{R.V{0n}, R.V{1n}}, R.Add{R.Add{R.Add{R.V{2n}, R.V{3n}}, R.V{4n}}, R.V{5n}}}, {==}),
+        Equal.trans(Nat, Nat.add(Nat.add(pa, na), ihl), Nat.add(Nat.add(pa, na), ihr),
+          Nat.add(Nat.add(Nat.add(Nat.add(pa, p0), px), Nat.add(na, n1)), nq),
+          Equal.cong(Nat, Nat, u => Nat.add(Nat.add(pa, na), u), ihl, ihr, rg_tput_sum(ax, k, c, i2, h2, hi2, x, hh)),
+          R.eq([pa, na, p1, q, n0, xn, p0, px, n1, nq], R.Add{R.Add{R.V{0n}, R.V{1n}}, R.Add{R.Add{R.Add{R.V{6n}, R.V{7n}}, R.V{8n}}, R.V{9n}}},
+            R.Add{R.Add{R.Add{R.Add{R.V{0n}, R.V{6n}}, R.V{7n}}, R.Add{R.V{1n}, R.V{8n}}}, R.V{9n}}, {==})))
+
+# writing leaves every place there or not as it was
+def rg_thas_put(l: Nat, t: G.Tr, +ia: Nat, +h: Nat, hia: Bool, +x: P.Body, +ib: Nat, hib: Bool)
+  -> {G.Tr.has(l, G.Tr.put(l, t, ia, h, hia, x), ib, h, hib) == G.Tr.has(l, t, ib, h, hib) : Bool}:
+  match l t hia hib:
+    case 0n G.TE{} _ _:
+      {==}
+    case 0n G.TL{y} _ _:
+      {==}
+    case 0n G.TN{a, c} _ _:
+      {==}
+    case 1n++k G.TE{} _ _:
+      {==}
+    case 1n++k G.TL{y} _ _:
+      {==}
+    case 1n++k G.TN{a, c} False{} False{}:
+      rg_thas_put(k, a, ia, Nat.div(h, 2n), Nat.is_le(Nat.div(h, 2n), ia), x, ib, Nat.is_le(Nat.div(h, 2n), ib))
+    case 1n++k G.TN{a, c} False{} True{}:
+      {==}
+    case 1n++k G.TN{a, c} True{} False{}:
+      {==}
+    case 1n++k G.TN{a, c} True{} True{}:
+      rg_thas_put(k, c, Nat.sub(ia, h), Nat.div(h, 2n), Nat.is_le(Nat.div(h, 2n), Nat.sub(ia, h)), x, Nat.sub(ib, h),
+        Nat.is_le(Nat.div(h, 2n), Nat.sub(ib, h)))
+
+# the same for the island's tree
+def rg_bput_sum(+ax: Nat, bt: G.Bt, +i: Nat, +x: P.Body, hh: {G.Bt.has(bt, i) == True{} : Bool})
+  -> {Nat.add(Nat.add(Nat.add(G.Mo.bp(ax, G.Bt.put(bt, i, x)), rg_pz(ax, G.Bt.at(bt, i))), G.Mo.bn(ax, bt)), rg_nz(ax, x))
+      == Nat.add(Nat.add(Nat.add(G.Mo.bp(ax, bt), rg_pz(ax, x)), G.Mo.bn(ax, G.Bt.put(bt, i, x))), rg_nz(ax, G.Bt.at(bt, i))) : Nat}:
+  match bt:
+    case G.Bt{d, +h, t}:
+      rg_tput_sum(ax, d, t, i, h, Nat.is_le(h, i), x, hh)
+
+def rg_bhas_put(bt: G.Bt, +ia: Nat, +x: P.Body, +ib: Nat, hb: {G.Bt.has(bt, ib) == True{} : Bool})
+  -> {G.Bt.has(G.Bt.put(bt, ia, x), ib) == True{} : Bool}:
+  match bt:
+    case G.Bt{d, +h, t}:
+      %Equal.sym(Bool, G.Tr.has(d, G.Tr.put(d, t, ia, h, Nat.is_le(h, ia), x), ib, h, Nat.is_le(h, ib)), G.Tr.has(d, t, ib, h, Nat.is_le(h, ib)),
+        rg_thas_put(d, t, ia, h, Nat.is_le(h, ia), x, ib, Nat.is_le(h, ib))) : {_ == True{} : Bool}
+      hb
+
+# an impulse given equal and opposite on the tree: +j + dt at a, then
+# -j - dt at b as the first write left it (along each axis in turn, so
+# that the velocity's part reduces)
+def rg_tgive_ax(ax: Nat, +bs: G.Bt, +a: Nat, +b: Nat, +ra: P.Wv, +rb: P.Wv, +j: P.Wv, +dt: P.Wv,
+  ha: {G.Bt.has(bs, a) == True{} : Bool}, hb: {G.Bt.has(bs, b) == True{} : Bool})
+  -> {Nat.add(G.Mo.bp(ax, G.Bt.put(G.Bt.put(bs, a, G.B.push(G.B.push(G.Bt.at(bs, a), j, ra), dt, ra)), b,
+        G.B.pull(G.B.pull(G.Bt.at(G.Bt.put(bs, a, G.B.push(G.B.push(G.Bt.at(bs, a), j, ra), dt, ra)), b), j, rb), dt, rb))), G.Mo.bn(ax, bs))
+      == Nat.add(G.Mo.bp(ax, bs), G.Mo.bn(ax, G.Bt.put(G.Bt.put(bs, a, G.B.push(G.B.push(G.Bt.at(bs, a), j, ra), dt, ra)), b,
+        G.B.pull(G.B.pull(G.Bt.at(G.Bt.put(bs, a, G.B.push(G.B.push(G.Bt.at(bs, a), j, ra), dt, ra)), b), j, rb), dt, rb)))) : Nat}:
+  match ax:
+    case 0n:
+      +xa = G.B.push(G.B.push(G.Bt.at(bs, a), j, ra), dt, ra)
+      +l1 = G.Bt.put(bs, a, xa)
+      +xb = G.B.pull(G.B.pull(G.Bt.at(l1, b), j, rb), dt, rb)
+      +l2 = G.Bt.put(l1, b, xb)
+      rg_mo_core(G.Mo.bp(0n, bs), G.Mo.bn(0n, bs), G.Mo.bp(0n, l1), G.Mo.bn(0n, l1), G.Mo.bp(0n, l2), G.Mo.bn(0n, l2),
+        G.V.at(0n, G.B.v(G.Bt.at(bs, a))), G.V.at(0n, j), G.V.at(0n, dt), G.V.at(0n, G.B.v(G.Bt.at(l1, b))),
+        rg_bput_sum(0n, bs, a, xa, ha), rg_bput_sum(0n, l1, b, xb, rg_bhas_put(bs, a, xa, b, hb)))
+    case 1n+m:
+      match m:
+        case 0n:
+          +xa = G.B.push(G.B.push(G.Bt.at(bs, a), j, ra), dt, ra)
+          +l1 = G.Bt.put(bs, a, xa)
+          +xb = G.B.pull(G.B.pull(G.Bt.at(l1, b), j, rb), dt, rb)
+          +l2 = G.Bt.put(l1, b, xb)
+          rg_mo_core(G.Mo.bp(1n, bs), G.Mo.bn(1n, bs), G.Mo.bp(1n, l1), G.Mo.bn(1n, l1), G.Mo.bp(1n, l2), G.Mo.bn(1n, l2),
+            G.V.at(1n, G.B.v(G.Bt.at(bs, a))), G.V.at(1n, j), G.V.at(1n, dt), G.V.at(1n, G.B.v(G.Bt.at(l1, b))),
+            rg_bput_sum(1n, bs, a, xa, ha), rg_bput_sum(1n, l1, b, xb, rg_bhas_put(bs, a, xa, b, hb)))
+        case 1n++o:
+          +xa = G.B.push(G.B.push(G.Bt.at(bs, a), j, ra), dt, ra)
+          +l1 = G.Bt.put(bs, a, xa)
+          +xb = G.B.pull(G.B.pull(G.Bt.at(l1, b), j, rb), dt, rb)
+          +l2 = G.Bt.put(l1, b, xb)
+          rg_mo_core(G.Mo.bp(1n+1n+o, bs), G.Mo.bn(1n+1n+o, bs), G.Mo.bp(1n+1n+o, l1), G.Mo.bn(1n+1n+o, l1), G.Mo.bp(1n+1n+o, l2),
+            G.Mo.bn(1n+1n+o, l2), G.V.at(1n+1n+o, G.B.v(G.Bt.at(bs, a))), G.V.at(1n+1n+o, j), G.V.at(1n+1n+o, dt),
+            G.V.at(1n+1n+o, G.B.v(G.Bt.at(l1, b))),
+            rg_bput_sum(1n+1n+o, bs, a, xa, ha), rg_bput_sum(1n+1n+o, l1, b, xb, rg_bhas_put(bs, a, xa, b, hb)))
+
+def Laws.rigid_action_reaction(k, dv, c, done, bs, ax, two, ina, inb):
+  +ba = G.Bt.at(bs, G.Ct.a(c))
+  +bb = G.Bt.at(bs, G.Ct.b(c))
   +raw = G.Imp.raw(k, dv, c, ba, bb)
   +j = G.R2.j(raw)
   +dt = G.V.sub(G.Ct.jt(G.Ct.safe(k, G.R2.c(raw))), G.Ct.jt(c))
-  +pl = G.B.pull(G.B.pull(bb, j, G.Ct.rb(c)), dt, G.Ct.rb(c))
-  +pu = G.Bs.put(bs, G.Ct.a(c), G.B.push(G.B.push(ba, j, G.Ct.ra(c)), dt, G.Ct.ra(c)))
+  +pu = G.Bt.put(bs, G.Ct.a(c), G.B.push(G.B.push(ba, j, G.Ct.ra(c)), dt, G.Ct.ra(c)))
+  +pl = G.B.pull(G.B.pull(G.Bt.at(pu, G.Ct.b(c)), j, G.Ct.rb(c)), dt, G.Ct.rb(c))
   %Equal.sym(Bool, G.Ct.fl(c), False{}, two)
-    : {Nat.add(G.Mo.p(ax, G.Imp.side(_, G.Ct.b(c), pl, pu)), G.Mo.n(ax, bs))
-      == Nat.add(G.Mo.p(ax, bs), G.Mo.n(ax, G.Imp.side(_, G.Ct.b(c), pl, pu))) : Nat}
-  rg_give_ax(ax, bs, G.Ct.a(c), G.Ct.b(c), G.Ct.ra(c), G.Ct.rb(c), j, dt, ab, ina, inb)
+    : {Nat.add(G.Mo.bp(ax, G.Imp.side(_, G.Ct.b(c), pl, pu)), G.Mo.bn(ax, bs))
+      == Nat.add(G.Mo.bp(ax, bs), G.Mo.bn(ax, G.Imp.side(_, G.Ct.b(c), pl, pu))) : Nat}
+  rg_tgive_ax(ax, bs, G.Ct.a(c), G.Ct.b(c), G.Ct.ra(c), G.Ct.rb(c), j, dt, ina, inb)
