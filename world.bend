@@ -5428,12 +5428,28 @@ def W.addnew(xs: List<&2, P.Body>, +acc: List<&2, P.Body>) -> List<&2, P.Body>:
     case +c <> rest:
       W.addnew(rest, W.hadd(Bool.not(W.has(c, acc)), c, acc))
 
+# A rigid body's reach: as W.reach, with the turn it takes in a tick
+# worked out from its angular momentum (R.Mv.w, as the gate turns it).
+# The rigid body keeps L where the old one kept its turning; read as a
+# turning, L was some eight times too much, and a body hit hard enough
+# to spin near the top squared it past what a number holds and the game
+# stopped dead ("a Nat past the largest immediate").
+def W.rreach(+k: P.K, +b: P.Body) -> Nat:
+  +w = R.Mv.w(k, P.Rot.w(P.Body.rot(b)))
+  Nat.add(Nat.add(Nat.mul(2n, Nat.add(Nat.add(P.Z.mag(P.Body.vx(b)), P.Z.mag(P.Body.vy(b))), P.Z.mag(P.Body.vz(b)))),
+    Nat.add(Nat.mul(2n, Nat.add(P.K.acc(k), P.K.g(k))), 65536n)),
+    Nat.add(W.turnroom(P.Rot.still(P.Body.rot(b))), Nat.add(Nat.mul(2n, W.arc(W.turnmax(P.K.g(k), P.Body.ground(b), w))),
+      Nat.div(W.size(), 256n))))
+
+def W.raround(+k: P.K, +t: Cells, +seed: U32, +b: P.Body) -> List<&2, P.Body>:
+  W.around3(t, seed, W.rreach(k, b), P.Body.x(b), P.Body.y(b), P.Body.z(b))
+
 def W.fixed(bs: List<&2, P.Body>, +k: P.K, +t: Cells, +seed: U32, acc: List<&2, P.Body>) -> List<&2, P.Body>:
   match bs:
     case []:
       acc
     case +b <> rest:
-      W.fixed(rest, k, t, seed, W.addnew(W.around(k, t, seed, b), acc))
+      W.fixed(rest, k, t, seed, W.addnew(W.raround(k, t, seed, b), acc))
 
 # The sleepers an island woke come out of their cells, with what rests or
 # leans on them, and the island ticks again with them moving: the push
