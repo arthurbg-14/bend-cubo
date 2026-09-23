@@ -7837,7 +7837,7 @@ def rg_cut2(ok: Bool, +k: P.K, +b0s: List<&2, P.Body>, +e0: Nat, +bs: List<&2, P
     case False{}:
       hst
     case True{}:
-      +sc = G.En.scale(bs, P.Fric.floor(Nat.mul(Nat.div(Nat.mul(Nat.sub(kin, over), 65536n), P.Pick.high(kin, 1n)), 65536n), 65536n))
+      +sc = G.En.scale(bs, P.Fric.floor(Nat.mul(G.En.ratio(kin, over), 65536n), 65536n))
       rg_cut4(Nat.is_le(G.En.all(k, b0s, sc), e0), k, b0s, e0, sc, {==}, hst)
 
 def rg_gate(over: Bool, +k: P.K, +b0s: List<&2, P.Body>, +bs: List<&2, P.Body>,

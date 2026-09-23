@@ -48,11 +48,13 @@ A GPU desenha (Vulkan); o Bend simula.
 Andar acelera 20 m/s² enquanto a tecla estiver segurada, e o atrito tira
 7,8 m/s²: sobram 12,2 m/s² que não param de somar — **não há velocidade
 máxima**, e a aceleração é a mesma em qualquer velocidade (`motor_is_steady`).
-O motor solta a 15000 m/s, e isso não é física: é onde o número acaba. Um
-`Nat` em Bend vai até 2^48−1, e o quadrado da velocidade (a energia, e a raiz
-que o atrito tira) tem que caber nele, o que termina em 16384 m/s. Passar
-disso derrubava o jogo; agora o jogo só para de empurrar, como se a tecla
-tivesse sido solta, e o HUD escreve `(teto)`. Nenhuma lei mudou.
+O que acaba é o número: um `Nat` em Bend vai até 2^48−1, e cada produto do
+tick de corpo rígido (as energias, a velocidade nos contatos, o tamanho do
+atrito e do giro) tem que caber nele. Por isso um corpo anda no máximo 2^20
+por eixo (1024 m/s) e gira no máximo um quarto de volta por tick; passar disso
+derrubava o jogo (`a Nat past the largest immediate`). O motor em si só solta
+a 15000 m/s (o HUD escreve `(teto)`), aonde o corpo rígido não chega. Nenhuma
+lei mudou.
 Num trecho limpo dá 12 m/s em 1 s e 122 m/s em 10 s; no mundo de verdade os
 cubos que você encontra pelo caminho seguram você por volta de 6 m/s. Por isso
 o ponto de partida fica numa **pista reta**: 8 m de largura pelo eixo z (para
@@ -120,7 +122,12 @@ mecânica** do cubo azul em J/kg. Num pulo ela fica parada enquanto ele voa.
   ainda longe só impede que o par se feche rápido demais.
 - **Impulsos**: 16 passadas; impulso normal acumulado nunca negativo (contato
   só empurra), atrito limitado a µ vezes ele (Coulomb), igual e oposto nos
-  dois corpos, no mesmo ponto.
+  dois corpos, cada um na própria superfície (num par ainda separado, o canto
+  do outro trazido para a sua face). O atrito usa a massa efetiva na direção
+  em que o contato desliza, não a da normal: num canto sob o meio ela é até
+  cinco vezes menor, e o atrito pedia cinco vezes o que para o deslize,
+  ia e voltava crescendo, e um cubo caindo rápido girando sobre outro
+  estourava o número num tick.
 - **Movimento**: livre, a parábola exata; com contato, duas vezes a
   velocidade final. Cada pose passa pelo portão (nenhum par mais fundo que
   1/4096 do lado); recusada, tenta a pose sem o que vai para dentro dos
@@ -164,7 +171,7 @@ quaisquer constantes:
 | `rigid_apart` | **nada atravessa nada**: uma ilha que começa sem sobreposição (nenhum par, nenhum corpo fixo, nada abaixo do chão) termina o tick sem sobreposição |
 | `rigid_energy` | **a energia nunca cresce**: cinética de translação, de giro (inércia de cubo, s²/6) e potencial, somadas, no máximo o que eram, a não ser que um contato estivesse mais fundo que a pele -- separar esse par é a única coisa em que o tick pode gastar energia |
 | `rigid_no_push_off_air` | **ninguém se empurra no ar nem na parede**: fora do apoio (um contato que o toca, com a face olhando para cima, empurrando), segurar uma direção ou o pulo não muda nada |
-| `rigid_action_reaction` | **ação e reação**: cada passo do solver num contato entre dois corpos da ilha dá a eles o empurrão e o atrito iguais e opostos, no mesmo ponto: o momento da ilha em cada eixo não muda. Só o chão e os corpos fixos o mudam |
+| `rigid_action_reaction` | **ação e reação**: cada passo do solver num contato entre dois corpos da ilha dá a eles o empurrão e o atrito iguais e opostos, cada um na sua superfície: o momento da ilha em cada eixo não muda. Só o chão e os corpos fixos o mudam |
 
 Coulomb, sobreposição e energia são decisões que o código toma e checa (o
 atrito passa por `Ct.safe`, o fim da ilha por `Rb.checked`, a energia por

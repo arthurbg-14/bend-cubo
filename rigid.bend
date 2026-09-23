@@ -111,6 +111,13 @@ def V.l1(+a: P.Wv) -> Nat:
 def V.sq(+a: P.Wv) -> Nat:
   Nat.add(Nat.add(P.Z.sq(P.Wv.x(a)), P.Z.sq(P.Wv.y(a))), P.Z.sq(P.Wv.z(a)))
 
+# z (or a, part by part) held to m in size
+def R.capz(+z: P.Z, +m: Nat) -> P.Z:
+  R.pz(Nat.is_lt(m, P.Z.mag(z)), R.pz(P.Z.above(z, P.Pos{0n}), P.Pos{m}, P.Neg{m}), z)
+
+def R.capv(+v: P.Wv, +m: Nat) -> P.Wv:
+  P.Wv{R.capz(P.Wv.x(v), m), R.capz(P.Wv.y(v), m), R.capz(P.Wv.z(v), m)}
+
 # the three axes of a turned cube, one to a row, in 2^-16
 def M.r0(+m: P.Mat) -> P.Wv:
   P.Mat{+xx, +xy, +xz, yx, yy, yz, zx, zy, zz} = m
@@ -447,9 +454,10 @@ type Ep is Data:
 
 def Ct.close2(+pa: P.Wv, +u: P.Wv, +pb: P.Wv, +v: P.Wv, +h: Nat, +bb: P.Z, +s: P.Z, +best: Bool) -> Ep:
   +w = V.sub(pa, pb)
-  +t = P.Z.add(P.Z.divn(V.dot(v, w), 65536n), P.Z.divn(P.Z.mul(bb, s), 65536n))
+  +sc = Ct.clampz(s, h)
+  +t = P.Z.add(P.Z.divn(V.dot(v, w), 65536n), P.Z.divn(P.Z.mul(bb, sc), 65536n))
   Ep{Bool.or(best, Bool.and(Nat.is_lt(P.Z.mag(s), h), Nat.is_lt(P.Z.mag(t), h))),
-    V.divn(V.add(V.add(pa, V.fx(u, Ct.clampz(s, h))), V.add(pb, V.fx(v, Ct.clampz(t, h)))), 2n)}
+    V.divn(V.add(V.add(pa, V.fx(u, sc)), V.add(pb, V.fx(v, Ct.clampz(t, h)))), 2n)}
 
 # The nearest points of two edges, and whether they lie on both. Where
 # the edges tell the pair apart strictly better than any face (best), the
@@ -466,9 +474,12 @@ def Ct.close(+pa: P.Wv, +u: P.Wv, +pb: P.Wv, +v: P.Wv, +h: Nat, +best: Bool) -> 
   +den = Nat.sub(65536n, Nat.div(P.Z.sq(bb), 65536n))
   Ct.close2(pa, u, pb, v, h, bb, P.Z.divn(P.Z.sub(P.Z.mul(bb, ee), P.Z.mul(dd, P.Pos{65536n})), P.Pick.high(den, 1n)), best)
 
+# (each body pushed at its own edge: half the separation either way of
+# the midpoint, along n, which points from b to a)
 def Ct.edge2(+i: Nat, +j: Nat, +d: P.Wv, +sep: P.Z, +n: P.Wv, ep: Ep, cs: List<&2, Ct>) -> List<&2, Ct>:
   Ep{+inside, +p} = ep
-  Ct.add_if(inside, Ct{i, j, False{}, V.sub(p, d), p, n, sep, 0n, V.zero()}, cs)
+  +hs = V.fx(n, P.Z.divn(sep, 2n))
+  Ct.add_if(inside, Ct{i, j, False{}, V.sub(V.add(p, hs), d), V.sub(p, hs), n, sep, 0n, V.zero()}, cs)
 
 def Ct.edge1(+best: Bool, +i: Nat, +j: Nat, +d: P.Wv, +ea: E3, +eb: E3, +ma: P.Mat, +mb: P.Mat, +h: Nat, e: Ex, cs: List<&2, Ct>)
   -> List<&2, Ct>:
@@ -568,7 +579,10 @@ def Imp.clamp2(big: Bool, +t: P.Wv, +lim: Nat, +mag: Nat) -> P.Wv:
       +r = V.divn(V.mulz(t, P.Pos{lim}), P.Pick.high(mag, 1n))
       Imp.clamp3(Nat.is_le(V.sq(r), Nat.mul(lim, lim)), r)
 
-def Imp.clamp(+t: P.Wv, +lim: Nat) -> P.Wv:
+# (the friction asked for held to 2^23 along each axis first, so that its
+# square fits in a number)
+def Imp.clamp(+t0: P.Wv, +lim: Nat) -> P.Wv:
+  +t = R.capv(t0, 8388608n)
   +sq = V.sq(t)
   +mag = P.Fric.ceil(sq, P.Fric.floor(sq, P.Pick.high(V.l1(t), 1n)))
   Imp.clamp2(Nat.is_lt(Nat.mul(lim, lim), sq), t, lim, mag)
@@ -581,20 +595,35 @@ def Imp.side(fl: Bool, +i: Nat, +b: P.Body, +bs: List<&2, P.Body>) -> List<&2, P
       Bs.put(bs, i, b)
 
 # the friction, once the push along the normal is in
-# the most friction a contact pushing jn can give: mu jn (mu in 1/256)
+# the most friction a contact pushing jn can give: mu jn (mu in 1/256),
+# and never past 2^23, so its square fits in a number
 def Imp.lim(+k: P.K, +jn: Nat) -> Nat:
-  Nat.div(Nat.mul(R.mu(k), jn), 256n)
+  P.Pick.low(Nat.div(Nat.mul(R.mu(k), jn), 256n), 8388608n)
+
+# how much harder the contact is to push along u (any size) than a free
+# mass: Imp.keff with the turning taken along u itself, on u cut to about
+# 2^16 and scaled back by its square. The normal's own was used for the
+# friction, and at a corner under the middle it is five times smaller
+# than across: friction asked for five times what stops the sliding, the
+# contact swung back and forth, and it grew.
+def Imp.kt(+k: P.K, fl: Bool, +ra: P.Wv, +rb: P.Wv, +u: P.Wv) -> Nat:
+  +d = V.divn(V.mulz(u, P.Pos{65536n}), P.Pick.high(V.l1(u), 1n))
+  +d2 = P.Pick.high(Nat.div(V.sq(d), 65536n), 1n)
+  +s2 = P.Pick.high(Nat.div(Nat.mul(P.K.size(k), P.K.size(k)), 256n), 1n)
+  Imp.keff2(fl, Nat.div(Nat.mul(Nat.div(Nat.mul(6144n, V.sq(V.divn(V.cross(ra, d), 1048576n))), s2), 65536n), d2),
+    Nat.div(Nat.mul(Nat.div(Nat.mul(6144n, V.sq(V.divn(V.cross(rb, d), 1048576n))), s2), 65536n), d2))
 
 # the friction that would stop the sliding at the contact outright, added
 # to what it pushed so far. Along e -- the way the player drives itself,
 # on the player's own contacts -- nothing: its feet grip and push that
 # way (the motor is that push), and friction there took most of the
 # motor, and every cube stood against it.
-def Imp.tfric(+k: P.K, +e: P.Wv, +fl: Bool, +ba: P.Body, +bb: P.Body, +ra: P.Wv, +rb: P.Wv, +n: P.Wv, +jt: P.Wv, +kf: Nat) -> P.Wv:
+def Imp.tfric(+k: P.K, +e: P.Wv, +fl: Bool, +ba: P.Body, +bb: P.Body, +ra: P.Wv, +rb: P.Wv, +n: P.Wv, +jt: P.Wv) -> P.Wv:
   +u = Imp.rel(k, fl, ba, bb, ra, rb)
   +ut0 = V.sub(u, V.fx(n, P.Z.divn(V.dot(u, n), 65536n)))
-  +ut = V.sub(ut0, V.divn(V.mulz(e, V.dot(ut0, e)), P.Pick.high(V.sq(e), 1n)))
-  V.sub(jt, V.divn(V.mulz(ut, P.Pos{1024n}), kf))
+  +e1 = V.divn(V.mulz(e, P.Pos{256n}), P.Pick.high(V.l1(e), 1n))
+  +ut = V.sub(ut0, V.divn(V.mulz(e1, V.dot(ut0, e1)), P.Pick.high(V.sq(e1), 1n)))
+  V.sub(jt, V.divn(V.mulz(ut, P.Pos{1024n}), Imp.kt(k, fl, ra, rb, ut)))
 
 # a contact once its push is in, with the friction it asks for (not yet
 # given), and the bodies as the push left them
@@ -610,8 +639,8 @@ def R2.j(+r: R2) -> P.Wv:
   j
 
 def Imp.fric(+k: P.K, +e: P.Wv, +a: Nat, +b: Nat, +fl: Bool, +ra: P.Wv, +rb: P.Wv, +n: P.Wv, +gap: P.Z, +jn: Nat, +jt: P.Wv,
-  +kf: Nat, +j: P.Wv, +ba: P.Body, +bb: P.Body) -> R2:
-  R2{Ct{a, b, fl, ra, rb, n, gap, jn, Imp.clamp(Imp.tfric(k, e, fl, ba, bb, ra, rb, n, jt, kf), Imp.lim(k, jn))}, j}
+  +j: P.Wv, +ba: P.Body, +bb: P.Body) -> R2:
+  R2{Ct{a, b, fl, ra, rb, n, gap, jn, Imp.clamp(Imp.tfric(k, e, fl, ba, bb, ra, rb, n, jt), Imp.lim(k, jn))}, j}
 
 # Coulomb, for one contact: its friction is at most mu times its push
 def Ct.coul(+k: P.K, c: Ct) -> Bool:
@@ -657,7 +686,7 @@ def Ct.rb(+c: Ct) -> P.Wv:
 
 # What a solved contact gives its two bodies (ba, bb as they were): the
 # push j along the normal and the friction dt, both at once, equal and
-# opposite, at the same point (each body's arm to it). A fixed body is
+# opposite, each at its own surface (Ct.clipped). A fixed body is
 # left as it is. This is the only way the solver changes a velocity.
 def Imp.give(+c: Ct, +j: P.Wv, +dt: P.Wv, bs: List<&2, P.Body>, +ba: P.Body, +bb: P.Body) -> List<&2, P.Body>:
   Imp.side(Ct.fl(c), Ct.b(c), B.pull(B.pull(bb, j, Ct.rb(c)), dt, Ct.rb(c)),
@@ -677,16 +706,24 @@ def Sup.hi(+a: P.Z, +b: P.Z) -> P.Z:
 
 # the points of the cut outline no further from the reference face (its
 # outward normal nf, h from its middle) than the margin, as contacts:
-# with b the reference the points are from b's middle, else from a's
+# with b the reference the points are from b's middle, else from a's.
+# Each body is pushed at its own surface: the other's corner p, and for
+# the reference body that corner brought onto its face. Both at p, a pair
+# still apart pushed the reference body at a point a side and more off
+# it; friction there turned it far more than the push it was worked out
+# for, the turning came back as speed at the next contact, and a cube
+# falling fast onto another spun up without bound in one tick.
 def Ct.clipped(pts: List<&2, P.Wv>, +i: Nat, +j: Nat, +rb: Bool, +n: P.Wv, +nf: P.Wv, +d: P.Wv, +h: Nat, +mg: Nat,
   +lo: P.Z, cs: List<&2, Ct>) -> List<&2, Ct>:
   match pts:
     case []:
       cs
     case +p <> rest:
-      +gap = Sup.hi(lo, P.Z.sub(P.Z.divn(V.dot(p, nf), 65536n), P.Pos{h}))
+      +g0 = P.Z.sub(P.Z.divn(V.dot(p, nf), 65536n), P.Pos{h})
+      +gap = Sup.hi(lo, g0)
+      +f = V.sub(p, V.fx(nf, g0))
       Ct.clipped(rest, i, j, rb, n, nf, d, h, mg, lo,
-        Ct.add_if(R.zle(gap, mg), Ct{i, j, False{}, R.pv(rb, V.sub(p, d), p), R.pv(rb, p, V.add(p, d)), n, gap, 0n, V.zero()}, cs))
+        Ct.add_if(R.zle(gap, mg), Ct{i, j, False{}, R.pv(rb, V.sub(p, d), f), R.pv(rb, f, V.add(p, d)), n, gap, 0n, V.zero()}, cs))
 
 def Ct.facepair(rb: Bool, +ea: E3, +eb: E3, +i: Nat, +j: Nat, +d: P.Wv, +ma: P.Mat, +mb: P.Mat, +h: Nat, +mg: Nat,
   +n: P.Wv, +ax: Nat, +lo: P.Z, cs: List<&2, Ct>) -> List<&2, Ct>:
@@ -813,8 +850,8 @@ def Sup.nn(s: Sup) -> P.Wv:
 # 12 L 2^32 / (2 pi s^2) = 125163 L / (s^2 / 2^16), worked out on L / 16
 # so that the product stays under 2^48 (a whole word of turning)
 def Mv.w(+k: P.K, +l: P.Wv) -> P.Wv:
-  +s2 = P.Pick.high(Nat.div(Nat.mul(P.K.size(k), P.K.size(k)), 1048576n), 1n)
-  V.divn(V.mulz(V.divn(l, 16n), P.Pos{125163n}), s2)
+  +s2 = P.Pick.high(Nat.div(Nat.mul(P.K.size(k), P.K.size(k)), 67108864n), 1n)
+  V.divn(V.mulz(V.divn(l, 1024n), P.Pos{125163n}), s2)
 
 # the way to lift a body: its contacts' normals, as a direction in 2^-16
 def Mv.away(+nn: P.Wv) -> P.Wv:
@@ -862,7 +899,7 @@ def Imp.norm(+k: P.K, +e: P.Wv, +a: Nat, +b: Nat, +fl: Bool, +ra: P.Wv, +rb: P.W
   +kf = Imp.keff(k, fl, ra, rb, n)
   +jn2 = Imp.jn2(k, fl, ra, rb, n, gap, jn, kf, ba, bb)
   +j = V.fx(n, R.zd(jn2, jn))
-  Imp.fric(k, e, a, b, fl, ra, rb, n, gap, jn2, jt, kf, j, B.push(ba, j, ra), R.pb(fl, bb, B.pull(bb, j, rb)))
+  Imp.fric(k, e, a, b, fl, ra, rb, n, gap, jn2, jt, j, B.push(ba, j, ra), R.pb(fl, bb, B.pull(bb, j, rb)))
 
 # the contact solved (its push in, its friction asked for) and the push,
 # from the contact and its two bodies
@@ -1301,7 +1338,8 @@ type Hd is Data:
   Hd{pn: Bool, t: Bool, sl: Bool}
 
 def Hd.slides(+lim: Nat, +jt: P.Wv) -> Bool:
-  Bool.and(Nat.is_lt(0n, lim), Nat.is_le(Nat.mul(15n, Nat.mul(lim, lim)), Nat.mul(16n, V.sq(jt))))
+  +l2 = Nat.mul(lim, lim)
+  Bool.and(Nat.is_lt(0n, lim), Nat.is_le(Nat.sub(l2, Nat.div(l2, 16n)), V.sq(jt)))
 
 def Hd.add2(+f: P.Wv, +jn: Nat, +touching: Bool, +pushed: Bool, +slid: Bool, h: Hd) -> Hd:
   Hd{pn, t, sl} = h
@@ -1509,12 +1547,30 @@ def Mv.all2(fs: List<&2, Inf>, +k: P.K, +i: Nat, +b0s: List<&2, P.Body>, +b1s: L
     case Inf{+su, +hd, +pm} <> rest:
       Mv.all2(rest, k, Nat.add(i, 1n), b0s, b1s, Mv.again1(Hd.t(hd), k, i, b0s, b1s, cur, ss, su, hd, pm), ss)
 
+# The most a body may go and turn, along each axis: 2^20 (some 1000 m/s),
+# and 2^23 s^2 / 2^26 -- a quarter turn a tick (Mv.w), its corners at
+# some 0.65 s a tick. Every product the tick works out -- energies, the
+# speeds at the contacts, the friction's size, the size of the turn --
+# stays under the 2^48 a number holds; past it the game stopped dead ("a
+# Nat past the largest immediate"). The turn's size squares each axis cut
+# by 2^8, and more than half a turn a tick overflowed there.
+def B.cap(+k: P.K, +b: P.Body) -> P.Body:
+  +s2 = P.Pick.high(Nat.div(Nat.mul(P.K.size(k), P.K.size(k)), 67108864n), 1n)
+  B.set(b, R.capv(B.v(b), 1048576n), R.capv(B.L(b), Nat.mul(8388608n, s2)))
+
+def Rb.caps(+k: P.K, bs: List<&2, P.Body>) -> List<&2, P.Body>:
+  match bs:
+    case []:
+      []
+    case +b <> rest:
+      B.cap(k, b) <> Rb.caps(k, rest)
+
 def Rb.fall(+k: P.K, bs: List<&2, P.Body>) -> List<&2, P.Body>:
   match bs:
     case []:
       []
     case +b <> rest:
-      B.set(b, V.sub(B.v(b), P.Wv{P.Pos{0n}, P.Pos{P.K.g(k)}, P.Pos{0n}}), B.L(b)) <> Rb.fall(k, rest)
+      B.cap(k, B.set(b, V.sub(B.v(b), P.Wv{P.Pos{0n}, P.Pos{P.K.g(k)}, P.Pos{0n}}), B.L(b))) <> Rb.fall(k, rest)
 
 def Rb.done(st: St) -> List<&2, Ct>:
   St{done, bs} = st
@@ -1555,9 +1611,18 @@ type Rs is Data:
 # The energy of a body, for the gate: v^2 + 6 L^2 / s^2 + g y -- what a
 # free flight keeps exactly (the kinetic energy of its moving and of its
 # turning, and its height), counted from a height y0 so that the numbers
-# stay small; the turning is worked out on L / 256.
+# stay small. The turning is worked out on L / 256 while L is under 2^30
+# along every axis together, so its square fits in a number; past that on
+# L / s, which only drops what is under a unit anyway.
+def En.rot2(small: Bool, +s: Nat, +l: P.Wv) -> Nat:
+  match small:
+    case True{}:
+      Nat.div(Nat.mul(6n, V.sq(V.divn(l, 256n))), P.Pick.high(Nat.div(Nat.mul(s, s), 65536n), 1n))
+    case False{}:
+      Nat.mul(6n, V.sq(V.divn(l, P.Pick.high(s, 1n))))
+
 def En.rot(+s: Nat, +l: P.Wv) -> Nat:
-  Nat.div(Nat.mul(6n, V.sq(V.divn(l, 256n))), P.Pick.high(Nat.div(Nat.mul(s, s), 65536n), 1n))
+  En.rot2(Nat.is_lt(V.l1(l), 1073741824n), s, l)
 
 def En.one(+k: P.K, +y0: Nat, +b: P.Body) -> Nat:
   Nat.add(Nat.add(V.sq(B.v(b)), En.rot(P.K.size(k), B.L(b))), Nat.mul(P.K.g(k), Nat.sub(P.Body.y(b), y0)))
@@ -1589,7 +1654,7 @@ def En.scale(bs: List<&2, P.Body>, +r: Nat) -> List<&2, P.Body>:
     case []:
       []
     case +b <> rest:
-      B.set(b, V.divn(V.mulz(B.v(b), P.Pos{r}), 65536n), V.divn(V.mulz(B.L(b), P.Pos{r}), 65536n)) <> En.scale(rest, r)
+      B.set(b, V.divn(V.mulz(B.v(b), P.Pos{r}), 65536n), V.divn(V.mulz(V.divn(B.L(b), 256n), P.Pos{r}), 256n)) <> En.scale(rest, r)
 
 def En.still(bs: List<&2, P.Body>) -> List<&2, P.Body>:
   match bs:
@@ -1608,6 +1673,24 @@ def En.cut4(ok: Bool, +b0s: List<&2, P.Body>, +bs: List<&2, P.Body>) -> List<&2,
 def En.cut3(+k: P.K, +b0s: List<&2, P.Body>, +e0: Nat, +bs: List<&2, P.Body>) -> List<&2, P.Body>:
   En.cut4(Nat.is_le(En.all(k, b0s, bs), e0), b0s, bs)
 
+# (K - excess) / K in 2^-16: worked out on (K - excess) 2^16 while that
+# fits in a number (K under 2^32), else on K / 2^16, which then keeps
+# sixteen bits. Worked out on K / 2^16 alone, a K under 2^16 -- anything
+# moving slower than a quarter of a metre a second -- lost its fraction,
+# and the least excess from rounding took a third of its speed: the player
+# turned a little could not get going on open ground.
+def En.ratio2(small: Bool, +kin: Nat, +over: Nat) -> Nat:
+  match small:
+    case True{}:
+      P.Pick.low(Nat.div(Nat.mul(Nat.sub(kin, over), 65536n), P.Pick.high(kin, 1n)), 65536n)
+    case False{}:
+      P.Pick.low(Nat.div(Nat.sub(kin, over), P.Pick.high(Nat.div(kin, 65536n), 1n)), 65536n)
+
+# (K under 2^32 asked as K / 2^16 / 2^16 = 0: the checker, asked it on a K
+# it does not know, spelled 2^32 out one by one and ran out of stack)
+def En.ratio(+kin: Nat, +over: Nat) -> Nat:
+  En.ratio2(Nat.is_eq(Nat.div(Nat.div(kin, 65536n), 65536n), 0n), kin, over)
+
 # The energy gate. A tick of an island, with no one driving it, never
 # ends with more energy than it began with. Whatever the impulses, the
 # lifts off the edges and the rounding of the turns gave, the excess is
@@ -1623,8 +1706,7 @@ def En.cut2(ok: Bool, +k: P.K, +b0s: List<&2, P.Body>, +e0: Nat, +bs: List<&2, P
     case False{}:
       En.still(b0s)
     case True{}:
-      En.cut3(k, b0s, e0, En.scale(bs, P.Fric.floor(Nat.mul(Nat.div(Nat.mul(Nat.sub(kin, over), 65536n), P.Pick.high(kin, 1n)), 65536n),
-        65536n)))
+      En.cut3(k, b0s, e0, En.scale(bs, P.Fric.floor(Nat.mul(En.ratio(kin, over), 65536n), 65536n)))
 
 def En.gate(over: Bool, +k: P.K, +b0s: List<&2, P.Body>, +e0: Nat, +e1: Nat, +bs: List<&2, P.Body>) -> List<&2, P.Body>:
   match over:
@@ -1648,7 +1730,8 @@ def Rb.deep(+s: Nat, cs: List<&2, Ct>) -> Bool:
 def Rb.moved(+k: P.K, +bs: List<&2, P.Body>, +ss: List<&2, P.Body>, st: St) -> List<&2, P.Body>:
   St{+done, +bs1} = st
   +fs = Mv.infs(List.length(&2, P.Body, bs), k, 0n, bs, done)
-  Mv.all2(fs, k, 0n, bs, bs1, Mv.all(fs, k, 0n, bs, bs1, ss), ss)
+  +b1s = Rb.caps(k, bs1)
+  Mv.all2(fs, k, 0n, bs, b1s, Mv.all(fs, k, 0n, bs, b1s, ss), ss)
 
 # was some contact of the tick deeper than the skin?
 def Rb.deepof(+s: Nat, st: St) -> Bool:
