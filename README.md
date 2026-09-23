@@ -131,8 +131,10 @@ mecânica** do cubo azul em J/kg. Num pulo ela fica parada enquanto ele voa.
   estourava o número num tick.
 - **Movimento**: livre, a parábola exata; com contato, duas vezes a
   velocidade final. Cada pose passa pelo portão (nenhum par mais fundo que
-  1/4096 do lado); recusada, tenta a pose sem o que vai para dentro dos
-  contatos, depois sem o giro, depois frações; um corpo em que só cabe um
+  1/4096 do lado, girado ou não); recusada, tenta a pose sem o que vai
+  para dentro dos contatos (primeiro dos de lado, depois dos que apoiam:
+  somados, chão e parede viravam uma rampa a 45°), depois sem o giro,
+  depois frações; um corpo em que só cabe um
   oitavo do movimento parou no que o segura.
 - **Empurrar**: o motor é o pé do jogador empurrando o chão, então o atrito
   do jogador não briga com ele na direção em que ele anda (só no

@@ -693,10 +693,10 @@ def Imp.give(+c: Ct, +j: P.Wv, +dt: P.Wv, bs: List<&2, P.Body>, +ba: P.Body, +bb
     Bs.put(bs, Ct.a(c), B.push(B.push(ba, j, Ct.ra(c)), dt, Ct.ra(c))))
 
 type Sup is Data:
-  Sup{touched: Bool, nn: P.Wv, n: Nat, lx: P.Z, hx: P.Z, lz: P.Z, hz: P.Z, dg: P.Z, dn: P.Wv, pj: Nat, pr: P.Wv}
+  Sup{touched: Bool, nn: P.Wv, n: Nat, lx: P.Z, hx: P.Z, lz: P.Z, hz: P.Z, dg: P.Z, dn: P.Wv, pj: Nat, pr: P.Wv, ns: P.Wv}
 
 def Sup.none() -> Sup:
-  Sup{False{}, V.zero(), 0n, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, P.Pos{1073741824n}, V.zero(), 0n, V.zero()}
+  Sup{False{}, V.zero(), 0n, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, P.Pos{1073741824n}, V.zero(), 0n, V.zero(), V.zero()}
 
 def Sup.lo(+a: P.Z, +b: P.Z) -> P.Z:
   R.pz(P.Z.above(a, b), b, a)
@@ -748,31 +748,31 @@ def Ct.pairf(+ea: E3, +eb: E3, +i: Nat, +j: Nat, +d: P.Wv, +ma: P.Mat, +mb: P.Ma
 # point widens the reach of the contacts around the middle; one pushing
 # up from below counts as a support (any slant: a cube wedged between two
 # at a slant is held by them, and must be able to rest).
-def Sup.add3(up: Bool, +f: P.Wv, +r: P.Wv, s: Sup) -> Sup:
-  Sup{t, +nn, +n, +lx, +hx, +lz, +hz, dg, dn, pj, pr} = s
+def Sup.add3(+up: Bool, +f: P.Wv, +r: P.Wv, s: Sup) -> Sup:
+  Sup{t, +nn, +n, +lx, +hx, +lz, +hz, dg, dn, pj, pr, +ns} = s
   +x = P.Wv.x(r)
   +z = P.Wv.z(r)
   +first = Bool.not(t)
   Sup{True{}, V.add(nn, f), P.Pick.n(up, Nat.add(n, 1n), n), R.pz(first, x, Sup.lo(lx, x)), R.pz(first, x, Sup.hi(hx, x)),
-    R.pz(first, z, Sup.lo(lz, z)), R.pz(first, z, Sup.hi(hz, z)), dg, dn, pj, pr}
+    R.pz(first, z, Sup.lo(lz, z)), R.pz(first, z, Sup.hi(hz, z)), dg, dn, pj, pr, R.pv(up, ns, V.add(ns, f))}
 
 def Sup.add2(pushed: Bool, +f: P.Wv, +r: P.Wv, s: Sup) -> Sup:
   match pushed:
     case False{}:
-      Sup{t, +nn, n, lx, hx, lz, hz, dg, dn, pj, pr} = s
-      Sup{t, V.add(nn, f), n, lx, hx, lz, hz, dg, dn, pj, pr}
+      Sup{t, +nn, n, lx, hx, lz, hz, dg, dn, pj, pr, +ns} = s
+      Sup{t, V.add(nn, f), n, lx, hx, lz, hz, dg, dn, pj, pr, R.pv(P.Z.above(P.Wv.y(f), P.Pos{0n}), ns, V.add(ns, f))}
     case True{}:
       Sup.add3(P.Z.above(P.Wv.y(f), P.Pos{0n}), f, r, s)
 
 # the contact the body is deepest into (or nearest): the way out of it
 def Sup.deep(+gap: P.Z, +f: P.Wv, s: Sup) -> Sup:
-  Sup{t, nn, n, lx, hx, lz, hz, +dg, +dn, pj, pr} = s
-  Sup{t, nn, n, lx, hx, lz, hz, R.pz(P.Z.above(dg, gap), gap, dg), R.pv(P.Z.above(dg, gap), f, dn), pj, pr}
+  Sup{t, nn, n, lx, hx, lz, hz, +dg, +dn, pj, pr, ns} = s
+  Sup{t, nn, n, lx, hx, lz, hz, R.pz(P.Z.above(dg, gap), gap, dg), R.pv(P.Z.above(dg, gap), f, dn), pj, pr, ns}
 
 # the contact that carries the most is what the body turns about
 def Sup.piv(+jn: Nat, +r: P.Wv, s: Sup) -> Sup:
-  Sup{t, nn, n, lx, hx, lz, hz, dg, dn, +pj, +pr} = s
-  Sup{t, nn, n, lx, hx, lz, hz, dg, dn, P.Pick.n(Nat.is_lt(pj, jn), jn, pj), R.pv(Nat.is_lt(pj, jn), r, pr)}
+  Sup{t, nn, n, lx, hx, lz, hz, dg, dn, +pj, +pr, ns} = s
+  Sup{t, nn, n, lx, hx, lz, hz, dg, dn, P.Pick.n(Nat.is_lt(pj, jn), jn, pj), R.pv(Nat.is_lt(pj, jn), r, pr), ns}
 
 def Sup.add0(mine: Bool, +pushed: Bool, +f: P.Wv, +r: P.Wv, +gap: P.Z, +jn: Nat, s: Sup) -> Sup:
   match mine:
@@ -782,15 +782,20 @@ def Sup.add0(mine: Bool, +pushed: Bool, +f: P.Wv, +r: P.Wv, +gap: P.Z, +jn: Nat,
       Sup.piv(jn, r, Sup.deep(gap, f, Sup.add2(pushed, f, r, s)))
 
 def Sup.pr(s: Sup) -> P.Wv:
-  Sup{t, nn, n, lx, hx, lz, hz, dg, dn, pj, pr} = s
+  Sup{t, nn, n, lx, hx, lz, hz, dg, dn, pj, pr, ns} = s
   pr
 
+# what touches it and does not hold it up: walls, what lies on it
+def Sup.ns(s: Sup) -> P.Wv:
+  Sup{t, nn, n, lx, hx, lz, hz, dg, dn, pj, pr, ns} = s
+  ns
+
 def Sup.pivots(s: Sup) -> Bool:
-  Sup{t, nn, n, lx, hx, lz, hz, dg, dn, pj, pr} = s
+  Sup{t, nn, n, lx, hx, lz, hz, dg, dn, pj, pr, ns} = s
   Nat.is_lt(0n, pj)
 
 def Sup.dn(s: Sup) -> P.Wv:
-  Sup{t, nn, n, lx, hx, lz, hz, dg, dn, pj, pr} = s
+  Sup{t, nn, n, lx, hx, lz, hz, dg, dn, pj, pr, ns} = s
   dn
 
 # nn counts every contact of the body, pushed or not: a body touching a
@@ -814,20 +819,20 @@ def Sup.of(+sk: P.Z, +i: Nat, cs: List<&2, Ct>, s: Sup) -> Sup:
 
 # is the middle over the support: 0 inside [lx, hx] and [lz, hz]?
 def Sup.balanced(s: Sup) -> Bool:
-  Sup{t, nn, +n, lx, hx, lz, hz, dg, dn, pj, pr} = s
+  Sup{t, nn, +n, lx, hx, lz, hz, dg, dn, pj, pr, ns} = s
   Bool.and(Nat.is_lt(0n, n), Bool.and(Bool.and(R.zle(lx, 0n), Bool.not(P.Z.above(P.Pos{0n}, hx))),
     Bool.and(R.zle(lz, 0n), Bool.not(P.Z.above(P.Pos{0n}, hz)))))
 
 def Sup.touched(s: Sup) -> Bool:
-  Sup{t, nn, n, lx, hx, lz, hz, dg, dn, pj, pr} = s
+  Sup{t, nn, n, lx, hx, lz, hz, dg, dn, pj, pr, ns} = s
   t
 
 def Sup.held(s: Sup) -> Bool:
-  Sup{t, nn, n, lx, hx, lz, hz, dg, dn, pj, pr} = s
+  Sup{t, nn, n, lx, hx, lz, hz, dg, dn, pj, pr, ns} = s
   Nat.is_lt(0n, n)
 
 def Sup.nn(s: Sup) -> P.Wv:
-  Sup{t, nn, n, lx, hx, lz, hz, dg, dn, pj, pr} = s
+  Sup{t, nn, n, lx, hx, lz, hz, dg, dn, pj, pr, ns} = s
   nn
 
 # Moving
@@ -1042,7 +1047,7 @@ def R.gap(+s: Nat, +a: P.Body, +b: P.Body) -> P.Z:
 def R.hits2(flat: Bool, +s: Nat, +p: P.Body, +o: P.Body) -> Bool:
   match flat:
     case True{}:
-      P.Geo.hits(s, P.Body.x(p), P.Body.y(p), P.Body.z(p), B.q(p), o)
+      P.Geo.hits(Nat.sub(s, R.slop(s)), P.Body.x(p), P.Body.y(p), P.Body.z(p), B.q(p), o)
     case False{}:
       P.Z.above(P.Neg{R.slop(s)}, R.gap(s, p, o))
 
@@ -1051,8 +1056,13 @@ def R.hits2(flat: Bool, +s: Nat, +p: P.Body, +o: P.Body) -> Bool:
 def R.bare(+b: P.Body) -> P.Body:
   P.Body{P.Body.x(b), P.Body.y(b), P.Body.z(b), P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, False{}, False{}, P.Rot{B.q(b), V.zero()}}
 
-# a body at p against one other: overlapping? Two cubes square with the
-# world are two boxes, and that is asked exactly. Two cubes whose middles
+# a body at p against one other: overlapping -- further into each other
+# than the slop, turned or not? Two cubes square with the world are two
+# boxes, asked along the three axes. Asked there to the unit, a player
+# that met a cube and moved on with it came a few units nearer than the
+# cube went (the impulses are right to a few units, which is what the
+# slop is for), every move of its was refused, it stopped dead and its
+# half of the push was gone. Two cubes whose middles
 # are 2 s apart along some axis cannot overlap (a cube reaches
 # s sqrt(3) / 2 from its middle): the fifteen directions are only worked
 # out for the ones nearer than that.
@@ -1115,19 +1125,40 @@ def R.turn2(still: Bool, +q: P.Quat, +w: P.Wv) -> P.Quat:
 def R.turn(+q: P.Quat, +w: P.Wv) -> P.Quat:
   R.turn2(P.Wv.null(w), q, w)
 
-# What goes with a body's move: u, the way to slide it off what it
-# touches; du, the way out of the contact it is deepest in; pr, the arm
-# of the contact it turns about (the one that carries the most), if piv.
+def R.zeq(+a: P.Z, +b: P.Z) -> Bool:
+  Bool.and(Nat.is_eq(P.Z.pos(a), P.Z.pos(b)), Nat.is_eq(P.Z.neg(a), P.Z.neg(b)))
+
+def R.qeq(+a: P.Quat, +b: P.Quat) -> Bool:
+  Bool.and(Bool.and(R.zeq(P.Quat.a(a), P.Quat.a(b)), R.zeq(P.Quat.b(a), P.Quat.b(b))),
+    Bool.and(R.zeq(P.Quat.c(a), P.Quat.c(b)), R.zeq(P.Quat.d(a), P.Quat.d(b))))
+
+# What goes with a body's move: u, the way to slide it off what holds it
+# up; du, the way out of the contact it is deepest in; pr, the arm of the
+# contact it turns about (the one that carries the most), if piv; us, the
+# way to slide it off what touches it and does not hold it up.
 type Mc is Data:
-  Mc{u: P.Wv, du: P.Wv, pr: P.Wv, piv: Bool}
+  Mc{u: P.Wv, du: P.Wv, pr: P.Wv, piv: Bool, us: P.Wv}
 
 def Mc.u(+m: Mc) -> P.Wv:
-  Mc{u, du, pr, piv} = m
+  Mc{u, du, pr, piv, us} = m
   u
 
+def Mc.us(+m: Mc) -> P.Wv:
+  Mc{u, du, pr, piv, us} = m
+  us
+
 def Mc.du(+m: Mc) -> P.Wv:
-  Mc{u, du, pr, piv} = m
+  Mc{u, du, pr, piv, us} = m
   du
+
+# The move slid off what it touches, one kind of contact at a time: off
+# what stands beside it or lies on it, then off what holds it up. The
+# two summed into one direction made the floor and a cube in front of it
+# a slope at 45 degrees: a body driven into a cube it met on the ground
+# was slid up that slope, half its speed went into a jump, and the cube
+# got the rest.
+def Mv.slides(+d: P.Wv, +mc: Mc) -> P.Wv:
+  Mv.slide(Mv.slide(d, Mc.us(mc)), Mc.u(mc))
 
 # A body held somewhere turns about that point, not about its middle.
 # Moving the middle by twice its velocity and turning about the middle is
@@ -1152,13 +1183,16 @@ def Mv.corr(+k: P.K, +r: P.Wv, +l: P.Wv, +q0: P.Quat, +q1: P.Quat) -> P.Wv:
   V.sub(V.add(Mv.arm(m0, m0, r), V.add(wr, wr)), Mv.arm(m0, P.Rot.mat(q1), r))
 
 # the pose after moving d and turning by w, each cut by 2^c, about the
-# pivot if there is one
+# pivot if there is one and the turn is one: a turn too small to change
+# the orientation at all still moved the middle by what the pivot's arm
+# would have swept, the whole body went that much into what the pivot
+# pressed on, and the gate refused the move
 def Mv.pose(+k: P.K, +b: P.Body, +d: P.Wv, +w: P.Wv, +c: Nat, +mc: Mc) -> P.Body:
-  Mc{u, du, +pr, +piv} = mc
+  Mc{u, du, +pr, +piv, us} = mc
   +f = Nat.pow(2n, c)
   +wc = V.divn(w, f)
   +q1 = R.turn(B.q(b), wc)
-  +dc = V.add(V.divn(d, f), R.pv(piv, Mv.corr(k, pr, V.divn(B.L(b), f), B.q(b), q1), V.zero()))
+  +dc = V.add(V.divn(d, f), R.pv(Bool.and(piv, Bool.not(R.qeq(q1, B.q(b)))), Mv.corr(k, pr, V.divn(B.L(b), f), B.q(b), q1), V.zero()))
   P.Body{P.Z.shift(P.Body.x(b), P.Wv.x(dc)), P.Z.shift(P.Body.y(b), P.Wv.y(dc)),
     P.Z.shift(P.Body.z(b), P.Wv.z(dc)), P.Body.vx(b), P.Body.vy(b), P.Body.vz(b), P.Body.ground(b),
     P.Body.hit(b), P.Rot{q1, B.L(b)}}
@@ -1166,7 +1200,7 @@ def Mv.pose(+k: P.K, +b: P.Body, +d: P.Wv, +w: P.Wv, +c: Nat, +mc: Mc) -> P.Body
 # the i-th pose tried: the whole move; slid off the contacts; then that
 # cut by 2, 4, ...
 def Mv.cand(+i: Nat, +k: P.K, +b: P.Body, +d: P.Wv, +w: P.Wv, +mc: Mc) -> P.Body:
-  Mv.pose(k, b, R.pv(Nat.is_eq(i, 0n), d, Mv.slide(d, Mc.u(mc))), w, Nat.sub(i, 1n), mc)
+  Mv.pose(k, b, R.pv(Nat.is_eq(i, 0n), d, Mv.slides(d, mc)), w, Nat.sub(i, 1n), mc)
 
 def Mv.stay(+b: P.Body) -> P.Body:
   P.Body{P.Body.x(b), P.Body.y(b), P.Body.z(b), P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, P.Body.ground(b), True{},
@@ -1204,17 +1238,17 @@ def Mv.flee(n: Nat, ok: Bool, +k: P.K, +b: P.Body, +u: P.Wv, +a: Nat, +obs: List
 # its move or less fits (i from 4) ran into what stops it, and stops: a
 # cube wedged at a slant kept a sliver of its velocity every tick, never
 # at rest, and the heap it was in never slept.
-def Mv.keep(+i: Nat, +p: P.Body, +u: P.Wv) -> P.Body:
+def Mv.keep(+i: Nat, +p: P.Body, +mc: Mc) -> P.Body:
   +f = Nat.pow(2n, Nat.sub(i, 1n))
   +stop = Nat.is_le(4n, i)
-  +v = R.pv(Nat.is_eq(i, 0n), B.v(p), R.pv(stop, V.zero(), V.divn(Mv.slide(B.v(p), u), f)))
+  +v = R.pv(Nat.is_eq(i, 0n), B.v(p), R.pv(stop, V.zero(), V.divn(Mv.slides(B.v(p), mc), f)))
   B.set(p, v, R.pv(stop, V.zero(), R.pv(Nat.is_lt(i, 2n), B.L(p), V.divn(B.L(p), f))))
 
 def Mv.try(n: Nat, ok: Bool, +i: Nat, +k: P.K, +b: P.Body, +d: P.Wv, +w: P.Wv, +mc: Mc, +obs: List<&2, P.Body>,
   +p: P.Body) -> P.Body:
   match n ok:
     case _ True{}:
-      Mv.keep(i, p, Mc.u(mc))
+      Mv.keep(i, p, mc)
     case 0n False{}:
       Mv.flee(3n, Mv.ok(k, Mv.off(b, Mc.du(mc), 16n), obs), k, b, Mc.du(mc), 16n, obs)
     case 1n+m False{}:
@@ -1249,7 +1283,7 @@ def Mv.flags(+b: P.Body, +gr: Bool, +hit: Bool) -> P.Body:
 def Mv.flat3(ok: Bool, +k: P.K, +b1: P.Body, +d: P.Wv, +w: P.Wv, +mc: Mc, +obs: List<&2, P.Body>, +p: P.Body) -> P.Body:
   match ok:
     case True{}:
-      B.set(p, Mv.slide(B.v(p), Mc.u(mc)), V.zero())
+      B.set(p, Mv.slides(B.v(p), mc), V.zero())
     case False{}:
       Mv.try(6n, Mv.ok(k, Mv.cand(2n, k, b1, d, w, mc), obs), 2n, k, b1, d, w, mc, obs, Mv.cand(2n, k, b1, d, w, mc))
 
@@ -1257,14 +1291,15 @@ def Mv.flat2(+k: P.K, +b1: P.Body, +d: P.Wv, +w: P.Wv, +mc: Mc, +obs: List<&2, P
   Mv.flat3(Mv.ok(k, p, obs), k, b1, d, w, mc, obs, p)
 
 def Mv.flat(+k: P.K, +b1: P.Body, +d: P.Wv, +w: P.Wv, +mc: Mc, +obs: List<&2, P.Body>) -> P.Body:
-  Mc{+u, du, pr, piv} = mc
-  Mv.flat2(k, b1, d, w, Mc{u, du, pr, piv}, obs, Mv.pose(k, b1, Mv.slide(d, u), V.zero(), 0n, Mc{u, du, pr, False{}}))
+  Mc{+u, +du, +pr, piv, +us} = mc
+  Mv.flat2(k, b1, d, w, Mc{u, du, pr, piv, us}, obs,
+    Mv.pose(k, b1, Mv.slides(d, Mc{u, du, pr, False{}, us}), V.zero(), 0n, Mc{u, du, pr, False{}, us}))
 
 def Mv.go3(n: Nat, ok: Bool, +k: P.K, +b1: P.Body, +d: P.Wv, +w: P.Wv, +mc: Mc, +obs: List<&2, P.Body>, +i: Nat, +p: P.Body)
   -> P.Body:
   match n ok:
     case _ True{}:
-      Mv.keep(i, p, Mc.u(mc))
+      Mv.keep(i, p, mc)
     case 0n False{}:
       Mv.flat(k, b1, d, w, mc, obs)
     case 1n+m False{}:
@@ -1412,7 +1447,7 @@ def Mv.rests(+k: P.K, +b0: P.Body, +b1: P.Body, +su: Sup, +hd: Hd, +pm: Bool) ->
 def Mv.one(+k: P.K, +b0: P.Body, +b1: P.Body, +obs: List<&2, P.Body>, +su: Sup, +hd: Hd, +pm: Bool) -> P.Body:
   Mv.flags(Mv.go(Mv.rests(k, b0, b1, su, hd, pm), k, b0, b1,
     Mv.apart(P.K.size(k), b1, obs),
-    Bool.not(Hd.t(hd)), Mc{Mv.away(Sup.nn(su)), Sup.dn(su), Sup.pr(su), Sup.pivots(su)}), Hd.held(hd), Hd.t(hd))
+    Bool.not(Hd.t(hd)), Mc{Mv.away(V.sub(Sup.nn(su), Sup.ns(su))), Sup.dn(su), Sup.pr(su), Sup.pivots(su), Mv.away(Sup.ns(su))}), Hd.held(hd), Hd.t(hd))
 
 def Mv.pm1(mine: Bool, +k: P.K, +p: Nat, +b0s: List<&2, P.Body>) -> Bool:
   match mine:
@@ -1474,33 +1509,26 @@ def Mv.all(fs: List<&2, Inf>, +k: P.K, +i: Nat, +b0s: List<&2, P.Body>, +cur: Li
 # them, but what it began inside where that began: left out by where the
 # other is now, one that had moved into where this one started was left
 # out, and the two ended inside each other.
-def R.zeq(+a: P.Z, +b: P.Z) -> Bool:
-  Bool.and(Nat.is_eq(P.Z.pos(a), P.Z.pos(b)), Nat.is_eq(P.Z.neg(a), P.Z.neg(b)))
-
-def R.qeq(+a: P.Quat, +b: P.Quat) -> Bool:
-  Bool.and(Bool.and(R.zeq(P.Quat.a(a), P.Quat.a(b)), R.zeq(P.Quat.b(a), P.Quat.b(b))),
-    Bool.and(R.zeq(P.Quat.c(a), P.Quat.c(b)), R.zeq(P.Quat.d(a), P.Quat.d(b))))
-
 def R.samep(+a: P.Body, +b: P.Body) -> Bool:
   Bool.and(Bool.and(Nat.is_eq(P.Body.x(a), P.Body.x(b)), Nat.is_eq(P.Body.y(a), P.Body.y(b))),
     Bool.and(Nat.is_eq(P.Body.z(a), P.Body.z(b)), R.qeq(B.q(a), B.q(b))))
 
-def Mv.retry3(ok: Bool, +k: P.K, +c0: P.Body, +cur: P.Body, +u: P.Wv, +hd: Hd) -> P.Body:
+def Mv.retry3(ok: Bool, +k: P.K, +c0: P.Body, +cur: P.Body, +mc: Mc, +hd: Hd) -> P.Body:
   match ok:
     case True{}:
-      Mv.flags(Mv.keep(0n, c0, u), Hd.held(hd), Hd.t(hd))
+      Mv.flags(Mv.keep(0n, c0, mc), Hd.held(hd), Hd.t(hd))
     case False{}:
       cur
 
-def Mv.retry2(same: Bool, +k: P.K, +c0: P.Body, +cur: P.Body, +obs: List<&2, P.Body>, +u: P.Wv, +hd: Hd) -> P.Body:
+def Mv.retry2(same: Bool, +k: P.K, +c0: P.Body, +cur: P.Body, +obs: List<&2, P.Body>, +mc: Mc, +hd: Hd) -> P.Body:
   match same:
     case True{}:
       cur
     case False{}:
-      Mv.retry3(Mv.ok(k, c0, obs), k, c0, cur, u, hd)
+      Mv.retry3(Mv.ok(k, c0, obs), k, c0, cur, mc, hd)
 
 def Mv.mcof(+su: Sup) -> Mc:
-  Mc{Mv.away(Sup.nn(su)), Sup.dn(su), Sup.pr(su), Sup.pivots(su)}
+  Mc{Mv.away(V.sub(Sup.nn(su), Sup.ns(su))), Sup.dn(su), Sup.pr(su), Sup.pivots(su), Mv.away(Sup.ns(su))}
 
 def Mv.retry1(still: Bool, +k: P.K, +b0: P.Body, +b1: P.Body, +cur: P.Body, +obs: List<&2, P.Body>, +su: Sup, +hd: Hd) -> P.Body:
   match still:
@@ -1510,7 +1538,7 @@ def Mv.retry1(still: Bool, +k: P.K, +b0: P.Body, +b1: P.Body, +cur: P.Body, +obs
       +mc = Mv.mcof(su)
       +d = R.pv(Bool.not(Hd.t(hd)), V.add(B.v(b0), B.v(b1)), V.add(B.v(b1), B.v(b1)))
       +c0 = Mv.cand(0n, k, b1, d, Mv.w(k, B.L(b1)), mc)
-      Mv.retry2(R.samep(c0, cur), k, c0, cur, obs, Mc.u(mc), hd)
+      Mv.retry2(R.samep(c0, cur), k, c0, cur, obs, mc, hd)
 
 # the obstacles as they are now (curs), less those the body began inside
 # where they began (starts, in step with curs)
@@ -1613,13 +1641,20 @@ type Rs is Data:
 # turning, and its height), counted from a height y0 so that the numbers
 # stay small. The turning is worked out on L / 256 while L is under 2^30
 # along every axis together, so its square fits in a number; past that on
-# L / s, which only drops what is under a unit anyway.
+# L / s rounded up, part by part -- never under what the finer count
+# gives, so a turning the gate cuts back under 2^30 is never counted as
+# more than before.
+def En.up(+z: P.Z, +s: Nat) -> Nat:
+  +q = Nat.div(Nat.add(P.Z.mag(z), Nat.sub(s, 1n)), s)
+  Nat.mul(q, q)
+
 def En.rot2(small: Bool, +s: Nat, +l: P.Wv) -> Nat:
   match small:
     case True{}:
       Nat.div(Nat.mul(6n, V.sq(V.divn(l, 256n))), P.Pick.high(Nat.div(Nat.mul(s, s), 65536n), 1n))
     case False{}:
-      Nat.mul(6n, V.sq(V.divn(l, P.Pick.high(s, 1n))))
+      +d = P.Pick.high(s, 1n)
+      Nat.mul(6n, Nat.add(Nat.add(En.up(P.Wv.x(l), d), En.up(P.Wv.y(l), d)), En.up(P.Wv.z(l), d)))
 
 def En.rot(+s: Nat, +l: P.Wv) -> Nat:
   En.rot2(Nat.is_lt(V.l1(l), 1073741824n), s, l)
@@ -1673,18 +1708,21 @@ def En.cut4(ok: Bool, +b0s: List<&2, P.Body>, +bs: List<&2, P.Body>) -> List<&2,
 def En.cut3(+k: P.K, +b0s: List<&2, P.Body>, +e0: Nat, +bs: List<&2, P.Body>) -> List<&2, P.Body>:
   En.cut4(Nat.is_le(En.all(k, b0s, bs), e0), b0s, bs)
 
-# (K - excess) / K in 2^-16: worked out on (K - excess) 2^16 while that
-# fits in a number (K under 2^32), else on K / 2^16, which then keeps
-# sixteen bits. Worked out on K / 2^16 alone, a K under 2^16 -- anything
-# moving slower than a quarter of a metre a second -- lost its fraction,
-# and the least excess from rounding took a third of its speed: the player
-# turned a little could not get going on open ground.
+# (K - excess) / K in 2^-16, rounded down: worked out on (K - excess) 2^16
+# while that fits in a number (K under 2^32), else over K / 2^16 rounded
+# up, which then keeps sixteen bits. Worked out on K / 2^16 alone, a K
+# under 2^16 -- anything moving slower than a quarter of a metre a second
+# -- lost its fraction, and the least excess from rounding took a third of
+# its speed: the player turned a little could not get going on open
+# ground. And K / 2^16 rounded down made the fraction come out whole past
+# 2^32 (some 64 m/s): nothing was taken, the energy still grew, and the
+# gate stopped the player dead every time it got that fast.
 def En.ratio2(small: Bool, +kin: Nat, +over: Nat) -> Nat:
   match small:
     case True{}:
       P.Pick.low(Nat.div(Nat.mul(Nat.sub(kin, over), 65536n), P.Pick.high(kin, 1n)), 65536n)
     case False{}:
-      P.Pick.low(Nat.div(Nat.sub(kin, over), P.Pick.high(Nat.div(kin, 65536n), 1n)), 65536n)
+      P.Pick.low(Nat.div(Nat.sub(kin, over), Nat.add(Nat.div(kin, 65536n), 1n)), 65536n)
 
 # (K under 2^32 asked as K / 2^16 / 2^16 = 0: the checker, asked it on a K
 # it does not know, spelled 2^32 out one by one and ran out of stack)
