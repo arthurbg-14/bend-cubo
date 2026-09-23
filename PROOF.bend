@@ -7642,39 +7642,39 @@ def rg_safe(+k: P.K, +c: G.Ct) -> {G.Ct.coul(k, G.Ct.safe(k, c)) == True{} : Boo
 
 # a step of the solver puts in front the contact Ct.safe hands on, and
 # gives back the rest as it was
-def rg_one(+k: P.K, +c: G.Ct, +st: G.St, h: {G.Ct.coulomb(k, G.Rb.done(st)) == True{} : Bool})
-  -> {G.Ct.coulomb(k, G.Rb.done(G.Imp.one(k, c, st))) == True{} : Bool}:
+def rg_one(+k: P.K, +dv: P.Wv, +c: G.Ct, +st: G.St, h: {G.Ct.coulomb(k, G.Rb.done(st)) == True{} : Bool})
+  -> {G.Ct.coulomb(k, G.Rb.done(G.Imp.one(k, dv, c, st))) == True{} : Bool}:
   match st:
     case G.St{done, +bs}:
-      +raw = G.Imp.raw(k, c, G.Bs.at(bs, G.Ct.a(c)), G.Bs.at(bs, G.Ct.b(c)))
+      +raw = G.Imp.raw(k, dv, c, G.Bs.at(bs, G.Ct.a(c)), G.Bs.at(bs, G.Ct.b(c)))
       rg_and(G.Ct.coul(k, G.Ct.safe(k, G.R2.c(raw))), G.Ct.coulomb(k, done), rg_safe(k, G.R2.c(raw)), h)
 
-def rg_pass(+k: P.K, cs: List<&2, G.Ct>, +st: G.St, h: {G.Ct.coulomb(k, G.Rb.done(st)) == True{} : Bool})
-  -> {G.Ct.coulomb(k, G.Rb.done(G.Imp.pass(k, cs, st))) == True{} : Bool}:
+def rg_pass(+k: P.K, +dv: P.Wv, cs: List<&2, G.Ct>, +st: G.St, h: {G.Ct.coulomb(k, G.Rb.done(st)) == True{} : Bool})
+  -> {G.Ct.coulomb(k, G.Rb.done(G.Imp.pass(k, dv, cs, st))) == True{} : Bool}:
   match cs:
     case []:
       h
     case +c <> rest:
-      rg_pass(k, rest, G.Imp.one(k, c, st), rg_one(k, c, st, h))
+      rg_pass(k, dv, rest, G.Imp.one(k, dv, c, st), rg_one(k, dv, c, st, h))
 
 # a pass starts from no contacts, so whatever it is handed, all it hands
 # back went through a step
-def rg_again(+k: P.K, +st: G.St) -> {G.Ct.coulomb(k, G.Rb.done(G.Imp.again(k, st))) == True{} : Bool}:
+def rg_again(+k: P.K, +dv: P.Wv, +st: G.St) -> {G.Ct.coulomb(k, G.Rb.done(G.Imp.again(k, dv, st))) == True{} : Bool}:
   match st:
     case G.St{done, +bs}:
-      rg_pass(k, done, G.St{[], bs}, {==})
+      rg_pass(k, dv, done, G.St{[], bs}, {==})
 
-def rg_iter(n: Nat, +k: P.K, +st: G.St, h: {G.Ct.coulomb(k, G.Rb.done(st)) == True{} : Bool})
-  -> {G.Ct.coulomb(k, G.Rb.done(G.Imp.iter(n, k, st))) == True{} : Bool}:
+def rg_iter(n: Nat, +k: P.K, +dv: P.Wv, +st: G.St, h: {G.Ct.coulomb(k, G.Rb.done(st)) == True{} : Bool})
+  -> {G.Ct.coulomb(k, G.Rb.done(G.Imp.iter(n, k, dv, st))) == True{} : Bool}:
   match n:
     case 0n:
       h
     case 1n+m:
-      rg_iter(m, k, G.Imp.again(k, st), rg_again(k, st))
+      rg_iter(m, k, dv, G.Imp.again(k, dv, st), rg_again(k, dv, st))
 
-def Laws.rigid_coulomb(k, bs, ss):
-  rg_iter(15n, k, G.Imp.again(k, G.St{G.Ct.all(bs, k, 0n, ss, []), G.Rb.fall(k, bs)}),
-    rg_again(k, G.St{G.Ct.all(bs, k, 0n, ss, []), G.Rb.fall(k, bs)}))
+def Laws.rigid_coulomb(k, dv, bs, ss):
+  rg_iter(15n, k, dv, G.Imp.again(k, dv, G.St{G.Ct.all(bs, k, 0n, ss, []), G.Rb.fall(k, bs)}),
+    rg_again(k, dv, G.St{G.Ct.all(bs, k, 0n, ss, []), G.Rb.fall(k, bs)}))
 
 def rg_not(a: Bool, -b: Bool, e: {a == b : Bool}) -> {Bool.not(a) == Bool.not(b) : Bool}:
   %e : {Bool.not(a) == Bool.not(_) : Bool}
@@ -7781,8 +7781,8 @@ def rg_kept2(ok: Bool, +s: Nat, +bs: List<&2, P.Body>, +ss: List<&2, P.Body>, +o
     case False{}:
       rg_kept3(G.Rb.apart(s, bs, ss), bs, out, s, ss, {==}, start)
 
-def Laws.rigid_apart(k, bs, ss, start):
-  +out = G.Rb.out(k, bs, ss, G.Imp.iter(16n, k, G.St{G.Ct.all(bs, k, 0n, ss, []), G.Rb.fall(k, bs)}))
+def Laws.rigid_apart(k, dv, bs, ss, start):
+  +out = G.Rb.out(k, bs, ss, G.Imp.iter(16n, k, dv, G.St{G.Ct.all(bs, k, 0n, ss, []), G.Rb.fall(k, bs)}))
   rg_kept2(G.Rb.apart(P.K.size(k), out, ss), P.K.size(k), bs, ss, out, {==}, start)
 
 def rg_or_r(a: Bool, -b: Bool, h: {b == True{} : Bool}) -> {Bool.or(a, b) == True{} : Bool}:
@@ -7880,8 +7880,8 @@ def rg_e_k2(ok: Bool, +k: P.K, +s: Nat, +bs: List<&2, P.Body>, +ss: List<&2, P.B
     case False{}:
       rg_e_k3(G.Rb.apart(s, bs, ss), k, bs, deep, out, e_out)
 
-def Laws.rigid_energy(k, bs, ss):
-  +st = G.Imp.iter(16n, k, G.St{G.Ct.all(bs, k, 0n, ss, []), G.Rb.fall(k, bs)})
+def Laws.rigid_energy(k, dv, bs, ss):
+  +st = G.Imp.iter(16n, k, dv, G.St{G.Ct.all(bs, k, 0n, ss, []), G.Rb.fall(k, bs)})
   +deep = G.Rb.deepof(P.K.size(k), st)
   +moved = G.Rb.moved(k, bs, ss, st)
   +out = G.Rb.egate(k, bs, deep, moved)
@@ -8079,10 +8079,10 @@ def rg_give_ax(ax: Nat, +bs: List<&2, P.Body>, +a: Nat, +b: Nat, +ra: P.Wv, +rb:
             G.V.at(1n+1n+o, G.B.v(G.Bs.at(bs, a))), G.V.at(1n+1n+o, j), G.V.at(1n+1n+o, dt), G.V.at(1n+1n+o, G.B.v(G.Bs.at(bs, b))),
             rg_put_sum(1n+1n+o, bs, a, xa, ha), rg_e2_of(1n+1n+o, bs, a, b, xa, xb, hab, hb))
 
-def Laws.rigid_action_reaction(k, c, done, bs, ax, two, ab, ina, inb):
+def Laws.rigid_action_reaction(k, dv, c, done, bs, ax, two, ab, ina, inb):
   +ba = G.Bs.at(bs, G.Ct.a(c))
   +bb = G.Bs.at(bs, G.Ct.b(c))
-  +raw = G.Imp.raw(k, c, ba, bb)
+  +raw = G.Imp.raw(k, dv, c, ba, bb)
   +j = G.R2.j(raw)
   +dt = G.V.sub(G.Ct.jt(G.Ct.safe(k, G.R2.c(raw))), G.Ct.jt(c))
   +pl = G.B.pull(G.B.pull(bb, j, G.Ct.rb(c)), dt, G.Ct.rb(c))

@@ -664,9 +664,10 @@ law spin_is_across_the_push:
 # friction of the game, not a record kept beside it.
 law rigid_coulomb:
   for +k: P.K
+  for +dv: P.Wv
   for +bs: List<&2, P.Body>
   for +ss: List<&2, P.Body>
-  {G.Ct.coulomb(k, G.Rb.done(G.Imp.iter(16n, k, G.St{G.Ct.all(bs, k, 0n, ss, []), G.Rb.fall(k, bs)}))) == True{} : Bool}
+  {G.Ct.coulomb(k, G.Rb.done(G.Imp.iter(16n, k, dv, G.St{G.Ct.all(bs, k, 0n, ss, []), G.Rb.fall(k, bs)}))) == True{} : Bool}
 
 # LAW: nothing passes through anything. An island of bodies that begins
 # apart -- no two of them overlapping, none overlapping one of the fixed
@@ -675,10 +676,11 @@ law rigid_coulomb:
 # the bodies, the fixed ones, their speeds and turns, and the constants.
 law rigid_apart:
   for +k: P.K
+  for +dv: P.Wv
   for +bs: List<&2, P.Body>
   for +ss: List<&2, P.Body>
   for start: {G.Rb.apart(P.K.size(k), bs, ss) == True{} : Bool}
-  {G.Rb.apart(P.K.size(k), G.Rs.bs(G.Rb.tick(k, bs, ss)), ss) == True{} : Bool}
+  {G.Rb.apart(P.K.size(k), G.Rs.bs(G.Rb.tick(k, dv, bs, ss)), ss) == True{} : Bool}
 
 # LAW: energy never grows, but to push apart what is inside something.
 # The mechanical energy of an island -- every body's v^2 + 6 L^2 / s^2
@@ -689,10 +691,11 @@ law rigid_apart:
 # spend energy on.
 law rigid_energy:
   for +k: P.K
+  for +dv: P.Wv
   for +bs: List<&2, P.Body>
   for +ss: List<&2, P.Body>
-  st = G.Imp.iter(16n, k, G.St{G.Ct.all(bs, k, 0n, ss, []), G.Rb.fall(k, bs)})
-  {Bool.or(G.Rb.deepof(P.K.size(k), st), Nat.is_le(G.En.all(k, bs, G.Rs.bs(G.Rb.tick(k, bs, ss))), G.En.all(k, bs, bs))) == True{} : Bool}
+  st = G.Imp.iter(16n, k, dv, G.St{G.Ct.all(bs, k, 0n, ss, []), G.Rb.fall(k, bs)})
+  {Bool.or(G.Rb.deepof(P.K.size(k), st), Nat.is_le(G.En.all(k, bs, G.Rs.bs(G.Rb.tick(k, dv, bs, ss))), G.En.all(k, bs, bs))) == True{} : Bool}
 
 # LAW: no pushing off the air, nor off a wall. The player walks and jumps
 # only off what held it the tick before -- a contact that touched it with
@@ -714,6 +717,7 @@ law rigid_no_push_off_air:
 # minus moved across). Only the floor and the fixed bodies change it.
 law rigid_action_reaction:
   for +k: P.K
+  for +dv: P.Wv
   for +c: G.Ct
   for +done: List<&2, G.Ct>
   for +bs: List<&2, P.Body>
@@ -722,5 +726,5 @@ law rigid_action_reaction:
   for ab: {Nat.is_eq(G.Ct.b(c), G.Ct.a(c)) == False{} : Bool}
   for ina: {Nat.is_lt(G.Ct.a(c), List.length(&2, P.Body, bs)) == True{} : Bool}
   for inb: {Nat.is_lt(G.Ct.b(c), List.length(&2, P.Body, bs)) == True{} : Bool}
-  after = G.Rb.bodies(G.Imp.one(k, c, G.St{done, bs}))
+  after = G.Rb.bodies(G.Imp.one(k, dv, c, G.St{done, bs}))
   {Nat.add(G.Mo.p(ax, after), G.Mo.n(ax, bs)) == Nat.add(G.Mo.p(ax, bs), G.Mo.n(ax, after)) : Nat}

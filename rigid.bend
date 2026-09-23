@@ -586,10 +586,14 @@ def Imp.lim(+k: P.K, +jn: Nat) -> Nat:
   Nat.div(Nat.mul(R.mu(k), jn), 256n)
 
 # the friction that would stop the sliding at the contact outright, added
-# to what it pushed so far
-def Imp.tfric(+k: P.K, +fl: Bool, +ba: P.Body, +bb: P.Body, +ra: P.Wv, +rb: P.Wv, +n: P.Wv, +jt: P.Wv, +kf: Nat) -> P.Wv:
+# to what it pushed so far. Along e -- the way the player drives itself,
+# on the player's own contacts -- nothing: its feet grip and push that
+# way (the motor is that push), and friction there took most of the
+# motor, and every cube stood against it.
+def Imp.tfric(+k: P.K, +e: P.Wv, +fl: Bool, +ba: P.Body, +bb: P.Body, +ra: P.Wv, +rb: P.Wv, +n: P.Wv, +jt: P.Wv, +kf: Nat) -> P.Wv:
   +u = Imp.rel(k, fl, ba, bb, ra, rb)
-  +ut = V.sub(u, V.fx(n, P.Z.divn(V.dot(u, n), 65536n)))
+  +ut0 = V.sub(u, V.fx(n, P.Z.divn(V.dot(u, n), 65536n)))
+  +ut = V.sub(ut0, V.divn(V.mulz(e, V.dot(ut0, e)), P.Pick.high(V.sq(e), 1n)))
   V.sub(jt, V.divn(V.mulz(ut, P.Pos{1024n}), kf))
 
 # a contact once its push is in, with the friction it asks for (not yet
@@ -605,9 +609,9 @@ def R2.j(+r: R2) -> P.Wv:
   R2{c, j} = r
   j
 
-def Imp.fric(+k: P.K, +a: Nat, +b: Nat, +fl: Bool, +ra: P.Wv, +rb: P.Wv, +n: P.Wv, +gap: P.Z, +jn: Nat, +jt: P.Wv,
+def Imp.fric(+k: P.K, +e: P.Wv, +a: Nat, +b: Nat, +fl: Bool, +ra: P.Wv, +rb: P.Wv, +n: P.Wv, +gap: P.Z, +jn: Nat, +jt: P.Wv,
   +kf: Nat, +j: P.Wv, +ba: P.Body, +bb: P.Body) -> R2:
-  R2{Ct{a, b, fl, ra, rb, n, gap, jn, Imp.clamp(Imp.tfric(k, fl, ba, bb, ra, rb, n, jt, kf), Imp.lim(k, jn))}, j}
+  R2{Ct{a, b, fl, ra, rb, n, gap, jn, Imp.clamp(Imp.tfric(k, e, fl, ba, bb, ra, rb, n, jt, kf), Imp.lim(k, jn))}, j}
 
 # Coulomb, for one contact: its friction is at most mu times its push
 def Ct.coul(+k: P.K, c: Ct) -> Bool:
@@ -705,7 +709,8 @@ def Ct.pairf(+ea: E3, +eb: E3, +i: Nat, +j: Nat, +d: P.Wv, +ma: P.Mat, +mb: P.Ma
 
 # a contact that pushed the body: its normal f facing it, at arm r. Its
 # point widens the reach of the contacts around the middle; one pushing
-# up from below (within 45 degrees of up) counts as a support.
+# up from below counts as a support (any slant: a cube wedged between two
+# at a slant is held by them, and must be able to rest).
 def Sup.add3(up: Bool, +f: P.Wv, +r: P.Wv, s: Sup) -> Sup:
   Sup{t, +nn, +n, +lx, +hx, +lz, +hz, dg, dn, pj, pr} = s
   +x = P.Wv.x(r)
@@ -720,7 +725,7 @@ def Sup.add2(pushed: Bool, +f: P.Wv, +r: P.Wv, s: Sup) -> Sup:
       Sup{t, +nn, n, lx, hx, lz, hz, dg, dn, pj, pr} = s
       Sup{t, V.add(nn, f), n, lx, hx, lz, hz, dg, dn, pj, pr}
     case True{}:
-      Sup.add3(P.Z.above(P.Wv.y(f), P.Pos{46341n}), f, r, s)
+      Sup.add3(P.Z.above(P.Wv.y(f), P.Pos{0n}), f, r, s)
 
 # the contact the body is deepest into (or nearest): the way out of it
 def Sup.deep(+gap: P.Z, +f: P.Wv, s: Sup) -> Sup:
@@ -852,18 +857,21 @@ def Imp.jn2(+k: P.K, +fl: Bool, +ra: P.Wv, +rb: P.Wv, +n: P.Wv, +gap: P.Z, +jn: 
   +vn = P.Z.divn(V.dot(Imp.rel(k, fl, ba, bb, ra, rb), n), 65536n)
   Imp.accn(jn, P.Z.divc(P.Z.mul(P.Z.sub(Imp.target(P.K.size(k), gap), vn), P.Pos{1024n}), kf))
 
-def Imp.norm(+k: P.K, +a: Nat, +b: Nat, +fl: Bool, +ra: P.Wv, +rb: P.Wv, +n: P.Wv, +gap: P.Z, +jn: Nat, +jt: P.Wv,
+def Imp.norm(+k: P.K, +e: P.Wv, +a: Nat, +b: Nat, +fl: Bool, +ra: P.Wv, +rb: P.Wv, +n: P.Wv, +gap: P.Z, +jn: Nat, +jt: P.Wv,
   +ba: P.Body, +bb: P.Body) -> R2:
   +kf = Imp.keff(k, fl, ra, rb, n)
   +jn2 = Imp.jn2(k, fl, ra, rb, n, gap, jn, kf, ba, bb)
   +j = V.fx(n, R.zd(jn2, jn))
-  Imp.fric(k, a, b, fl, ra, rb, n, gap, jn2, jt, kf, j, B.push(ba, j, ra), R.pb(fl, bb, B.pull(bb, j, rb)))
+  Imp.fric(k, e, a, b, fl, ra, rb, n, gap, jn2, jt, kf, j, B.push(ba, j, ra), R.pb(fl, bb, B.pull(bb, j, rb)))
 
 # the contact solved (its push in, its friction asked for) and the push,
 # from the contact and its two bodies
-def Imp.raw(+k: P.K, c: Ct, +ba: P.Body, +bb: P.Body) -> R2:
+# dv: how the player (the body at 0) drives itself this tick, on its own
+# contacts only
+def Imp.raw(+k: P.K, +dv: P.Wv, c: Ct, +ba: P.Body, +bb: P.Body) -> R2:
   Ct{+a, +b, +fl, +ra, +rb, +n, +gap, +jn, +jt} = c
-  Imp.norm(k, a, b, fl, ra, rb, n, gap, jn, jt, ba, bb)
+  +e = R.pv(Bool.or(Nat.is_eq(a, 0n), Bool.and(Bool.not(fl), Nat.is_eq(b, 0n))), dv, V.zero())
+  Imp.norm(k, e, a, b, fl, ra, rb, n, gap, jn, jt, ba, bb)
 
 # one contact solved: its push, then its friction as Ct.safe hands it on,
 # both given to the bodies at once (Imp.give)
@@ -871,30 +879,30 @@ def Imp.one2(+k: P.K, +c0: Ct, +r: R2, done: List<&2, Ct>, bs: List<&2, P.Body>,
   +c = Ct.safe(k, R2.c(r))
   St{c <> done, Imp.give(c0, R2.j(r), V.sub(Ct.jt(c), Ct.jt(c0)), bs, ba, bb)}
 
-def Imp.one(+k: P.K, +c: Ct, st: St) -> St:
+def Imp.one(+k: P.K, +dv: P.Wv, +c: Ct, st: St) -> St:
   St{done, +bs} = st
   +ba = Bs.at(bs, Ct.a(c))
   +bb = Bs.at(bs, Ct.b(c))
-  Imp.one2(k, c, Imp.raw(k, c, ba, bb), done, bs, ba, bb)
+  Imp.one2(k, c, Imp.raw(k, dv, c, ba, bb), done, bs, ba, bb)
 
 # one pass over the contacts
-def Imp.pass(+k: P.K, cs: List<&2, Ct>, st: St) -> St:
+def Imp.pass(+k: P.K, +dv: P.Wv, cs: List<&2, Ct>, st: St) -> St:
   match cs:
     case []:
       st
     case c <> rest:
-      Imp.pass(k, rest, Imp.one(k, c, st))
+      Imp.pass(k, dv, rest, Imp.one(k, dv, c, st))
 
-def Imp.again(+k: P.K, st: St) -> St:
+def Imp.again(+k: P.K, +dv: P.Wv, st: St) -> St:
   St{done, bs} = st
-  Imp.pass(k, done, St{[], bs})
+  Imp.pass(k, dv, done, St{[], bs})
 
-def Imp.iter(n: Nat, +k: P.K, st: St) -> St:
+def Imp.iter(n: Nat, +k: P.K, +dv: P.Wv, st: St) -> St:
   match n:
     case 0n:
       st
     case 1n+m:
-      Imp.iter(m, k, Imp.again(k, st))
+      Imp.iter(m, k, dv, Imp.again(k, dv, st))
 
 # What the contacts did to one body
 # ---------------------------------
@@ -1281,42 +1289,52 @@ def Mv.apart(+s: Nat, +b: P.Body, obs: List<&2, P.Body>) -> List<&2, P.Body>:
 # sideways. The player walks and jumps only off what holds it. Touched:
 # some contact pushed, even one still a gap away that only kept the body
 # from closing in too fast.
+# sl: a contact touching the body on the floor or on a fixed body slides
+# -- its friction is at the most Coulomb lets it be (15/16 of it, for the
+# rounding), so what pushes the body along is more than friction can
+# hold: it is not at rest, however slowly it goes. Static friction holds
+# a body only inside the limit. Between moving bodies the solver's
+# leftovers put friction at the limit all over a heap that stands still,
+# and the heap never slept: there, whether the other really moves says
+# it (Mv.pm).
 type Hd is Data:
-  Hd{pn: Bool, t: Bool}
+  Hd{pn: Bool, t: Bool, sl: Bool}
 
-def Hd.add2(+f: P.Wv, +jn: Nat, +touching: Bool, +pushed: Bool, h: Hd) -> Hd:
-  Hd{pn, t} = h
-  Hd{Bool.or(pn, Bool.and(touching, Bool.and(P.Z.above(P.Wv.y(f), P.Pos{0n}), Nat.is_lt(0n, jn)))), Bool.or(t, pushed)}
+def Hd.slides(+lim: Nat, +jt: P.Wv) -> Bool:
+  Bool.and(Nat.is_lt(0n, lim), Nat.is_le(Nat.mul(15n, Nat.mul(lim, lim)), Nat.mul(16n, V.sq(jt))))
 
-def Hd.add1(mine: Bool, +asa: Bool, +n: P.Wv, +gap: P.Z, +jn: Nat, +jt: P.Wv, +sk: P.Z, h: Hd) -> Hd:
+def Hd.add2(+f: P.Wv, +jn: Nat, +touching: Bool, +pushed: Bool, +slid: Bool, h: Hd) -> Hd:
+  Hd{pn, t, sl} = h
+  Hd{Bool.or(pn, Bool.and(touching, Bool.and(P.Z.above(P.Wv.y(f), P.Pos{0n}), Nat.is_lt(0n, jn)))), Bool.or(t, pushed),
+    Bool.or(sl, Bool.and(touching, slid))}
+
+def Hd.add1(mine: Bool, +k: P.K, +fl: Bool, +asa: Bool, +n: P.Wv, +gap: P.Z, +jn: Nat, +jt: P.Wv, +sk: P.Z, h: Hd) -> Hd:
   match mine:
     case False{}:
       h
     case True{}:
-      Hd.add2(R.pv(asa, n, V.opp(n)), jn, R.zle2(gap, sk), Bool.or(Nat.is_lt(0n, jn), Nat.is_lt(0n, V.l1(jt))), h)
+      Hd.add2(R.pv(asa, n, V.opp(n)), jn, R.zle2(gap, sk), Bool.or(Nat.is_lt(0n, jn), Nat.is_lt(0n, V.l1(jt))),
+        Bool.and(fl, Hd.slides(Imp.lim(k, jn), jt)), h)
 
-def Hd.of(+sk: P.Z, +i: Nat, cs: List<&2, Ct>, h: Hd) -> Hd:
+def Hd.of(+k: P.K, +sk: P.Z, +i: Nat, cs: List<&2, Ct>, h: Hd) -> Hd:
   match cs:
     case []:
       h
     case Ct{+a, +b, +fl, ra, rb, +n, +gap, +jn, +jt} <> rest:
       +asa = Nat.is_eq(a, i)
-      Hd.of(sk, i, rest, Hd.add1(Bool.or(asa, Bool.and(Bool.not(fl), Nat.is_eq(b, i))), asa, n, gap, jn, jt, sk, h))
+      Hd.of(k, sk, i, rest, Hd.add1(Bool.or(asa, Bool.and(Bool.not(fl), Nat.is_eq(b, i))), k, fl, asa, n, gap, jn, jt, sk, h))
 
 def Hd.t(h: Hd) -> Bool:
-  Hd{pn, t} = h
+  Hd{pn, t, sl} = h
   t
 
 def Hd.held(h: Hd) -> Bool:
-  Hd{pn, t} = h
+  Hd{pn, t, sl} = h
   pn
 
-# the body at rest if it is (balanced, and only a little velocity and
-# turning left before and after the impulses), else moved; with its
-# flags: held, touched
-def Mv.one(+k: P.K, +b0: P.Body, +b1: P.Body, +obs: List<&2, P.Body>, +su: Sup, +hd: Hd) -> P.Body:
-  Mv.flags(Mv.go(Bool.and(Sup.balanced(su), Bool.and(Mv.small(k, b0), Mv.small(k, b1))), k, b0, b1, Mv.apart(P.K.size(k), b1, obs),
-    Bool.not(Hd.t(hd)), Mc{Mv.away(Sup.nn(su)), Sup.dn(su), Sup.pr(su), Sup.pivots(su)}), Hd.held(hd), Hd.t(hd))
+def Hd.sl(h: Hd) -> Bool:
+  Hd{pn, t, sl} = h
+  sl
 
 # What touches a body. The contact of it that pushed and is least apart
 # must touch (apart by no more than the slop), else the body is not held
@@ -1341,21 +1359,155 @@ def Mv.cut2(+s: Nat, +lo: P.Z) -> P.Z:
 def Mv.cut(+s: Nat, +i: Nat, cs: List<&2, Ct>) -> P.Z:
   Mv.cut2(s, Mv.low(i, cs, P.Pos{1073741824n}))
 
+# At rest: balanced, sliding on nothing, only a little velocity and
+# turning left before and after the impulses -- and nothing it touches
+# that moves was moving when the tick began (pm). At rest is at rest on
+# what holds it: a cube riding one the player pushed was set still in the
+# world every other tick, and the pair crept.
+def Mv.rests(+k: P.K, +b0: P.Body, +b1: P.Body, +su: Sup, +hd: Hd, +pm: Bool) -> Bool:
+  Bool.and(Bool.and(Bool.and(Sup.balanced(su), Bool.not(Hd.sl(hd))), Bool.not(pm)), Bool.and(Mv.small(k, b0), Mv.small(k, b1)))
+
+# the body at rest if it is (balanced, sliding on nothing, and only a
+# little velocity and turning left before and after the impulses), else
+# moved; with its flags: held, touched. A cube pushed a little harder than
+# friction holds was set still again every tick, however long the push
+def Mv.one(+k: P.K, +b0: P.Body, +b1: P.Body, +obs: List<&2, P.Body>, +su: Sup, +hd: Hd, +pm: Bool) -> P.Body:
+  Mv.flags(Mv.go(Mv.rests(k, b0, b1, su, hd, pm), k, b0, b1,
+    Mv.apart(P.K.size(k), b1, obs),
+    Bool.not(Hd.t(hd)), Mc{Mv.away(Sup.nn(su)), Sup.dn(su), Sup.pr(su), Sup.pivots(su)}), Hd.held(hd), Hd.t(hd))
+
+def Mv.pm1(mine: Bool, +k: P.K, +p: Nat, +b0s: List<&2, P.Body>) -> Bool:
+  match mine:
+    case False{}:
+      False{}
+    case True{}:
+      Bool.not(Mv.small(k, Bs.at(b0s, p)))
+
+# is the body at i touched and pushed by a body -- not a fixed one -- that
+# was moving when the tick began, more than a body at rest may? (moving
+# for real: two bodies that each looked at the other's jitter stood each
+# other off and a heap never came to rest)
+def Mv.pm(+k: P.K, +i: Nat, cs: List<&2, Ct>, +cut: P.Z, +b0s: List<&2, P.Body>) -> Bool:
+  match cs:
+    case []:
+      False{}
+    case Ct{+a, +b, +fl, ra, rb, n, +gap, +jn, jt} <> rest:
+      +asa = Nat.is_eq(a, i)
+      +mine = Bool.and(Bool.and(Bool.not(fl), Bool.or(asa, Nat.is_eq(b, i))), Bool.and(R.zle2(gap, cut), Nat.is_lt(0n, jn)))
+      Bool.or(Mv.pm1(mine, k, P.Pick.n(asa, b, a), b0s), Mv.pm(k, i, rest, cut, b0s))
+
 def Mv.put(+i: Nat, +b: P.Body, cur: List<&2, P.Body>) -> List<&2, P.Body>:
   Bs.put(cur, i, b)
 
-def Mv.all(n: Nat, +k: P.K, +i: Nat, +b0s: List<&2, P.Body>, +cur: List<&2, P.Body>, +ss: List<&2, P.Body>,
-  +cs: List<&2, Ct>) -> List<&2, P.Body>:
+# what the contacts did to each body, worked out once for both passes
+type Inf is Data:
+  Inf{su: Sup, hd: Hd, pm: Bool}
+
+def Mv.inf(+k: P.K, +i: Nat, +b0s: List<&2, P.Body>, +cs: List<&2, Ct>) -> Inf:
+  +cut = Mv.cut(P.K.size(k), i, cs)
+  Inf{Sup.of(cut, i, cs, Sup.none()), Hd.of(k, cut, i, cs, Hd{False{}, False{}, False{}}), Mv.pm(k, i, cs, cut, b0s)}
+
+def Mv.infs(n: Nat, +k: P.K, +i: Nat, +b0s: List<&2, P.Body>, +cs: List<&2, Ct>) -> List<&2, Inf>:
   match n:
     case 0n:
-      cur
+      []
     case 1n+m:
-      Mv.all(m, k, Nat.add(i, 1n), b0s,
-        Mv.put(i, Mv.one(k, Bs.at(b0s, i), Bs.at(cur, i), List.append(&2, P.Body, Bs.drop(cur, i), ss),
-          Sup.of(Mv.cut(P.K.size(k), i, cs), i, cs, Sup.none()), Hd.of(Mv.cut(P.K.size(k), i, cs), i, cs, Hd{False{}, False{}})), cur), ss, cs)
+      Mv.inf(k, i, b0s, cs) <> Mv.infs(m, k, Nat.add(i, 1n), b0s, cs)
+
+def Mv.all(fs: List<&2, Inf>, +k: P.K, +i: Nat, +b0s: List<&2, P.Body>, +cur: List<&2, P.Body>, +ss: List<&2, P.Body>)
+  -> List<&2, P.Body>:
+  match fs:
+    case []:
+      cur
+    case Inf{+su, +hd, +pm} <> rest:
+      Mv.all(rest, k, Nat.add(i, 1n), b0s,
+        Mv.put(i, Mv.one(k, Bs.at(b0s, i), Bs.at(cur, i), List.append(&2, P.Body, Bs.drop(cur, i), ss), su, hd, pm), cur), ss)
 
 # The tick of an island
 # ---------------------
+
+# The second pass. The bodies go through the gate one at a time, each
+# against the others where they are at that moment: a body pushing
+# another is tried against the one it pushes before that one has moved,
+# gets only the sliver the slop lets through, and loses its velocity --
+# the player and the cube it pushed crept along together. So once all
+# have moved, each body that did not get its whole move tries it again
+# against where the others went, and takes it if it is clear -- clear of
+# them, but what it began inside where that began: left out by where the
+# other is now, one that had moved into where this one started was left
+# out, and the two ended inside each other.
+def R.zeq(+a: P.Z, +b: P.Z) -> Bool:
+  Bool.and(Nat.is_eq(P.Z.pos(a), P.Z.pos(b)), Nat.is_eq(P.Z.neg(a), P.Z.neg(b)))
+
+def R.qeq(+a: P.Quat, +b: P.Quat) -> Bool:
+  Bool.and(Bool.and(R.zeq(P.Quat.a(a), P.Quat.a(b)), R.zeq(P.Quat.b(a), P.Quat.b(b))),
+    Bool.and(R.zeq(P.Quat.c(a), P.Quat.c(b)), R.zeq(P.Quat.d(a), P.Quat.d(b))))
+
+def R.samep(+a: P.Body, +b: P.Body) -> Bool:
+  Bool.and(Bool.and(Nat.is_eq(P.Body.x(a), P.Body.x(b)), Nat.is_eq(P.Body.y(a), P.Body.y(b))),
+    Bool.and(Nat.is_eq(P.Body.z(a), P.Body.z(b)), R.qeq(B.q(a), B.q(b))))
+
+def Mv.retry3(ok: Bool, +k: P.K, +c0: P.Body, +cur: P.Body, +u: P.Wv, +hd: Hd) -> P.Body:
+  match ok:
+    case True{}:
+      Mv.flags(Mv.keep(0n, c0, u), Hd.held(hd), Hd.t(hd))
+    case False{}:
+      cur
+
+def Mv.retry2(same: Bool, +k: P.K, +c0: P.Body, +cur: P.Body, +obs: List<&2, P.Body>, +u: P.Wv, +hd: Hd) -> P.Body:
+  match same:
+    case True{}:
+      cur
+    case False{}:
+      Mv.retry3(Mv.ok(k, c0, obs), k, c0, cur, u, hd)
+
+def Mv.mcof(+su: Sup) -> Mc:
+  Mc{Mv.away(Sup.nn(su)), Sup.dn(su), Sup.pr(su), Sup.pivots(su)}
+
+def Mv.retry1(still: Bool, +k: P.K, +b0: P.Body, +b1: P.Body, +cur: P.Body, +obs: List<&2, P.Body>, +su: Sup, +hd: Hd) -> P.Body:
+  match still:
+    case True{}:
+      cur
+    case False{}:
+      +mc = Mv.mcof(su)
+      +d = R.pv(Bool.not(Hd.t(hd)), V.add(B.v(b0), B.v(b1)), V.add(B.v(b1), B.v(b1)))
+      +c0 = Mv.cand(0n, k, b1, d, Mv.w(k, B.L(b1)), mc)
+      Mv.retry2(R.samep(c0, cur), k, c0, cur, obs, Mc.u(mc), hd)
+
+# the obstacles as they are now (curs), less those the body began inside
+# where they began (starts, in step with curs)
+def Mv.apart2(+s: Nat, +b: P.Body, curs: List<&2, P.Body>, starts: List<&2, P.Body>) -> List<&2, P.Body>:
+  match curs starts:
+    case Nil{} _:
+      []
+    case +o <> rest Nil{}:
+      o <> rest
+    case +o <> rest +o0 <> rest0:
+      R.keep(Bool.not(R.hits(s, b, o0)), o, Mv.apart2(s, b, rest, rest0))
+
+def Mv.retry(+k: P.K, +b0: P.Body, +b1: P.Body, +cur: P.Body, +obs: List<&2, P.Body>, +su: Sup, +hd: Hd, +pm: Bool) -> P.Body:
+  Mv.retry1(Mv.rests(k, b0, b1, su, hd, pm), k, b0, b1, cur, obs, su, hd)
+
+# (only a body something touched: what touches nothing was refused by
+# nothing, or by something it will not find moved)
+def Mv.again1(touched: Bool, +k: P.K, +i: Nat, +b0s: List<&2, P.Body>, +b1s: List<&2, P.Body>, +cur: List<&2, P.Body>,
+  +ss: List<&2, P.Body>, +su: Sup, +hd: Hd, +pm: Bool) -> List<&2, P.Body>:
+  match touched:
+    case False{}:
+      cur
+    case True{}:
+      +b1 = Bs.at(b1s, i)
+      Mv.put(i, Mv.retry(k, Bs.at(b0s, i), b1, Bs.at(cur, i),
+        Mv.apart2(P.K.size(k), b1, List.append(&2, P.Body, Bs.drop(cur, i), ss), List.append(&2, P.Body, Bs.drop(b0s, i), ss)),
+        su, hd, pm), cur)
+
+def Mv.all2(fs: List<&2, Inf>, +k: P.K, +i: Nat, +b0s: List<&2, P.Body>, +b1s: List<&2, P.Body>, +cur: List<&2, P.Body>,
+  +ss: List<&2, P.Body>) -> List<&2, P.Body>:
+  match fs:
+    case []:
+      cur
+    case Inf{+su, +hd, +pm} <> rest:
+      Mv.all2(rest, k, Nat.add(i, 1n), b0s, b1s, Mv.again1(Hd.t(hd), k, i, b0s, b1s, cur, ss, su, hd, pm), ss)
 
 def Rb.fall(+k: P.K, bs: List<&2, P.Body>) -> List<&2, P.Body>:
   match bs:
@@ -1495,7 +1647,8 @@ def Rb.deep(+s: Nat, cs: List<&2, Ct>) -> Bool:
 # the bodies moved and gated, energy and all
 def Rb.moved(+k: P.K, +bs: List<&2, P.Body>, +ss: List<&2, P.Body>, st: St) -> List<&2, P.Body>:
   St{+done, +bs1} = st
-  Mv.all(List.length(&2, P.Body, bs), k, 0n, bs, bs1, ss, done)
+  +fs = Mv.infs(List.length(&2, P.Body, bs), k, 0n, bs, done)
+  Mv.all2(fs, k, 0n, bs, bs1, Mv.all(fs, k, 0n, bs, bs1, ss), ss)
 
 # was some contact of the tick deeper than the skin?
 def Rb.deepof(+s: Nat, st: St) -> Bool:
@@ -1561,12 +1714,13 @@ def Rs.woke(r: Rs) -> List<&2, P.Body>:
   woke
 
 # the tick of bodies with nothing fixed around them
-# the tick of the bodies bs among the fixed ones ss
-def Rb.tick(+k: P.K, +bs: List<&2, P.Body>, +ss: List<&2, P.Body>) -> Rs:
-  Rb.step2(k, bs, ss, Imp.iter(16n, k, St{Ct.all(bs, k, 0n, ss, []), Rb.fall(k, bs)}))
+# the tick of the bodies bs among the fixed ones ss, the player (at 0)
+# driving itself by dv
+def Rb.tick(+k: P.K, +dv: P.Wv, +bs: List<&2, P.Body>, +ss: List<&2, P.Body>) -> Rs:
+  Rb.step2(k, bs, ss, Imp.iter(16n, k, dv, St{Ct.all(bs, k, 0n, ss, []), Rb.fall(k, bs)}))
 
 def Rb.step(+k: P.K, +bs: List<&2, P.Body>) -> List<&2, P.Body>:
-  Rs.bs(Rb.tick(k, bs, []))
+  Rs.bs(Rb.tick(k, V.zero(), bs, []))
 
 # Islands
 # -------

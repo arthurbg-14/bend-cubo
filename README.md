@@ -126,8 +126,18 @@ mecânica** do cubo azul em J/kg. Num pulo ela fica parada enquanto ele voa.
   1/4096 do lado); recusada, tenta a pose sem o que vai para dentro dos
   contatos, depois sem o giro, depois frações; um corpo em que só cabe um
   oitavo do movimento parou no que o segura.
+- **Empurrar**: o motor é o pé do jogador empurrando o chão, então o atrito
+  do jogador não briga com ele na direção em que ele anda (só no
+  derrapar de lado). O portão passa os corpos duas vezes: quem não coube
+  inteiro tenta de novo depois que os outros andaram, e o que empurra
+  acompanha o empurrado. Com as constantes padrão (força 20 m/s², µ 0,8)
+  o jogador empurra um cubo e uma pilha de dois; três pedem mais força no
+  chão.
 - **Repouso**: um corpo equilibrado (o meio sobre os contatos que o tocam) e
-  quase parado fica exatamente parado. **Apoiado** é ter um contato que o
+  quase parado fica exatamente parado -- não se ele desliza no chão ou num
+  corpo fixo (atrito no limite de Coulomb), nem se o que o toca está se
+  mexendo de verdade (um cubo em cima de outro que o jogador empurra vai
+  junto). **Apoiado** é ter um contato que o
   toca, com a face olhando para cima, empurrando: chão, cubo embaixo, a
   aresta em que ele se encosta. Parede não apoia; o jogador só anda e pula
   do que o apoia.
