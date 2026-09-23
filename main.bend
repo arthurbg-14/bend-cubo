@@ -564,8 +564,8 @@ def Play.helps(help: Bool) -> List<&2, String>:
         "mouse gira a câmera · roda aproxima e afasta",
         "Enter volta ao início · N mundo novo · Esc sai",
         "empurre os cubos verdes · suba neles pulando",
-        "17 leis provadas (LAWS.bend): o voo é a parábola da física",
-        "real, energia, Coulomb, trabalho do atrito, momento, sem atravessar"]
+        "corpo rígido (rigid.bend): impulsos nos pontos de contato,",
+        "atrito de Coulomb, giro de verdade, nada atravessa nada"]
     case False{}:
       []
 

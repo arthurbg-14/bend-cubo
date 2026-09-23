@@ -11,6 +11,7 @@ import Base
 import ./phys.bend as P
 import ./world.bend as W
 import ./main.bend as M
+import ./rigid.bend as R
 
 def meets(+a: P.Body, xs: List<&2, P.Body>) -> Nat:
   match xs:
@@ -25,6 +26,26 @@ def clash(xs: List<&2, P.Body>) -> Nat:
       0n
     case +a <> +rest:
       Nat.add(meets(a, rest), clash(rest))
+
+# the game's rigid bodies rest a hair inside each other (the engine's
+# slop, 1/4096 of a side): two overlap when the fifteen directions find
+# them deeper than that (R.hits), counted as the ticks that have one
+def ones(xs: List<&2, P.Body>) -> List<&2, List<&2, P.Body>>:
+  match xs:
+    case []:
+      []
+    case +b <> rest:
+      [b] <> ones(rest)
+
+def bad2(rigid: Bool, +xs: List<&2, P.Body>) -> Nat:
+  match rigid:
+    case True{}:
+      M.Pick.n(R.Rb.clash(W.W.size(), ones(xs)), 1n, 0n)
+    case False{}:
+      clash(xs)
+
+def bad_of(+v: Nat, +xs: List<&2, P.Body>) -> Nat:
+  bad2(Nat.is_eq(v, 7n), xs)
 
 # every body in the region: awake, player, sleepers of its cells
 def region(w: W.World) -> List<&2, P.Body>:
@@ -122,7 +143,7 @@ def run(n: Nat, +v: Nat, +bad: Nat, +w: W.World, +i: Nat, +n0: Nat) -> String:
         ++ Nat.show(List.length(&2, P.Body, awk(w))) ++ " awake"
     case 1n+m:
       +w2 = tick(v, w)
-      run(m, v, Nat.add(bad, clash(region(w2))), w2, Nat.add(i, 1n), n0)
+      run(m, v, Nat.add(bad, bad_of(v, region(w2))), w2, Nat.add(i, 1n), n0)
 
 # the same run, but with the grid kept alive: the crowd only comes back as
 # a list every few ticks, so that is when the overlaps are counted (an

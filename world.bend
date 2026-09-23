@@ -12,6 +12,7 @@
 
 import Base
 import ./phys.bend as P
+import ./rigid.bend as R
 
 def Pick.u(c: Bool, +a: U32, +b: U32) -> U32:
   match c:
@@ -401,12 +402,21 @@ def W.part1(up: Bool, +b: P.Body, r: Two) -> Two:
       Two{b <> keep, ups}
 
 # the cubes above height y (b), and the others (a)
-def W.parts(+y: Nat, xs: List<&2, P.Body>) -> Two:
+# does b rest on c, or lean on it? A square cube rests only on what is
+# lower; a turned one can lean on anything it touches
+def W.leans(flat: Bool, +c: P.Body, +b: P.Body) -> Bool:
+  match flat:
+    case True{}:
+      False{}
+    case False{}:
+      R.R.zle2(R.R.gap(W.size(), c, b), P.Pos{Nat.div(W.size(), 64n)})
+
+def W.parts(+c: P.Body, xs: List<&2, P.Body>) -> Two:
   match xs:
     case []:
       Two{[], []}
     case +b <> rest:
-      W.part1(Nat.is_lt(y, P.Body.y(b)), b, W.parts(y, rest))
+      W.part1(Bool.or(Nat.is_lt(P.Body.y(c), P.Body.y(b)), W.leans(P.Quat.flat(R.B.q(b)), c, b)), b, W.parts(c, rest))
 
 def W.near1(n: Bool, o: P.Body, r: Two) -> Two:
   match n:
@@ -486,17 +496,17 @@ def W.lift_put(r: Two, +cx: U32, +cz: U32, t: Cells, dirty: List<&2, Cell>, fres
     case +u <> +us:
       W.kill_l(keep, St{t, dirty, fresh, List.append(&2, P.Body, u <> us, work)})
 
-def W.lift_cell(+seed: U32, +y: Nat, +cx: U32, +cz: U32, st: St) -> St:
+def W.lift_cell(+seed: U32, +c: P.Body, +cx: U32, +cz: U32, st: St) -> St:
   St{+t, dirty, fresh, work} = st
-  W.lift_put(W.parts(y, Cells.at(t, seed, cx, cz)), cx, cz, t, dirty, fresh, work)
+  W.lift_put(W.parts(c, Cells.at(t, seed, cx, cz)), cx, cz, t, dirty, fresh, work)
 
-def W.lift9(+n: Nat, +seed: U32, +y: Nat, +cx: U32, +cz: U32, st: St) -> St:
+def W.lift9(+n: Nat, +seed: U32, +c: P.Body, +cx: U32, +cz: U32, st: St) -> St:
   match n:
     case 0n:
       st
     case 1n+k:
       +i = U32.from_nat(k)
-      W.lift9(k, seed, y, cx, cz, W.lift_cell(seed, y, (cx - 1 + i % 3 : U32), (cz - 1 + i / 3 : U32), st))
+      W.lift9(k, seed, c, cx, cz, W.lift_cell(seed, c, (cx - 1 + i % 3 : U32), (cz - 1 + i / 3 : U32), st))
 
 # is a cube standing exactly here in this list?
 def W.has(+c: P.Body, xs: List<&2, P.Body>) -> Bool:
@@ -521,7 +531,7 @@ def W.lift(+seed: U32, +c: P.Body, st: St) -> St:
   St{+t, dirty, fresh, work} = st
   +cx = W.cell_of(P.Body.x(c))
   +cz = W.cell_of(P.Body.z(c))
-  W.lift9(9n, seed, P.Body.y(c), cx, cz,
+  W.lift9(9n, seed, c, cx, cz,
     St{Cells.set(t, cx, cz, W.without(c, Cells.at(t, seed, cx, cz))), Cell{cx, cz} <> dirty,
       W.hadd(W.has(c, Cells.at(t, seed, cx, cz)), c, fresh), work})
 
@@ -5369,11 +5379,265 @@ def W.dense(+bx: Bx, +n: Nat, +mm: Nat) -> Bool:
 def W.tick2(+k: P.K, inp: P.In, +awake: List<&2, P.Body>, +p: P.Body, +n: Nat, +mm: Nat, w: World) -> World:
   W.tick_dense(W.dense(O.bb(awake, W.pbox(k, p)), n, mm), Bool.or(Nat.is_lt(n, 128n), Nat.is_lt(229376n, mm)), k, inp, w)
 
-# a tick of the whole world
-def W.tick(+k: P.K, inp: P.In, w: World) -> World:
+# a tick of the whole world with the old tick (phys.bend), body by body
+def W.tick_old(+k: P.K, inp: P.In, w: World) -> World:
   World{seed, t, +awake, dirty, +p} = w
   W.tick2(k, inp, awake, p, List.length(&2, P.Body, awake), F.mx(k, awake, 0n),
     World{seed, t, awake, dirty, p})
+
+# The world of rigid bodies
+# -------------------------
+# The player and the awake cubes move together, as one island of rigid
+# bodies (rigid.bend), among the sleeping cubes around them, which hold
+# like the floor does. A sleeping cube that some contact pushed sideways,
+# or hit hard, wakes (and so does what stood on it); a cube that ends a
+# tick at rest -- still, square, held from below by the floor or by
+# sleeping cubes -- goes to sleep in its cell.
+
+# the player's own push, only with something under it (it stood last
+# tick): the motor adds its push along the wish, a jump sets the takeoff
+# speed; in the air, nothing
+def W.leap(jump: Bool, +k: P.K, +vy: P.Z) -> P.Z:
+  match jump:
+    case True{}:
+      P.Pos{P.K.jump(k)}
+    case False{}:
+      vy
+
+def W.drive3(v: P.Z & P.Z, jump: Bool, +k: P.K, +p: P.Body) -> P.Body:
+  (vx, vz) = v
+  P.Body{P.Body.x(p), P.Body.y(p), P.Body.z(p), vx, W.leap(jump, k, P.Body.vy(p)), vz, P.Body.ground(p),
+    P.Body.hit(p), P.Body.rot(p)}
+
+def W.drive2(gr: Bool, +k: P.K, inp: P.In, +p: P.Body) -> P.Body:
+  match gr:
+    case False{}:
+      p
+    case True{}:
+      P.In{walk, jump} = inp
+      W.drive3(P.Motor.go(P.K.acc(k), walk, P.Body.vx(p), P.Body.vz(p)), jump, k, p)
+
+def W.drive(+k: P.K, inp: P.In, +p: P.Body) -> P.Body:
+  W.drive2(P.Body.ground(p), k, inp, p)
+
+# the sleeping cubes around every moving body, each once
+def W.addnew(xs: List<&2, P.Body>, +acc: List<&2, P.Body>) -> List<&2, P.Body>:
+  match xs:
+    case []:
+      acc
+    case +c <> rest:
+      W.addnew(rest, W.hadd(Bool.not(W.has(c, acc)), c, acc))
+
+def W.fixed(bs: List<&2, P.Body>, +k: P.K, +t: Cells, +seed: U32, acc: List<&2, P.Body>) -> List<&2, P.Body>:
+  match bs:
+    case []:
+      acc
+    case +b <> rest:
+      W.fixed(rest, k, t, seed, W.addnew(W.around(k, t, seed, b), acc))
+
+# The sleepers an island woke come out of their cells, with what rests or
+# leans on them, and the island ticks again with them moving: the push
+# that woke them moves them in the same tick. After n ticks again, what
+# the last one woke joins the island as it is, to move from the next.
+type Ti is Data:
+  Ti{start: List<&2, P.Body>, end: List<&2, P.Body>, t: Cells, dirty: List<&2, Cell>, done: Bool}
+
+def W.lifted(+woke: List<&2, P.Body>, +seed: U32, t: Cells, dirty: List<&2, Cell>) -> St:
+  +n = List.length(&2, P.Body, woke)
+  W.wake(Nat.add(1024n, Nat.mul(16n, n)), seed, St{t, dirty, [], woke})
+
+def W.again(+bs: List<&2, P.Body>, +end: List<&2, P.Body>, st: St) -> Ti:
+  St{t, dirty, +fresh, work} = st
+  Ti{List.append(&2, P.Body, bs, fresh), List.append(&2, P.Body, end, fresh), t, dirty, False{}}
+
+def W.woke2(calm: Bool, +seed: U32, +bs: List<&2, P.Body>, r: R.Rs, t: Cells, dirty: List<&2, Cell>) -> Ti:
+  match calm:
+    case True{}:
+      R.Rs{end, woke} = r
+      Ti{bs, end, t, dirty, True{}}
+    case False{}:
+      R.Rs{end, woke} = r
+      W.again(bs, end, W.lifted(woke, seed, t, dirty))
+
+def W.tick1(+k: P.K, +seed: U32, +bs: List<&2, P.Body>, +t: Cells, dirty: List<&2, Cell>) -> Ti:
+  +r = R.Rb.tick(k, bs, W.fixed(bs, k, t, seed, []))
+  W.woke2(List.is_empty(&2, P.Body, R.Rs.woke(r)), seed, bs, r, t, dirty)
+
+def W.step1(done: Bool, +k: P.K, +seed: U32, +bs: List<&2, P.Body>, end: List<&2, P.Body>, t: Cells, dirty: List<&2, Cell>) -> Ti:
+  match done:
+    case True{}:
+      Ti{bs, end, t, dirty, True{}}
+    case False{}:
+      W.tick1(k, seed, bs, t, dirty)
+
+def W.step(+k: P.K, +seed: U32, st: Ti) -> Ti:
+  Ti{+bs, end, t, dirty, done} = st
+  W.step1(done, k, seed, bs, end, t, dirty)
+
+def W.isl(n: Nat, +k: P.K, +seed: U32, st: Ti) -> Ti:
+  match n:
+    case 0n:
+      st
+    case 1n+m:
+      W.isl(m, k, seed, W.step(k, seed, st))
+
+# an island ticked, and again up to twice more with what it woke
+def W.isl3(+k: P.K, +seed: U32, +bs: List<&2, P.Body>, t: Cells, dirty: List<&2, Cell>) -> Ti:
+  W.isl(3n, k, seed, Ti{bs, bs, t, dirty, False{}})
+
+# an island's bodies before its tick and after
+type Se is Data:
+  Se{start: List<&2, P.Body>, end: List<&2, P.Body>}
+
+type Tis is Data:
+  Tis{ses: List<&2, Se>, t: Cells, dirty: List<&2, Cell>}
+
+def W.into2(r: Ti, ses: List<&2, Se>) -> Tis:
+  Ti{start, end, t, dirty, done} = r
+  Tis{Se{start, end} <> ses, t, dirty}
+
+def W.into(+i: List<&2, P.Body>, +k: P.K, +seed: U32, acc: Tis) -> Tis:
+  Tis{ses, t, dirty} = acc
+  W.into2(W.isl3(k, seed, i, t, dirty), ses)
+
+def W.rev(acc: Tis) -> Tis:
+  Tis{ses, t, dirty} = acc
+  Tis{List.reverse(&2, Se, ses), t, dirty}
+
+# the islands in turn, each with the cells the ones before left
+def W.isls(isl: List<&2, List<&2, P.Body>>, +k: P.K, +seed: U32, acc: Tis) -> Tis:
+  match isl:
+    case []:
+      W.rev(acc)
+    case +i <> rest:
+      W.isls(rest, k, seed, W.into(i, k, seed, acc))
+
+def W.starts(ses: List<&2, Se>) -> List<&2, P.Body>:
+  match ses:
+    case []:
+      []
+    case Se{+start, end} <> rest:
+      List.append(&2, P.Body, start, W.starts(rest))
+
+def W.ends(ses: List<&2, Se>) -> List<&2, List<&2, P.Body>>:
+  match ses:
+    case []:
+      []
+    case Se{start, +end} <> rest:
+      end <> W.ends(rest)
+
+# Each island's tick keeps its own bodies apart. If two of different
+# islands overlap after them, the islands' bodies tick again from the
+# start as one island, which keeps every pair apart.
+def W.whole2(r: Ti) -> Tis:
+  Ti{start, end, t, dirty, done} = r
+  Tis{[Se{start, end}], t, dirty}
+
+def W.whole(clash: Bool, +k: P.K, +seed: U32, r: Tis) -> Tis:
+  match clash:
+    case False{}:
+      r
+    case True{}:
+      Tis{+ses, t, dirty} = r
+      W.whole2(W.isl(1n, k, seed, Ti{W.starts(ses), W.starts(ses), t, dirty, False{}}))
+
+def W.checked(+k: P.K, +seed: U32, +r: Tis) -> Tis:
+  Tis{+ses, t, dirty} = r
+  W.whole(R.Rb.clash(P.K.size(k), W.ends(ses)), k, seed, r)
+
+# Sleep. An island sleeps whole or not at all: when every body in it is
+# at rest -- held, still, not turning -- and every one has room in its
+# cell. Then nothing asleep lies on anything awake. A cube asleep keeps
+# where it lies and how it is turned.
+def W.calm(+b: P.Body) -> Bool:
+  Bool.and(P.Body.ground(b), Bool.and(P.Wv.null(R.B.v(b)), P.Wv.null(R.B.L(b))))
+
+def W.calms(xs: List<&2, P.Body>) -> Bool:
+  match xs:
+    case []:
+      True{}
+    case +b <> rest:
+      Bool.and(W.calm(b), W.calms(rest))
+
+def W.asleep(+c: P.Body) -> P.Body:
+  P.Body{P.Body.x(c), P.Body.y(c), P.Body.z(c), P.Pos{0n}, P.Pos{0n}, P.Pos{0n}, True{}, False{}, P.Rot{R.B.q(c), R.V.zero()}}
+
+type Ly is Data:
+  Ly{t: Cells, dirty: List<&2, Cell>, ok: Bool}
+
+def W.lay1(room: Bool, +c: P.Body, +cx: U32, +cz: U32, cubes: List<&2, P.Body>, ly: Ly) -> Ly:
+  match room:
+    case True{}:
+      Ly{t, dirty, ok} = ly
+      Ly{Cells.set(t, cx, cz, W.asleep(c) <> cubes), Cell{cx, cz} <> dirty, ok}
+    case False{}:
+      Ly{t, dirty, ok} = ly
+      Ly{t, dirty, False{}}
+
+def W.lay(xs: List<&2, P.Body>, +seed: U32, ly: Ly) -> Ly:
+  match xs:
+    case []:
+      ly
+    case +c <> rest:
+      Ly{+t, dirty, ok} = ly
+      +cx = W.cell_of(P.Body.x(c))
+      +cz = W.cell_of(P.Body.z(c))
+      +cubes = Cells.at(t, seed, cx, cz)
+      W.lay(rest, seed, W.lay1(W.fits7(cubes), c, cx, cz, cubes, Ly{t, dirty, ok}))
+
+def W.laid(ok: Bool, +xs: List<&2, P.Body>, t2: Cells, dirty2: List<&2, Cell>, sl: Sl) -> Sl:
+  match ok:
+    case True{}:
+      Sl{t, dirty, keep} = sl
+      Sl{t2, dirty2, keep}
+    case False{}:
+      Sl{t, dirty, keep} = sl
+      Sl{t, dirty, List.append(&2, P.Body, xs, keep)}
+
+def W.laid2(ly: Ly, +xs: List<&2, P.Body>, sl: Sl) -> Sl:
+  Ly{t2, dirty2, ok} = ly
+  W.laid(ok, xs, t2, dirty2, sl)
+
+def W.nap(calm: Bool, +xs: List<&2, P.Body>, +seed: U32, sl: Sl) -> Sl:
+  match calm:
+    case False{}:
+      Sl{t, dirty, keep} = sl
+      Sl{t, dirty, List.append(&2, P.Body, xs, keep)}
+    case True{}:
+      Sl{+t, +dirty, keep} = sl
+      W.laid2(W.lay(xs, seed, Ly{t, dirty, True{}}), xs, Sl{t, dirty, keep})
+
+def W.naps(xss: List<&2, List<&2, P.Body>>, +seed: U32, sl: Sl) -> Sl:
+  match xss:
+    case []:
+      sl
+    case +xs <> rest:
+      W.naps(rest, seed, W.nap(W.calms(xs), xs, seed, sl))
+
+# the player's island never sleeps: the player is always awake
+def W.rest2(+seed: U32, xss: List<&2, List<&2, P.Body>>, t: Cells, dirty: List<&2, Cell>) -> World:
+  match xss:
+    case []:
+      World{seed, t, [], dirty, W.cube(0n, 0n, 0n)}
+    case +first <> rest:
+      match first:
+        case []:
+          W.slept(seed, W.cube(0n, 0n, 0n), W.naps(rest, seed, Sl{t, dirty, []}))
+        case +p <> mine:
+          W.slept(seed, p, W.naps(rest, seed, Sl{t, dirty, mine}))
+
+def W.rest(+seed: U32, r: Tis) -> World:
+  Tis{+ses, t, dirty} = r
+  W.rest2(seed, W.ends(ses), t, dirty)
+
+# a tick of the whole world: the player's own push, the islands, each
+# with the sleepers around it, and the islands at rest to sleep
+def W.tick3(+k: P.K, +seed: U32, +bs: List<&2, P.Body>, t: Cells, dirty: List<&2, Cell>) -> World:
+  W.rest(seed, W.checked(k, seed, W.isls(R.Rb.islands(k, bs), k, seed, Tis{[], t, dirty})))
+
+def W.tick(+k: P.K, inp: P.In, w: World) -> World:
+  World{+seed, t, awake, dirty, +p} = w
+  W.tick3(k, seed, W.drive(k, inp, p) <> awake, t, dirty)
 
 # a new world of seed, the player standing at the start
 def W.new(+seed: U32) -> World:

@@ -5,11 +5,21 @@ azul**. Anda, pula, **empurra os cubos verdes** e **sobe neles**. Os cubos
 verdes nascem ao acaso (uma semente nova a cada partida), em pilhas de 1 a 3,
 num mundo **sem fim**: meio milhão de quilômetros para cada lado.
 
-A física segue as leis da cinemática, da conservação da energia e do atrito
-de Coulomb, e isso é **provado**. São 36 leis em [`LAWS.bend`](LAWS.bend),
-e `bend PROOF.bend` só passa se todas valem. Elas valem para **qualquer valor
-das constantes**, e isso importa porque gravidade, atrito, pulo e motor mudam
-durante o jogo.
+A física é de **corpo rígido de verdade** ([`rigid.bend`](rigid.bend)):
+cada cubo tem massa, momento angular e inércia de cubo, os contatos são
+pontos com normal e folga, e impulsos sequenciais com atrito de Coulomb
+resolvem tudo de uma vez. Tombar da borda, sair girando de uma batida fora
+do meio, escorregar, cair de uma parede: nada disso é regra à parte, é o
+que os impulsos nos pontos de contato fazem.
+
+As 36 leis de [`LAWS.bend`](LAWS.bend) são **provadas** (`bend PROOF.bend`
+só passa se todas valem), para qualquer valor das constantes. Elas são do
+motor anterior, [`phys.bend`](phys.bend), que continua no repositório. As
+leis gerais do motor novo (ação e reação, contato só empurra, Coulomb, a
+energia nunca cresce, nada atravessa nada, nada flutua, repouso é
+equilíbrio) estão em [`PROMPT-FISICA-REAL.md`](PROMPT-FISICA-REAL.md) e
+ainda **não estão provadas**; por enquanto valem medidas (ver "O motor de
+corpo rígido").
 
 A GPU desenha (Vulkan); o Bend simula.
 
@@ -101,10 +111,45 @@ valor que elas alcancem.
 O painel mostra também, a cada frame, a altura, a velocidade e a **energia
 mecânica** do cubo azul em J/kg. Num pulo ela fica parada enquanto ele voa.
 
-## As leis
+## O motor de corpo rígido
+
+[`rigid.bend`](rigid.bend), ticado ilha por ilha por [`world.bend`](world.bend):
+
+- **Corpo**: cubo de massa 1 e lado s; posição, orientação (quatérnio em
+  2⁻¹⁵), velocidade e **momento angular** L (inércia s²/6, ω = 6L/s²).
+- **Contatos**: face contra face pelos 15 eixos (SAT) com recorte da face
+  incidente, aresta contra aresta onde as arestas separam o par melhor que
+  qualquer face, e os cantos contra o chão. Folga especulativa: um contato
+  ainda longe só impede que o par se feche rápido demais.
+- **Impulsos**: 16 passadas; impulso normal acumulado nunca negativo (contato
+  só empurra), atrito limitado a µ vezes ele (Coulomb), igual e oposto nos
+  dois corpos, no mesmo ponto.
+- **Movimento**: livre, a parábola exata; com contato, duas vezes a
+  velocidade final. Cada pose passa pelo portão (nenhum par mais fundo que
+  1/4096 do lado); recusada, tenta a pose sem o que vai para dentro dos
+  contatos, depois sem o giro, depois frações; um corpo em que só cabe um
+  oitavo do movimento parou no que o segura.
+- **Repouso**: um corpo equilibrado (o meio sobre os contatos que o tocam) e
+  quase parado fica exatamente parado. **Apoiado** é ter um contato que o
+  toca, com a face olhando para cima, empurrando: chão, cubo embaixo, a
+  aresta em que ele se encosta. Parede não apoia; o jogador só anda e pula
+  do que o apoia.
+- **Ilhas**: só os corpos que podem se tocar num tick são resolvidos juntos.
+  Se dois de ilhas diferentes se sobrepõem depois, o tick é refeito como uma
+  ilha só. Um cubo dormindo que um tick empurra acorda e a ilha é refeita
+  com ele se mexendo, no mesmo tick. Uma ilha dorme inteira ou não dorme:
+  todos parados e apoiados, e com lugar nas células. Dorme girado, como está.
+
+Medido sem janela (6 mundos × 4000 ticks, o jogador andando e pulando ao
+acaso, empurrando o que encontra): **nenhuma sobreposição**, o jogador
+nunca fica parado no ar mais que 2 ticks. 64 cubos jogados de 2 a 9 m se
+empilham e dormem todos em 3 s; uma pilha de 27 cubos inclinados se acomoda
+e para.
+
+## As leis (do motor anterior)
 
 Em [`LAWS.bend`](LAWS.bend), provadas em [`PROOF.bend`](PROOF.bend). Cada lei
-é sobre o tick de verdade do jogo, `Body.tick` (o mesmo que o jogo roda), e
+é sobre o tick do motor anterior, `Body.tick` ([`phys.bend`](phys.bend)), e
 vale para qualquer corpo, qualquer conjunto de obstáculos em volta e
 qualquer valor de todas as constantes. Algumas pedem "sem entrada"; outras
 pedem "sem contato", um tick em que nenhum portão de colisão barrou o
@@ -239,9 +284,11 @@ Três bugs plausíveis, cada um numa cópia do projeto. Cada um compila
 
 ## Arquitetura
 
-    phys.bend     a física provada: números com sinal, constantes, corpo,
-                  atrito, motor, colisão (divisão de momento), movimentos com
-                  portões, gravidade, o tick
+    rigid.bend    a física do jogo: corpo rígido, contatos (SAT, recorte,
+                  aresta com aresta), impulsos com Coulomb, portão, repouso,
+                  energia, ilhas
+    phys.bend     o motor anterior, o das leis provadas: números com sinal,
+                  constantes, corpo, atrito, motor, colisão, portões, o tick
     ring.bend     a tática de anel: lemas de Nat, normalizador, prova de correção
     LAWS.bend     as leis          PROOF.bend   as provas
     world.bend    o mundo: gerador por hash, trie das células mudadas, vizinhança
@@ -350,11 +397,12 @@ AMD Ryzen 7 5700U com a Radeon integrada (Vega 8, RADV), 1280×720:
 |---|---|
 | GPU, cena parada (`./cubo still`) | 1,91 ms/frame (~450 fps) |
 | GPU, jogando (`./cubo demo`) | 1,5–2,3 ms/frame (330–550 fps) |
-| um tick de um corpo entre 10 obstáculos (`Body.tick`) | 0,79 µs |
-| tick do mundo andando e empurrando | 6,3 µs, ou ~0,1 % de um núcleo a 128 ticks/s |
-| tick do mundo com 64 cubos caindo e se empilhando | 0,16 ms |
-| tick do mundo com 1024 cubos caindo ao mesmo tempo (array plano) | 0,66 ms |
+| tick do mundo andando e empurrando (corpo rígido) | 0,36 ms |
+| tick do mundo com 64 cubos caindo e se empilhando (corpo rígido) | 3–4 ms |
+| tick do mundo com 1024 cubos caindo ao mesmo tempo (corpo rígido, 1024 ilhas) | 4,9 ms |
 | cabeçalho de um frame (câmera, corpos, HUD) | 12 µs |
+
+O tempo real pede 7,8 ms por tick. A tabela de baixo é do motor anterior.
 
 `./build.sh bench && ./bench` roda esses cenários sem janela.
 
