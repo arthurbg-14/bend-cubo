@@ -1513,19 +1513,44 @@ def R.samep(+a: P.Body, +b: P.Body) -> Bool:
   Bool.and(Bool.and(Nat.is_eq(P.Body.x(a), P.Body.x(b)), Nat.is_eq(P.Body.y(a), P.Body.y(b))),
     Bool.and(Nat.is_eq(P.Body.z(a), P.Body.z(b)), R.qeq(B.q(a), B.q(b))))
 
-def Mv.retry3(ok: Bool, +k: P.K, +c0: P.Body, +cur: P.Body, +mc: Mc, +hd: Hd) -> P.Body:
+# the pose p set a moment a out along u (a direction in 2^-16), its
+# velocity and turning kept
+def Mv.back(+p: P.Body, +u: P.Wv, +a: Nat) -> P.Body:
+  +dc = V.fx(u, P.Pos{a})
+  P.Body{P.Z.shift(P.Body.x(p), P.Wv.x(dc)), P.Z.shift(P.Body.y(p), P.Wv.y(dc)), P.Z.shift(P.Body.z(p), P.Wv.z(dc)),
+    P.Body.vx(p), P.Body.vy(p), P.Body.vz(p), P.Body.ground(p), P.Body.hit(p), P.Body.rot(p)}
+
+# The whole move a hair short: set back out of the contact it is deepest
+# in, by a millimetre, then 4, then 16, with its velocity kept. The
+# impulses leave two bodies moving together closing by a few parts in ten
+# thousand of their speed, which at hundreds of metres a second is more
+# than the slop: the one behind was refused its move every tick, stopped
+# dead and lost its half of the push -- or, gated first against where the
+# other began, jumped past it, and the one in front was stuck behind it.
+def Mv.retry4(n: Nat, ok: Bool, +k: P.K, +c: P.Body, +c0: P.Body, +cur: P.Body, +obs: List<&2, P.Body>, +mc: Mc, +hd: Hd,
+  +a: Nat) -> P.Body:
+  match n ok:
+    case _ True{}:
+      Mv.flags(Mv.keep(0n, c, mc), Hd.held(hd), Hd.t(hd))
+    case 0n False{}:
+      cur
+    case 1n+m False{}:
+      Mv.retry4(m, Mv.ok(k, Mv.back(c0, Mc.du(mc), Nat.mul(a, 4n)), obs), k, Mv.back(c0, Mc.du(mc), Nat.mul(a, 4n)), c0, cur, obs, mc,
+        hd, Nat.mul(a, 4n))
+
+def Mv.retry3(ok: Bool, +k: P.K, +c0: P.Body, +cur: P.Body, +obs: List<&2, P.Body>, +mc: Mc, +hd: Hd) -> P.Body:
   match ok:
     case True{}:
       Mv.flags(Mv.keep(0n, c0, mc), Hd.held(hd), Hd.t(hd))
     case False{}:
-      cur
+      Mv.retry4(2n, Mv.ok(k, Mv.back(c0, Mc.du(mc), 256n), obs), k, Mv.back(c0, Mc.du(mc), 256n), c0, cur, obs, mc, hd, 256n)
 
 def Mv.retry2(same: Bool, +k: P.K, +c0: P.Body, +cur: P.Body, +obs: List<&2, P.Body>, +mc: Mc, +hd: Hd) -> P.Body:
   match same:
     case True{}:
       cur
     case False{}:
-      Mv.retry3(Mv.ok(k, c0, obs), k, c0, cur, mc, hd)
+      Mv.retry3(Mv.ok(k, c0, obs), k, c0, cur, obs, mc, hd)
 
 def Mv.mcof(+su: Sup) -> Mc:
   Mc{Mv.away(V.sub(Sup.nn(su), Sup.ns(su))), Sup.dn(su), Sup.pr(su), Sup.pivots(su), Mv.away(Sup.ns(su))}
