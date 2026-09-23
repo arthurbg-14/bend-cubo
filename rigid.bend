@@ -1061,12 +1061,52 @@ def Imp.again(+k: P.K, +dv: P.Wv, st: St) -> St:
   St{done, bs} = st
   Imp.pass(k, dv, done, St{[], bs})
 
-def Imp.iter(n: Nat, +k: P.K, +dv: P.Wv, st: St) -> St:
+# Passes two at a time, n pairs of them, and no more once a pass has
+# changed nothing: every push and friction as it was, so every body too,
+# and every pass after would do the same nothing -- the numbers are
+# whole, the fixed point is exact. (Two at a time: a pass hands its
+# contacts back in the other order, and an even count keeps the order
+# sixteen passes would leave.) A pile that had settled still went through
+# all sixteen, and they were most of its tick.
+def Z.same(+a: P.Z, +b: P.Z) -> Bool:
+  Bool.and(Nat.is_eq(P.Z.pos(a), P.Z.pos(b)), Nat.is_eq(P.Z.neg(a), P.Z.neg(b)))
+
+def Ct.same(+c: Ct, +d: Ct) -> Bool:
+  Ct{a, b, fl, ra, rb, n, gap, +jn, +jt} = c
+  Ct{a2, b2, fl2, ra2, rb2, n2, gap2, +jn2, +jt2} = d
+  Bool.and(Nat.is_eq(jn, jn2), Bool.and(Z.same(P.Wv.x(jt), P.Wv.x(jt2)),
+    Bool.and(Z.same(P.Wv.y(jt), P.Wv.y(jt2)), Z.same(P.Wv.z(jt), P.Wv.z(jt2)))))
+
+def Imp.same(xs: List<&2, Ct>, ys: List<&2, Ct>) -> Bool:
+  match xs ys:
+    case Nil{} Nil{}:
+      True{}
+    case +x <> xr +y <> yr:
+      Bool.and(Ct.same(x, y), Imp.same(xr, yr))
+    case _ _:
+      False{}
+
+# did the pass from s1 to s2 change nothing? (s2 has them the other way)
+def Imp.still(s1: St, s2: St) -> Bool:
+  St{d1, b1} = s1
+  St{d2, b2} = s2
+  Imp.same(d1, List.reverse(&2, Ct, d2))
+
+def Imp.pairs(n: Nat, go: Bool, +k: P.K, +dv: P.Wv, st: St) -> St:
   match n:
     case 0n:
       st
     case 1n+m:
-      Imp.iter(m, k, dv, Imp.again(k, dv, st))
+      match go:
+        case False{}:
+          st
+        case True{}:
+          +s1 = Imp.again(k, dv, st)
+          +s2 = Imp.again(k, dv, s1)
+          Imp.pairs(m, Bool.not(Imp.still(s1, s2)), k, dv, s2)
+
+def Imp.iter(+n: Nat, +k: P.K, +dv: P.Wv, st: St) -> St:
+  Imp.pairs(Nat.div(n, 2n), True{}, k, dv, st)
 
 # What the contacts did to one body
 # ---------------------------------
@@ -1166,12 +1206,30 @@ def R.gap(+s: Nat, +a: P.Body, +b: P.Body) -> P.Z:
   +eb = Ct.half(h, mb)
   Sup.hi(Fx.sep(Ct.faces(d, ea, eb, ma, mb)), R.exsep(Ct.edges9(d, ea, eb, ma, mb)))
 
+# the nine edge by edge directions, asked only when the six axes found
+# the pair further in than the slop: overlapping is the most along all
+# fifteen being under -slop, so an axis that says otherwise settles it --
+# and two cubes touching face to face, every pair in a pile, never need
+# the nine (a cross product and a square root each)
+def R.hits3(deep: Bool, +s: Nat, +d: P.Wv, +ea: E3, +eb: E3, +ma: P.Mat, +mb: P.Mat) -> Bool:
+  match deep:
+    case False{}:
+      False{}
+    case True{}:
+      P.Z.above(P.Neg{R.slop(s)}, R.exsep(Ct.edges9(d, ea, eb, ma, mb)))
+
 def R.hits2(flat: Bool, +s: Nat, +p: P.Body, +o: P.Body) -> Bool:
   match flat:
     case True{}:
       P.Geo.hits(Nat.sub(s, R.slop(s)), P.Body.x(p), P.Body.y(p), P.Body.z(p), B.q(p), o)
     case False{}:
-      P.Z.above(P.Neg{R.slop(s)}, R.gap(s, p, o))
+      +h = Nat.div(s, 2n)
+      +d = B.d(p, o)
+      +ma = P.Rot.mat(B.q(p))
+      +mb = P.Rot.mat(B.q(o))
+      +ea = Ct.half(h, ma)
+      +eb = Ct.half(h, mb)
+      R.hits3(P.Z.above(P.Neg{R.slop(s)}, Fx.sep(Ct.faces(d, ea, eb, ma, mb))), s, d, ea, eb, ma, mb)
 
 # a body as the gate sees it: where it is and how it is turned, nothing
 # else -- so that nothing else can change what it sees (rg_hits_*)
@@ -1677,6 +1735,45 @@ def Mv.infs(+n: Nat, +k: P.K, +b0s: List<&2, P.Body>, cs: List<&2, Ct>) -> List<
   +h = Bt.hh(b0t)
   Mv.infs2(n, k, 0n, b0t, d, h, Cb.fill(List.reverse(&2, Ct, cs), d, h, Cb.new(d)))
 
+# The sweeps go along x or z, whichever the bodies spread over more: a
+# window along x, on a long pile down z, held a slab of the whole pile,
+# and every body was asked against hundreds.
+type Ext is Data:
+  Ext{lx: Nat, hx: Nat, lz: Nat, hz: Nat}
+
+def Ext.none() -> Ext:
+  Ext{Nat.mul(4294967295n, 65536n), 0n, Nat.mul(4294967295n, 65536n), 0n}
+
+def Ext.add(+b: P.Body, e: Ext) -> Ext:
+  Ext{+lx, +hx, +lz, +hz} = e
+  Ext{P.Pick.low(lx, P.Body.x(b)), P.Pick.high(hx, P.Body.x(b)), P.Pick.low(lz, P.Body.z(b)), P.Pick.high(hz, P.Body.z(b))}
+
+def Ext.of(bs: List<&2, P.Body>, e: Ext) -> Ext:
+  match bs:
+    case []:
+      e
+    case +b <> rest:
+      Ext.of(rest, Ext.add(b, e))
+
+def Ext.ofl(isl: List<&2, List<&2, P.Body>>, e: Ext) -> Ext:
+  match isl:
+    case []:
+      e
+    case +bs <> rest:
+      Ext.ofl(rest, Ext.of(bs, e))
+
+# along z? (it spreads further than along x)
+def Ext.zax(e: Ext) -> Bool:
+  Ext{+lx, +hx, +lz, +hz} = e
+  Nat.is_lt(Nat.sub(hx, lx), Nat.sub(hz, lz))
+
+def Is.key(zax: Bool, +b: P.Body) -> Nat:
+  match zax:
+    case True{}:
+      P.Body.z(b)
+    case False{}:
+      P.Body.x(b)
+
 # What each body may run into in the gate: the bodies and the fixed ones
 # near enough, in a tree of lists by place (fixed ones counted from n).
 # Two cubes, turned any way, overlap only with middles closer than
@@ -1755,21 +1852,21 @@ def Gn.reach(+s: Nat, +b0: P.Body, +b1: P.Body) -> Nat:
   Nat.add(Nat.add(Nat.mul(2n, Nat.add(V.l1(B.v(b0)), V.l1(B.v(b1)))), Nat.div(Nat.mul(24n, V.l1(B.L(b1))), P.Pick.high(s, 1n))),
     8192n)
 
-def Gn.dyn(b0s: List<&2, P.Body>, b1s: List<&2, P.Body>, +s: Nat, +i: Nat) -> List<&2, Ge>:
+def Gn.dyn(b0s: List<&2, P.Body>, b1s: List<&2, P.Body>, +s: Nat, +zax: Bool, +i: Nat) -> List<&2, Ge>:
   match b0s b1s:
     case Nil{} _:
       []
     case _ Nil{}:
       []
     case +b0 <> r0 +b1 <> r1:
-      Ge{P.Body.x(b1), i, Gn.reach(s, b0, b1), b1} <> Gn.dyn(r0, r1, s, Nat.add(i, 1n))
+      Ge{Is.key(zax, b1), i, Gn.reach(s, b0, b1), b1} <> Gn.dyn(r0, r1, s, zax, Nat.add(i, 1n))
 
-def Gn.sta(ss: List<&2, P.Body>, +j: Nat) -> List<&2, Ge>:
+def Gn.sta(ss: List<&2, P.Body>, +zax: Bool, +j: Nat) -> List<&2, Ge>:
   match ss:
     case []:
       []
     case +o <> rest:
-      Ge{P.Body.x(o), j, 0n, o} <> Gn.sta(rest, Nat.add(j, 1n))
+      Ge{Is.key(zax, o), j, 0n, o} <> Gn.sta(rest, zax, Nat.add(j, 1n))
 
 def Gn.rmax(es: List<&2, Ge>, +m: Nat) -> Nat:
   match es:
@@ -1818,7 +1915,8 @@ def Gn.sweep(es: List<&2, Ge>, +s: Nat, +w: Nat, +n: Nat, +d: Nat, +h: Nat, t: I
 
 # the near ones of every body, by place
 def Gn.of(+s: Nat, +n: Nat, +d: Nat, +h: Nat, b0s: List<&2, P.Body>, +b1s: List<&2, P.Body>, +ss: List<&2, P.Body>) -> Ib:
-  +es = List.append(&2, Ge, Gn.dyn(b0s, b1s, s, 0n), Gn.sta(ss, n))
+  +zax = Ext.zax(Ext.of(ss, Ext.of(b1s, Ext.none())))
+  +es = List.append(&2, Ge, Gn.dyn(b0s, b1s, s, zax, 0n), Gn.sta(ss, zax, n))
   Gn.sweep(List.sort(Ge, Ge.le, es), s, Nat.add(Nat.div(Nat.mul(7n, s), 4n), Gn.rmax(es, 0n)), n, d, h, Ib.new(d))
 
 # the obstacles at the places js: bodies (below n) from cur, fixed ones
@@ -1863,6 +1961,17 @@ def R.samep(+a: P.Body, +b: P.Body) -> Bool:
   Bool.and(Bool.and(Nat.is_eq(P.Body.x(a), P.Body.x(b)), Nat.is_eq(P.Body.y(a), P.Body.y(b))),
     Bool.and(Nat.is_eq(P.Body.z(a), P.Body.z(b)), R.qeq(B.q(a), B.q(b))))
 
+# the obstacles as they are now (curs), less those the body began inside
+# where they began (starts, in step with curs)
+def Mv.apart2(+s: Nat, +b: P.Body, curs: List<&2, P.Body>, starts: List<&2, P.Body>) -> List<&2, P.Body>:
+  match curs starts:
+    case Nil{} _:
+      []
+    case +o <> rest Nil{}:
+      o <> rest
+    case +o <> rest +o0 <> rest0:
+      R.keep(Bool.not(R.hits(s, b, o0)), o, Mv.apart2(s, b, rest, rest0))
+
 # the pose p set a moment a out along u (a direction in 2^-16), its
 # velocity and turning kept
 def Mv.back(+p: P.Body, +u: P.Wv, +a: Nat) -> P.Body:
@@ -1895,17 +2004,22 @@ def Mv.retry3(ok: Bool, +k: P.K, +c0: P.Body, +cur: P.Body, +obs: List<&2, P.Bod
     case False{}:
       Mv.retry4(2n, Mv.ok(k, Mv.back(c0, Mc.du(mc), 256n), obs), k, Mv.back(c0, Mc.du(mc), 256n), c0, cur, obs, mc, hd, 256n)
 
-def Mv.retry2(same: Bool, +k: P.K, +c0: P.Body, +cur: P.Body, +obs: List<&2, P.Body>, +mc: Mc, +hd: Hd) -> P.Body:
+# (the obstacles filtered only here: a body at rest, or already where its
+# whole move takes it, never asks them)
+def Mv.retry2(same: Bool, +k: P.K, +c0: P.Body, +cur: P.Body, +b1: P.Body, +curs: List<&2, P.Body>, +starts: List<&2, P.Body>,
+  +mc: Mc, +hd: Hd) -> P.Body:
   match same:
     case True{}:
       cur
     case False{}:
+      +obs = Mv.apart2(P.K.size(k), b1, curs, starts)
       Mv.retry3(Mv.ok(k, c0, obs), k, c0, cur, obs, mc, hd)
 
 def Mv.mcof(+su: Sup) -> Mc:
   Mc{Mv.away(V.sub(Sup.nn(su), Sup.ns(su))), Sup.dn(su), Sup.pr(su), Sup.pivots(su), Mv.away(Sup.ns(su))}
 
-def Mv.retry1(still: Bool, +k: P.K, +b0: P.Body, +b1: P.Body, +cur: P.Body, +obs: List<&2, P.Body>, +su: Sup, +hd: Hd) -> P.Body:
+def Mv.retry1(still: Bool, +k: P.K, +b0: P.Body, +b1: P.Body, +cur: P.Body, +curs: List<&2, P.Body>, +starts: List<&2, P.Body>,
+  +su: Sup, +hd: Hd) -> P.Body:
   match still:
     case True{}:
       cur
@@ -1913,21 +2027,11 @@ def Mv.retry1(still: Bool, +k: P.K, +b0: P.Body, +b1: P.Body, +cur: P.Body, +obs
       +mc = Mv.mcof(su)
       +d = R.pv(Bool.not(Hd.t(hd)), V.add(B.v(b0), B.v(b1)), V.add(B.v(b1), B.v(b1)))
       +c0 = Mv.cand(0n, k, b1, d, Mv.w(k, B.L(b1)), mc)
-      Mv.retry2(R.samep(c0, cur), k, c0, cur, obs, mc, hd)
+      Mv.retry2(R.samep(c0, cur), k, c0, cur, b1, curs, starts, mc, hd)
 
-# the obstacles as they are now (curs), less those the body began inside
-# where they began (starts, in step with curs)
-def Mv.apart2(+s: Nat, +b: P.Body, curs: List<&2, P.Body>, starts: List<&2, P.Body>) -> List<&2, P.Body>:
-  match curs starts:
-    case Nil{} _:
-      []
-    case +o <> rest Nil{}:
-      o <> rest
-    case +o <> rest +o0 <> rest0:
-      R.keep(Bool.not(R.hits(s, b, o0)), o, Mv.apart2(s, b, rest, rest0))
-
-def Mv.retry(+k: P.K, +b0: P.Body, +b1: P.Body, +cur: P.Body, +obs: List<&2, P.Body>, +su: Sup, +hd: Hd, +pm: Bool) -> P.Body:
-  Mv.retry1(Mv.rests(k, b0, b1, su, hd, pm), k, b0, b1, cur, obs, su, hd)
+def Mv.retry(+k: P.K, +b0: P.Body, +b1: P.Body, +cur: P.Body, +curs: List<&2, P.Body>, +starts: List<&2, P.Body>, +su: Sup,
+  +hd: Hd, +pm: Bool) -> P.Body:
+  Mv.retry1(Mv.rests(k, b0, b1, su, hd, pm), k, b0, b1, cur, curs, starts, su, hd)
 
 # (only a body something touched: what touches nothing was refused by
 # nothing, or by something it will not find moved)
@@ -1939,8 +2043,7 @@ def Mv.again1(touched: Bool, +k: P.K, +i: Nat, +b0t: Bt, +b1t: Bt, +cur: Bt, +nb
     case True{}:
       +b1 = Bt.at(b1t, i)
       +js = Ib.get(d, nb, i, h, Nat.is_le(h, i))
-      Bt.put(cur, i, Mv.retry(k, Bt.at(b0t, i), b1, Bt.at(cur, i),
-        Mv.apart2(P.K.size(k), b1, Gn.obs(js, n, cur, sst), Gn.obs(js, n, b0t, sst)), su, hd, pm))
+      Bt.put(cur, i, Mv.retry(k, Bt.at(b0t, i), b1, Bt.at(cur, i), Gn.obs(js, n, cur, sst), Gn.obs(js, n, b0t, sst), su, hd, pm))
 
 def Mv.all2(fs: List<&2, Inf>, +k: P.K, +i: Nat, +b0t: Bt, +b1t: Bt, +cur: Bt, +nb: Ib, +n: Nat, +d: Nat, +h: Nat, +sst: Bt)
   -> Bt:
@@ -2264,12 +2367,12 @@ def Xe.b(+e: Xe) -> P.Body:
 def Is.le(a: Xe, b: Xe) -> Bool:
   Nat.is_le(Xe.x(a), Xe.x(b))
 
-def Is.ents(bs: List<&2, P.Body>, +i: Nat) -> List<&2, Xe>:
+def Is.ents(bs: List<&2, P.Body>, +zax: Bool, +i: Nat) -> List<&2, Xe>:
   match bs:
     case []:
       []
     case +b <> rest:
-      Xe{P.Body.x(b), i, b} <> Is.ents(rest, Nat.add(i, 1n))
+      Xe{Is.key(zax, b), i, b} <> Is.ents(rest, zax, Nat.add(i, 1n))
 
 # the x of the first entry, or past everything
 def Is.hx(es: List<&2, Xe>) -> Nat:
@@ -2476,24 +2579,24 @@ def Rb.islands(+k: P.K, +bs: List<&2, P.Body>) -> List<&2, List<&2, P.Body>>:
   +n = List.length(&2, P.Body, bs)
   +reach = Nat.add(Nat.add(Nat.mul(2n, P.K.size(k)), Nat.div(P.K.size(k), 64n)),
     Nat.add(Nat.mul(4n, Is.vmax(bs, 0n)), Nat.mul(2n, P.K.g(k))))
-  +pairs = Is.sweep(List.sort(Xe, Is.le, Is.ents(bs, 0n)), k, reach, [])
+  +pairs = Is.sweep(List.sort(Xe, Is.le, Is.ents(bs, Ext.zax(Ext.of(bs, Ext.none())), 0n)), k, reach, [])
   lab = Lb.passes(64n, Lb{Lb.init(n, 0n, Array.new(Nat, Lb.depth(20n, P.Pick.high(n, 1n), 0n), 0n)), True{}}, pairs)
   Is.runs(List.sort(Lab, Lab.le, LabSt.acc(Lab.of(bs, LabSt{Lb.a(lab), []}, 0n))), 4294967295n, [], [])
 
 # the bodies of every island, each tagged with its island's number
-def Is.tag(bs: List<&2, P.Body>, +n: Nat, acc: List<&2, Xe>) -> List<&2, Xe>:
+def Is.tag(bs: List<&2, P.Body>, +zax: Bool, +n: Nat, acc: List<&2, Xe>) -> List<&2, Xe>:
   match bs:
     case []:
       acc
     case +b <> rest:
-      Is.tag(rest, n, Xe{P.Body.x(b), n, b} <> acc)
+      Is.tag(rest, zax, n, Xe{Is.key(zax, b), n, b} <> acc)
 
-def Is.tags(isl: List<&2, List<&2, P.Body>>, +n: Nat, acc: List<&2, Xe>) -> List<&2, Xe>:
+def Is.tags(isl: List<&2, List<&2, P.Body>>, +zax: Bool, +n: Nat, acc: List<&2, Xe>) -> List<&2, Xe>:
   match isl:
     case []:
       acc
     case +i <> rest:
-      Is.tags(rest, Nat.add(n, 1n), Is.tag(i, n, acc))
+      Is.tags(rest, zax, Nat.add(n, 1n), Is.tag(i, zax, n, acc))
 
 def Is.hit2(near: Bool, +s: Nat, +a: P.Body, +b: P.Body) -> Bool:
   match near:
@@ -2523,8 +2626,8 @@ def Is.clash(es: List<&2, Xe>, +s: Nat) -> Bool:
 
 # do two bodies of different islands overlap? Each island's tick keeps
 # its own bodies apart; this looks at the pairs no tick saw
-def Rb.clash(+s: Nat, isl: List<&2, List<&2, P.Body>>) -> Bool:
-  Is.clash(List.sort(Xe, Is.le, Is.tags(isl, 0n, [])), s)
+def Rb.clash(+s: Nat, +isl: List<&2, List<&2, P.Body>>) -> Bool:
+  Is.clash(List.sort(Xe, Is.le, Is.tags(isl, Ext.zax(Ext.ofl(isl, Ext.none())), 0n, [])), s)
 
 def Ct.coulomb(+k: P.K, cs: List<&2, Ct>) -> Bool:
   match cs:

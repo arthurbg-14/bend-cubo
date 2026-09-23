@@ -7664,17 +7664,25 @@ def rg_again(+k: P.K, +dv: P.Wv, +st: G.St) -> {G.Ct.coulomb(k, G.Rb.done(G.Imp.
     case G.St{done, +bs}:
       rg_pass(k, dv, done, G.St{[], bs}, {==})
 
-def rg_iter(n: Nat, +k: P.K, +dv: P.Wv, +st: G.St, h: {G.Ct.coulomb(k, G.Rb.done(st)) == True{} : Bool})
-  -> {G.Ct.coulomb(k, G.Rb.done(G.Imp.iter(n, k, dv, st))) == True{} : Bool}:
+# passes two at a time, stopping or not: every pair ends on a pass
+def rg_pairs(n: Nat, go: Bool, +k: P.K, +dv: P.Wv, +st: G.St, h: {G.Ct.coulomb(k, G.Rb.done(st)) == True{} : Bool})
+  -> {G.Ct.coulomb(k, G.Rb.done(G.Imp.pairs(n, go, k, dv, st))) == True{} : Bool}:
   match n:
     case 0n:
       h
     case 1n+m:
-      rg_iter(m, k, dv, G.Imp.again(k, dv, st), rg_again(k, dv, st))
+      match go:
+        case False{}:
+          h
+        case True{}:
+          +s1 = G.Imp.again(k, dv, st)
+          +s2 = G.Imp.again(k, dv, s1)
+          rg_pairs(m, Bool.not(G.Imp.still(s1, s2)), k, dv, s2, rg_again(k, dv, s1))
 
 def Laws.rigid_coulomb(k, dv, bs, ss):
-  rg_iter(15n, k, dv, G.Imp.again(k, dv, G.St{G.Ct.all(bs, k, 0n, ss, []), G.Bt.of(G.Rb.fall(k, bs))}),
-    rg_again(k, dv, G.St{G.Ct.all(bs, k, 0n, ss, []), G.Bt.of(G.Rb.fall(k, bs))}))
+  +s1 = G.Imp.again(k, dv, G.St{G.Ct.all(bs, k, 0n, ss, []), G.Bt.of(G.Rb.fall(k, bs))})
+  +s2 = G.Imp.again(k, dv, s1)
+  rg_pairs(7n, Bool.not(G.Imp.still(s1, s2)), k, dv, s2, rg_again(k, dv, s1))
 
 def rg_not(a: Bool, -b: Bool, e: {a == b : Bool}) -> {Bool.not(a) == Bool.not(b) : Bool}:
   %e : {Bool.not(a) == Bool.not(_) : Bool}
